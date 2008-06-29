@@ -50,14 +50,12 @@ def ParseArgs(parse):
 
 	for arg in parse:
 		arg = strip(arg)
-	
 		# Check and maks sure we're formatted correctly.
-		if "--animtk" in arg:
-			if len(arg) >= 9 and arg[8] == "=":
-				args = arg[9 : ].split(";")
-
+		if "--osg" in arg:
+			if len(arg) >= 6 and arg[5] == "=":
+				args = arg[6 : ].split(";")
 			else:
-				print "ERROR: OpenSceneGraph format is: --osg=\"filename=foo;\""
+				print "ERROR: OpenSceneGraph format is: --osg=\"filename=foo\""
 
 	for arg in args:
 		if "=" in arg:
@@ -66,12 +64,11 @@ def ParseArgs(parse):
 			v    = strip(v)
 
 			print "OSG Option [", a, "] =", v
-
 			{
-				"FILENAME":   lambda: setattr(atkconf, a, v),
-				"AUTHOR":     lambda: setattr(atkconf, a, v),
-				"LOG":        lambda: setattr(atkconf, a, str2bool(v)),
-				"SELECTED":   lambda: setattr(atkconf, a, str2bool(v))
+				"FILENAME":   lambda: setattr(osgconf, a, v),
+				"AUTHOR":     lambda: setattr(osgconf, a, v),
+				"LOG":        lambda: setattr(osgconf, a, str2bool(v)),
+				"SELECTED":   lambda: setattr(osgconf, a, str2bool(v))
 			}[a]()
 
 	# Return args; since this will be False by default, we'll use this

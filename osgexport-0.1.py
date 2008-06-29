@@ -52,8 +52,9 @@ from Blender.Draw import *
 from Blender import NMesh
 from Blender import Types, Ipo
 from math import sin, cos, pi
+import sys
 from sys import exit
-
+import osg
 
 def defaultKeyRegistryOSG():
     keys = dict()
@@ -505,7 +506,7 @@ class OSGExport:
         self.doStaticAnimation = 0
         self.doMeshAnimation = 0
         self.doAnimationPath = 0
-
+        self.gui = False
         self.mFrameStart = daScene.getRenderingContext().startFrame()
         self.mFrameEnd = daScene.getRenderingContext().endFrame()
         self.mFrameCount = self.mFrameEnd - self.mFrameStart + 1
@@ -557,7 +558,8 @@ class OSGExport:
             root = self.exportPaths()
         else:
             root = self.exportFrames()
-	Window.DrawProgressBar( 0.0, "Writing file")
+        if self.gui:
+            Window.DrawProgressBar( 0.0, "Writing file")
         self.osg.writeNode(root,self.file)
         self.file.close()
 
@@ -565,9 +567,13 @@ class OSGExport:
     def exportPaths(self):
         roots = []
 	curObj = 1
-	Window.DrawProgressBar( 0.0, "Exporting scene")
+        if self.gui:
+            Window.DrawProgressBar( 0.0, "Exporting scene")
+
         for object in self.objects:
-	    Window.DrawProgressBar( curObj*(1.0/len(self.objects)), "Exporting objects %d/%d" % (curObj,len(self.objects)))
+            if self.gui:
+                Window.DrawProgressBar( curObj*(1.0/len(self.objects)), "Exporting objects %d/%d" % (curObj,len(self.objects)))
+
             if (not object.getParent()) or (not self.isSupported(object.getParent())):
                 roots.append(self.recursePaths(object))
 	    curObj+=1
@@ -579,7 +585,6 @@ class OSGExport:
         # Find a texture and create the stateset
         texture = None
         for f in mesh.faces:
-            print f.image
             if f.image != None:
                 #texture = f.image.name;brea
                 texture = Blender.sys.expandpath(f.image.filename).replace(" ","_");break #access to the full pathnam
@@ -736,10 +741,21 @@ if __name__ == "__main__":
     # If the user wants to run in "batch" mode, assume that ParseArgs
     # will correctly set atkconf data and go.
     if osg.ParseArgs(sys.argv):
-        OpenSceneGraphExport(osg.osgconf.FILENAME)
+        scene = Scene.getCurrent()
+        objects = scene.getChildren()
+        loopMode = 1
+        meshAnim = 1
+        fps = 25
+        exporter = OSGExport(osg.osgconf.FILENAME, 
+                           scene,
+                           loopMode,
+                           meshAnim,
+                           fps,
+                           objects)
+        print "export to",osg.osgconf.FILENAME
+        exporter.export()
         Blender.Quit()
 
     # Otherwise, let the atkcgui module take over.
     else:
-        # do it yourself
-        pass
+        print "No gui"
