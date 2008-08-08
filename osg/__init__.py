@@ -27,22 +27,8 @@ for a Google SOC project in Cal3D. There may still be some remnants of that
 project here, but most of this is SUPERBLY modified.
 """
 
-# A decorator to catch any exception semi-gracefully. Sometime later
-# this will create a Blender panel to show the exception, since errors to the console
-# are pretty damn useless.
-def exception(function):
-	def exceptionDecorator(*args, **kargs):
-		try:
-			return function(*args, **kargs)
-
-		except Exception, e:
-			print "Exception in", function.func_name, "- error was:", e
-
-	return exceptionDecorator
-
 # A function that will parse the passed-in sequences and set the appropriate
-# values in atkconf.
-@exception
+# values in osgconf.
 def ParseArgs(parse):
 	args     = []
 	strip    = lambda s: s.rstrip().lstrip().replace("\t", "").replace("\n", "")

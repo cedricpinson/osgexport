@@ -1,2 +1,15 @@
 #!/bin/bash
-blender -b  $1 -P ../osgexport-0.1.py --osg="filename=$2"
+set -x
+cur=$(pwd)
+for val in "player"
+do
+    cd ${val}
+    ./test-${val}.sh
+    if [ "$?" != "0" ]
+    then
+        echo "test ${val} failed"
+        exit 0
+    fi
+    cd ${cur}
+done
+echo "tests passed"
