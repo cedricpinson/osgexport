@@ -55,7 +55,7 @@ from math import sin, cos, pi
 import sys
 from sys import exit
 import osg
-from osg import OSGExport
+from osg.osgdata import OSGExport
 
 
 #######################################################################
