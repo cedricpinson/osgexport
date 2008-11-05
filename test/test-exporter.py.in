@@ -1,0 +1,355 @@
+#!BPY
+# -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
+# Copyright (C) 2008 Cedric Pinson
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+# Authors:
+#  Cedric Pinson <mornifle@plopbyte.net>
+#
+
+"""
+Name: 'osgexporter (.osg)'
+Blender: 248
+Group: 'Export'
+Tip: 'Export armature/bone/action data to osg formats.'
+"""
+
+from twisted.trial import unittest, runner, reporter
+from twisted.internet import reactor, defer
+from twisted.python import failure
+import twisted
+
+import sys
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/tools/blenderExporter/")
+
+import Blender
+import bpy
+import osg
+from osg.osgobject import *
+from osg.osgdata import *
+
+
+class Exporter(unittest.TestCase):
+    # ------------------------------------------------------
+    def setUp(self):
+        osg.osgobject.initReferenceCount()
+
+    def tearDown(self):
+        pass
+
+    def testConfig(self):
+        conf = osg.osgconf.Config()
+        self.assertEquals("", conf.filename)
+        self.assertEquals("", conf.author)
+        self.assertEquals(2, conf.indent)
+        self.assertEquals(5, conf.float_precision)
+        self.assertEquals(0, conf.format_num)
+        self.assertEquals(25, conf.anim_fps)
+        self.assertEquals(None, conf.log_file)
+        self.assertEquals(True, conf.log)
+        self.assertEquals("ALL", conf.selected)
+        self.assertEquals(False, conf.relative_path)
+        self.assertEquals("", conf.anim_bake)
+        self.assertEquals(True, conf.export_anim)
+        self.assertEquals("./", conf.fullpath)
+        self.assertEquals([], conf.exclude_objects)
+
+
+    def testFindArmature(self):
+        armature = osg.osgdata.findArmatureObjectForAction(bpy.data.actions["Idle_Main.001"])
+        self.assertEquals(bpy.data.objects["Rig"], armature )
+
+    def testUpdateCallback(self):
+        node = MatrixTransform()
+        node.setName("test")
+        cb = UpdateTransform()
+        cb.setName("woot")
+        node.update_callbacks.append(cb)
+        result = str(node)
+        text = """MatrixTransform {
+  UniqueID uniqid_MatrixTransform_0
+  name "test"
+  cullingActive TRUE
+  UpdateCallbacks {
+    osgATK::UpdateTransform {
+      UniqueID uniqid_UpdateTransform_1
+      name "woot"
+    }
+  }
+  Matrix {
+    1.00000 0.00000 0.00000 0.00000
+    0.00000 1.00000 0.00000 0.00000
+    0.00000 0.00000 1.00000 0.00000
+    0.00000 0.00000 0.00000 1.00000
+  }
+  num_children 0
+}
+"""
+        self.assertEquals(text, result)
+
+    def testLightSource(self):
+        node = LightSource()
+        node.setName("test")
+        node.light = Light()
+        result = str(node)
+        text = """LightSource {
+  UniqueID uniqid_LightSource_0
+  name "test"
+  cullingActive FALSE
+  Light {
+    light_num 0
+    ambient 0.05000 0.05000 0.05000 1.00000
+    diffuse 0.80000 0.80000 0.80000 1.00000
+    specular 1.00000 1.00000 1.00000 1.00000
+    position 0.00000 0.00000 1.00000 0.00000
+    direction 0.00000 0.00000 -1.00000
+    constant_attenuation 1.00000
+    linear_attenuation 0.00000
+    quadratic_attenuation 0.00000
+    spot_exponent 0.00000
+    spot_cutoff 180.00000
+  }
+  num_children 0
+}
+"""
+        self.assertEquals(text, result)
+
+    def testBone(self):
+        node = Bone()
+        node.setName("test")
+        cb = UpdateBone()
+        cb.setName("overwoot")
+        node.update_callbacks.append(cb)
+        result = str(node)
+        text = """osgATK::Bone {
+  UniqueID uniqid_Bone_0
+  DataVariance DYNAMIC
+  name "test"
+  cullingActive TRUE
+  UpdateCallbacks {
+    osgATK::UpdateBone {
+      UniqueID uniqid_UpdateBone_1
+      name "overwoot"
+    }
+  }
+  bindQuaternion 0.00000 0.00000 0.00000 1.00000
+  bindPosition 0.00000 0.00000 0.00000
+  bindScale 1.00000 1.00000 1.00000
+  num_children 0
+}
+"""
+        self.assertEquals(text, result)
+
+    def testMatrixTransform(self):
+        node = MatrixTransform()
+        node.setName("test")
+        result = str(node)
+        text = """MatrixTransform {
+  UniqueID uniqid_MatrixTransform_0
+  name "test"
+  cullingActive TRUE
+  Matrix {
+    1.00000 0.00000 0.00000 0.00000
+    0.00000 1.00000 0.00000 0.00000
+    0.00000 0.00000 1.00000 0.00000
+    0.00000 0.00000 0.00000 1.00000
+  }
+  num_children 0
+}
+"""
+        self.assertEquals(text, result)
+
+    def testRigGeometry(self):
+        node = RigGeometry()
+        node.setName("test")
+        node.groups['test'] = VertexGroup()
+        result = str(node)
+        text = """osgATK::RigGeometry {
+  UniqueID uniqid_RigGeometry_0
+  DataVariance DYNAMIC
+  name "test"
+  num_influences 1
+  osgATK::VertexInfluence "None" 0 {
+  }
+}
+"""
+        self.assertEquals(text, result)
+
+    def testNormalArray(self):
+        array = NormalArray()
+        array.array.append((0,1,20))
+        result = str(array)
+        text = """NormalBinding PER_VERTEX
+NormalArray 1 {
+  0.00000 1.00000 20.00000
+}
+"""
+        self.assertEquals(text, result)
+                
+    def testBlenderObjectToGeometry(self):
+        geomquad = BlenderObjectToGeometry(object = bpy.data.objects["CubeQuads"])
+        self.assertEquals(False, geomquad.hasTexture())
+        self.assertEquals(True, geomquad.mesh != None)
+        geom = geomquad.convert()
+        #print "\n" + str(geom)
+
+        self.assertEquals("CubeQuads", geom.name)
+        self.assertEquals(True, geom.vertexes != None)
+        self.assertEquals(24, len(geom.vertexes.array))
+        self.assertEquals(True, geom.normals != None)
+        self.assertEquals(24, len(geom.normals.array))
+        self.assertEquals(1, len(geom.primitives))
+        self.assertEquals("QUADS", geom.primitives[0].type)
+        self.assertEquals(24, len(geom.primitives[0].indexes))
+
+
+        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangle"])
+        geom = geomtriangle.convert()
+        #print geom
+        self.assertEquals(True, geom.vertexes != None)
+        self.assertEquals(36, len(geom.vertexes.array))
+        self.assertEquals(True, geom.normals != None)
+        self.assertEquals(36, len(geom.normals.array))
+        self.assertEquals(1, len(geom.primitives))
+        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals(36, len(geom.primitives[0].indexes))
+
+
+        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangleSmooth"])
+        geom = geomtriangle.convert()
+        #print geom
+        self.assertEquals(True, geom.vertexes != None)
+        self.assertEquals(8, len(geom.vertexes.array))
+        self.assertEquals(True, geom.normals != None)
+        self.assertEquals(8, len(geom.normals.array))
+        self.assertEquals(1, len(geom.primitives))
+        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals(36, len(geom.primitives[0].indexes))
+
+
+        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangleTextured"])
+        geom = geomtriangle.convert()
+        #print geom
+        self.assertEquals(True, geom.vertexes != None)
+        self.assertEquals(4*6, len(geom.vertexes.array))
+        self.assertEquals(True, geom.uvs != None)
+        self.assertEquals(4*6, len(geom.uvs['0'].array))
+        self.assertEquals(True, geom.normals != None)
+        self.assertEquals(4*6, len(geom.normals.array))
+        self.assertEquals(True, geom.stateset != None)
+        self.assertEquals(1, len(geom.stateset.texture_attributes['0']))
+        self.assertEquals("textures/bbb.png", geom.stateset.texture_attributes['0'][0].file )
+        self.assertEquals(1, len(geom.primitives))
+        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals(36, len(geom.primitives[0].indexes))
+
+    def testBroken(self):
+        sc = bpy.data.scenes["Broken"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.process()
+        exporter.write()
+        self.assertEquals("DrawElementsUShort", exporter.items['Table'].children[0].drawables[0].primitives[0].getSizeArray() )
+        self.assertEquals("DrawElementsUByte", exporter.items['Table.001'].children[0].drawables[0].primitives[0].getSizeArray() )
+
+    def testLight(self):
+        sc = bpy.data.scenes["Light"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.process()
+        exporter.write()
+        self.assertEquals(4, len(exporter.items))
+                
+
+    def testGeometry(self):
+        scene = bpy.data.scenes["Geometry"]
+        bpy.data.scenes.active = scene
+        exporter = Export()
+        exporter.process()
+        exporter.write()
+
+    def testArmature(self):
+        armature = bpy.data.scenes["Armature"]
+        bpy.data.scenes.active = armature
+        exporter = Export()
+        exporter.process()
+        exporter.write()
+
+    def testArmatureSimple(self):
+        sc = bpy.data.scenes["ArmatureSimple"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.config.anim_bake = "force"
+        exporter.process()
+        print exporter.animations.keys()
+        self.assertEquals(1, len(exporter.animations))
+        self.assertEquals(True, len(exporter.animations.values()[0].channels[0].keys) > 2)
+        exporter.write()
+
+    def testIpos(self):
+        sc = bpy.data.scenes["Ipos"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.config.anim_bake = "force"
+        exporter.config.filename = "ipos"
+        exporter.process()
+        self.assertEquals(5, len(exporter.animations))
+        exporter.write()
+
+    def testConfigNoAnimations(self):
+        sc = bpy.data.scenes["Ipos"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.config.anim_bake = "force"
+        exporter.config.export_anim = False
+        exporter.config.filename = "ipos_noanimation"
+        exporter.process()
+        exporter.write()
+        self.assertEquals(0, len(exporter.animations))
+
+    def testPostProcessAnimations(self):
+        sc = bpy.data.scenes["Ipos"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.config.anim_bake = "force"
+        exporter.config.export_anim = False
+        exporter.config.filename = "ipos_postprocess"
+        exporter.process()
+        self.assertEquals(0, len(exporter.animations))
+        exporter.createAnimationsFromList([bpy.data.ipos['monkey'],
+                                           bpy.data.ipos['monkey.001'],
+                                           bpy.data.ipos['monkey.002'],
+                                           bpy.data.ipos['monkey.003'],
+                                           bpy.data.ipos['monkey.004'] ])
+        self.assertEquals(5, len(exporter.animations))
+        exporter.postProcess()
+        exporter.write()
+
+def Run():
+        loader = runner.TestLoader()
+        loader.methodPrefix = "test"
+        suite = loader.suiteFactory()
+        suite.addTest(loader.loadClass(Exporter))
+        return runner.TrialRunner(
+                reporter.VerboseTextReporter,
+                tracebackFormat='default',
+                ).run(suite)
+
+if __name__ == '__main__':
+        if Run().wasSuccessful():
+                sys.exit(0)
+        else:
+                sys.exit(1)

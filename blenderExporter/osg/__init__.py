@@ -29,7 +29,7 @@ project here, but most of this is SUPERBLY modified.
 
 # A function that will parse the passed-in sequences and set the appropriate
 # values in osgconf.
-def ParseArgs(parse):
+def parseArgs(parse):
 	args     = []
 	strip    = lambda s: s.rstrip().lstrip().replace("\t", "").replace("\n", "")
 	str2bool = lambda s: s.lower() == "true" or s == "1"
@@ -43,20 +43,28 @@ def ParseArgs(parse):
 			else:
 				print "ERROR: OpenSceneGraph format is: --osg=\"filename=foo\""
 
+        argmap = {}
 	for arg in args:
 		if "=" in arg:
 			a, v = arg.split("=")
 			a    = strip(a).upper()
 			v    = strip(v)
 
-			print "OSG Option [", a, "] =", v
+			print "OpenScenGraph AnimTK Option [", a, "] =", v
 			{
-				"FILENAME":   lambda: setattr(osgconf, a, v),
-				"AUTHOR":     lambda: setattr(osgconf, a, v),
-				"LOG":        lambda: setattr(osgconf, a, str2bool(v)),
-				"SELECTED":   lambda: setattr(osgconf, a, str2bool(v))
+				"FILENAME":   lambda: argmap.setdefault(a,v),
+				"FLOATPRE":   lambda: argmap.setdefault(a,int(v)),
+				"INDENT":  lambda: argmap.setdefault(a,int(v)),
+				"ANIMFPS":    lambda: argmap.setdefault(a,float(v)),
+				"AUTHOR":     lambda: argmap.setdefault(a,v),
+				"BAKE":       lambda: argmap.setdefault(a,v.lower()),
+				"LOG":        lambda: argmap.setdefault(a,str2bool(v)),
+				"SELECTED":   lambda: argmap.setdefault(a,v),
+                                "RELATIVE_PATH": lambda: argmap.setdefault(a,str2bool(v)),
+				"FORMATNUM":  lambda: argmap.setdefault(a,int(v))
 			}[a]()
 
-	# Return args; since this will be False by default, we'll use this
-	# to determine if the user passed a --osg argument.
-	return args
+        if len(argmap):
+                print argmap
+                return osgconf.Config(argmap)
+        return None
