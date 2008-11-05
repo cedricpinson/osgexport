@@ -27,7 +27,7 @@ CONFIGURE_FILE(
 
 # copy php file to test it in the build environnement"
 ADD_CUSTOM_TARGET( copy_blender_testfile ALL
-  cmake -E copy_if_different ${PROJECT_SOURCE_DIR}/test/blenderExporter/test.blend ${CMAKE_CURRENT_BINARY_DIR}
+  cmake -E copy_if_different ${PROJECT_SOURCE_DIR}/test/test.blend ${CMAKE_CURRENT_BINARY_DIR}
   )
 
 ADD_TEST("${TEST_NAME}" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-exporter.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )

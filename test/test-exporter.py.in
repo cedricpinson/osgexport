@@ -33,7 +33,7 @@ from twisted.python import failure
 import twisted
 
 import sys
-sys.path.insert(0, "@PROJECT_SOURCE_DIR@/tools/blenderExporter/")
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
 
 import Blender
 import bpy
@@ -62,7 +62,7 @@ class Exporter(unittest.TestCase):
         self.assertEquals(True, conf.log)
         self.assertEquals("ALL", conf.selected)
         self.assertEquals(False, conf.relative_path)
-        self.assertEquals("", conf.anim_bake)
+        self.assertEquals("FORCE", conf.anim_bake)
         self.assertEquals(True, conf.export_anim)
         self.assertEquals("./", conf.fullpath)
         self.assertEquals([], conf.exclude_objects)
@@ -84,7 +84,7 @@ class Exporter(unittest.TestCase):
   name "test"
   cullingActive TRUE
   UpdateCallbacks {
-    osgATK::UpdateTransform {
+    osgAnimation::UpdateTransform {
       UniqueID uniqid_UpdateTransform_1
       name "woot"
     }
@@ -134,13 +134,13 @@ class Exporter(unittest.TestCase):
         cb.setName("overwoot")
         node.update_callbacks.append(cb)
         result = str(node)
-        text = """osgATK::Bone {
+        text = """osgAnimation::Bone {
   UniqueID uniqid_Bone_0
   DataVariance DYNAMIC
   name "test"
   cullingActive TRUE
   UpdateCallbacks {
-    osgATK::UpdateBone {
+    osgAnimation::UpdateBone {
       UniqueID uniqid_UpdateBone_1
       name "overwoot"
     }
@@ -177,12 +177,12 @@ class Exporter(unittest.TestCase):
         node.setName("test")
         node.groups['test'] = VertexGroup()
         result = str(node)
-        text = """osgATK::RigGeometry {
+        text = """osgAnimation::RigGeometry {
   UniqueID uniqid_RigGeometry_0
   DataVariance DYNAMIC
   name "test"
   num_influences 1
-  osgATK::VertexInfluence "None" 0 {
+  osgAnimation::VertexInfluence "None" 0 {
   }
 }
 """

@@ -101,7 +101,7 @@ class UpdateTransform(Object):
         return "UpdateTransform"
 
     def ascii(self):
-        text = "$osgATK::%s {\n" % self.className()
+        text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
         text += "$}\n"
         return text
@@ -114,7 +114,7 @@ class UpdateBone(Object):
         return "UpdateBone"
 
     def ascii(self):
-        text = "$osgATK::%s {\n" % self.className()
+        text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
         text += "$}\n"
         return text
@@ -649,7 +649,7 @@ class Bone(Group):
         return "Bone"
 
     def ascii(self):
-        text = "$osgATK::Bone {\n"
+        text = "$osgAnimation::Bone {\n"
         text += Object.printContent(self)
         text += Node.printContent(self)
         text += self.printContent()
@@ -690,7 +690,7 @@ class Skeleton(Bone):
         return "Skeleton"
 
     def ascii(self):
-        text = "$osgATK::Skeleton {\n"
+        text = "$osgAnimation::Skeleton {\n"
         text += Object.printContent(self)
         text += Node.printContent(self)
         text += Bone.printContent(self)
@@ -708,7 +708,7 @@ class RigGeometry(Geometry):
         return "RigGeometry"
 
     def ascii(self):
-        text = "$osgATK::RigGeometry {\n"
+        text = "$osgAnimation::RigGeometry {\n"
         text += Object.printContent(self)
         text += self.printContent()
         text += Geometry.printContent(self)
@@ -733,7 +733,7 @@ class AnimationManager(Group):
         return "AnimationManager"
 
     def ascii(self):
-        text = "$osgATK::AnimationManager {\n"
+        text = "$osgAnimation::AnimationManager {\n"
         text += Object.printContent(self)
         text += self.printContent()
         text += Group.printContent(self)
@@ -761,7 +761,7 @@ class VertexGroup(Object):
 
     def ascii(self):
         self.setName(self.targetGroupName)
-        text = "$osgATK::VertexInfluence \"%s\" %s {\n" % (self.targetGroupName, len(self.vertexes))
+        text = "$osgAnimation::VertexInfluence \"%s\" %s {\n" % (self.targetGroupName, len(self.vertexes))
         #text += Object.printContent(self)
         text += self.printContent()
         text += "$}\n"
@@ -782,7 +782,7 @@ class Animation(Object):
         return "Animation"
 
     def ascii(self):
-        text = "$osgATK::Animation {\n"
+        text = "$osgAnimation::Animation {\n"
         text += Object.printContent(self)
         text += self.printContent()
         text += "$}\n"
