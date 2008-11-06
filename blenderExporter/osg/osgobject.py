@@ -363,10 +363,10 @@ class Material(StateAttribute):
     def __init__(self, *args, **kwargs):
         StateAttribute.__init__(self, *args, **kwargs)
         self.colormode = "OFF"
-        self.emission = (0.0, 0.0, 0.0, 1)
-        self.ambient = (0.2, 0.2, 0.2, 1)
-        self.diffuse = (0.8, 0.8, 0.8, 1)
-        self.specular = (0.0, 0.0, 0.0, 1)
+        self.emission = (0.0, 0.0, 0.0, 1.0)
+        self.ambient = (0.2, 0.2, 0.2, 1.0)
+        self.diffuse = (0.8, 0.8, 0.8, 1.0)
+        self.specular = (0.0, 0.0, 0.0, 1.0)
         self.shininess = 0.0
 
     def className(self):
@@ -393,7 +393,7 @@ class LightModel(StateAttribute):
         StateAttribute.__init__(self, *args, **kwargs)
         self.local_viewer = "FALSE"
         self.color_control = "SEPARATE_SPECULAR_COLOR"
-        self.ambient = (0.2, 0.2, 0.2, 1)
+        self.ambient = (0.2, 0.2, 0.2, 1.0)
 
     def className(self):
         return "LightModel"

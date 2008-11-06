@@ -31,6 +31,7 @@ from twisted.trial import unittest, runner, reporter
 from twisted.internet import reactor, defer
 from twisted.python import failure
 import twisted
+import math
 
 import sys
 sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
@@ -41,6 +42,12 @@ import osg
 from osg.osgobject import *
 from osg.osgdata import *
 
+
+def close(a, b, threshold):
+    for i in range(0,len(a)):
+        if math.fabs(a[i] - b[i]) > threshold:
+            return False
+    return True
 
 class Exporter(unittest.TestCase):
     # ------------------------------------------------------
@@ -337,6 +344,28 @@ NormalArray 1 {
         self.assertEquals(5, len(exporter.animations))
         exporter.postProcess()
         exporter.write()
+
+
+    def testBlenderMaterial(self):
+        geomquad = BlenderObjectToGeometry(object = bpy.data.objects["CubeMaterial"])
+        geom = geomquad.convert()
+        self.assertEquals((0.0,0.0,0.0,1.0),geom.stateset.attributes[0].emission)
+        self.assertEquals(True, close((0.64,0.64,0.64,1.0),geom.stateset.attributes[0].diffuse, 0.01) )
+        self.assertEquals(True, close((0.64,0.64,0.64,1.0),geom.stateset.attributes[0].diffuse, 0.01) )
+        self.assertEquals(True, close((0.5,0.5,0.5,1.0),geom.stateset.attributes[0].specular, 0.01) )
+        self.assertEquals(12.5 ,geom.stateset.attributes[0].shininess)
+
+    def testExportBlenderMaterial(self):
+        sc = bpy.data.scenes["Materials"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.config.anim_bake = ""
+        exporter.config.export_anim = False
+        exporter.config.filename = "materials"
+        exporter.process()
+        exporter.write()
+        self.assertEquals(True, len(exporter.items) != 0)
+
 
 def Run():
         loader = runner.TestLoader()

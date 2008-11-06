@@ -646,13 +646,23 @@ class Export(object):
             self.root.stateset = st
             if len(self.lights) > 8:
                 log("warning more than 8 lights")
-            st.attributes.append(LightModel())
+
+            # retrieve world to global ambient
+            lm = LightModel()
+            lm.ambient = (0.0, 0.0, 0.0, 1.0)
+            if bpy.data.scenes.active.world is not None:
+                amb = bpy.data.scenes.active.world.getAmb()
+                lm.ambient = (amb[0], amb[1], amb[2], 1.0)
+
+            st.attributes.append(lm)
             #st.attributes.append(Material()) # not sure to add a default material with color mode off
             light_num = 0
             for name, ls in self.lights.items():
                 ls.light.light_num = light_num
                 st.modes.append(("GL_LIGHT%s" % light_num, "ON"))
                 light_num += 1
+
+                
         
 
     def write(self):
@@ -771,22 +781,31 @@ class BlenderObjectToGeometry(object):
         image_object = self.getTextureImage()
         if image_object is not None:
             texture = Texture2D()
-            filename = image_object.getFilename().replace(" ","_")
+            #filename = image_object.getFilename().replace(" ","_")
+            filename = "//" + Blender.sys.basename(image_object.getFilename().replace(" ","_"))
             texture.file = filename.replace("//","textures/")
+            if image_object.getDepth() > 24: # there is an alpha
+                s.modes.append(("GL_BLEND","ON"))
             texture.source_image = image_object
             s.texture_attributes['0'].append(texture)
         if len(self.mesh.materials) > 0:
             # support only one material by mesh right now
             mat_source = self.mesh.materials[0]
             m = Material()
-            m.diffuse = (mat_source.R, mat_source.G, mat_source.B, mat_source.alpha)
+            refl = mat_source.getRef()
+            m.diffuse = (mat_source.R * refl, mat_source.G * refl, mat_source.B * refl, mat_source.alpha)
+
             ambient_factor = mat_source.getAmb()
             m.ambient = (mat_source.R * ambient_factor, mat_source.G * ambient_factor, mat_source.B * ambient_factor, 1)
-            m.specular = (mat_source.specR, mat_source.specG, mat_source.specB, 1)
+
+            spec = mat_source.getSpec()
+            m.specular = (mat_source.specR * spec, mat_source.specG * spec, mat_source.specB * spec, 1)
+
             emissive_factor = mat_source.getEmit()
             m.emission = (mat_source.R * emissive_factor, mat_source.G * emissive_factor, mat_source.B * emissive_factor, 1)
-            s.attributes.append(m)
             m.shininess = (mat_source.getHardness() / 512.0) * 128.0
+
+            s.attributes.append(m)
         return s
 
     def compVertices(self, face1, vert1, face2, vert2):
