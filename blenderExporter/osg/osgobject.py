@@ -119,6 +119,20 @@ class UpdateBone(Object):
         text += "$}\n"
         return text
 
+
+class UpdateSkeleton(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+
+    def className(self):
+        return "UpdateSkeleton"
+
+    def ascii(self):
+        text = "$osgAnimation::%s {\n" % self.className()
+        text += Object.printContent(self)
+        text += "$}\n"
+        return text
+
 class Node(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -373,7 +387,7 @@ class Material(StateAttribute):
         return "Material"
 
     def ascii(self):
-        text = "$Material {\n"
+        text = "$%s {\n" % self.className()
         text += self.printContent()
         text += "$}\n"
         return text
@@ -423,7 +437,7 @@ class StateSet(Object):
         return "StateSet"
 
     def ascii(self):
-        text = "$StateSet {\n"
+        text = "$%s {\n" % self.className()
         text += self.printContent()
         text += "$}\n"
         return text
@@ -456,7 +470,7 @@ class VertexArray(Object):
         return "VertexArray"
 
     def ascii(self):
-        text = "$VertexArray %s {\n" % len(self.array)
+        text = "$%s %s {\n" % (self.className(), str(len(self.array)))
         for i in self.array:
                 text += "$#%s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]))
         text += "$}\n"
@@ -472,7 +486,7 @@ class NormalArray(Writer):
 
     def ascii(self):
         text = "$NormalBinding PER_VERTEX\n"
-        text += "$NormalArray %s {\n" % len(self.array)
+        text += "$%s %s {\n" % (self.className(), len(self.array))
         for i in self.array:
                 text += "$#%s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]))
         text += "$}\n"
@@ -487,7 +501,7 @@ class ColorArray(Writer):
         return "ColorArray"
 
     def ascii(self):
-        text = "$ColorArray Vec4Array %s {\n" % len(self.array)
+        text = "$%s Vec4Array %s {\n" % (self.className(), len(self.array))
         for i in self.array:
                 text += "$#%s %s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]), STRFLT(i[3]))
         text += "$}\n"
@@ -503,7 +517,7 @@ class TexCoordArray(Writer):
         return "TexCoordArray"
 
     def ascii(self):
-        text = "$TexCoordArray %s Vec2Array %s {\n" % (self.index,  len(self.array))
+        text = "$%s %s Vec2Array %s {\n" % (self.className(), self.index,  len(self.array))
         for i in self.array:
                 text += "$#%s %s\n" % (STRFLT(i[0]), STRFLT(i[1]))
         text += "$}\n"
@@ -561,7 +575,7 @@ class Geometry(Object):
         return "Geometry"
 
     def ascii(self):
-        text = "$Geometry {\n"
+        text = "$%s {\n" % self.className()
         text += Object.printContent(self)
         text += self.printContent()
         text += "$}\n"
@@ -593,7 +607,7 @@ class Geometry(Object):
             text += str(self.colors)
         return text
 
-################################## animtk node ######################################
+################################## animation node ######################################
 class Bone(Group):
     def __init__(self, skeleton = None, bone = None, parent=None, **kwargs):
         Group.__init__(self, **kwargs)
@@ -649,7 +663,7 @@ class Bone(Group):
         return "Bone"
 
     def ascii(self):
-        text = "$osgAnimation::Bone {\n"
+        text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
         text += Node.printContent(self)
         text += self.printContent()
@@ -680,6 +694,8 @@ class Skeleton(Bone):
         self.boneList = []
         self.matrix['BONESPACE'] = matrix
         self.setName(name)
+        self.update_callbacks = []
+        self.update_callbacks.append(UpdateSkeleton())
 
     def collectBones(self):
         self.boneList = []
@@ -690,7 +706,7 @@ class Skeleton(Bone):
         return "Skeleton"
 
     def ascii(self):
-        text = "$osgAnimation::Skeleton {\n"
+        text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
         text += Node.printContent(self)
         text += Bone.printContent(self)
@@ -708,7 +724,7 @@ class RigGeometry(Geometry):
         return "RigGeometry"
 
     def ascii(self):
-        text = "$osgAnimation::RigGeometry {\n"
+        text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
         text += self.printContent()
         text += Geometry.printContent(self)
@@ -724,19 +740,18 @@ class RigGeometry(Geometry):
                 text += str(grp)
         return text
 
-class AnimationManager(Group):
+class AnimationManagerBase(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.animations = []
 
     def className(self):
-        return "AnimationManager"
+        return "AnimationManagerBase"
 
     def ascii(self):
-        text = "$osgAnimation::AnimationManager {\n"
+        text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
         text += self.printContent()
-        text += Group.printContent(self)
         text += "$}\n"
         return text
 
@@ -746,6 +761,19 @@ class AnimationManager(Group):
             i.indent_level = self.indent_level + 1
             text += str(i)
         return text
+
+class BasicAnimationManager(AnimationManagerBase):
+    def __init__(self, *args, **kwargs):
+        AnimationManagerBase.__init__(self, *args, **kwargs)
+
+    def className(self):
+        return "BasicAnimationManager"
+
+    def ascii(self):
+        return AnimationManagerBase.ascii(self)
+
+    def printContent(self):
+        return AnimationManagerBase.printContent(self)
 
 class VertexGroup(Object):
     def __init__(self, *args, **kwargs):
@@ -782,7 +810,7 @@ class Animation(Object):
         return "Animation"
 
     def ascii(self):
-        text = "$osgAnimation::Animation {\n"
+        text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
         text += self.printContent()
         text += "$}\n"

@@ -630,15 +630,14 @@ class Export(object):
     def postProcess(self):
         # set only one root to the scene
         self.root = None
+        self.root = Group()
+        self.root.setName("Root")
+        self.root.children = self.items.values()
         if len(self.animations) > 0:
-                self.root = AnimationManager()
-                self.root.setName("Root")
-                self.root.animations = self.animations.values()
-                self.root.children = self.items.values()
-        else:
-                self.root = Group()
-                self.root.setName("Root")
-                self.root.children = self.items.values()
+            animation_manager = BasicAnimationManager()
+            animation_manager.animations = self.animations.values()
+            self.root.update_callbacks.append(animation_manager)
+
 
         # index light num for opengl use and enable them in a stateset
         if len(self.lights) > 0:
