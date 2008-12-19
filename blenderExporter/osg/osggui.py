@@ -156,13 +156,10 @@ class AnimTKGUI(object):
 				os.path.join(Blender.Get("uscriptsdir"), "animtk", "logo.png")
 			)
 	
+                        Blender.Draw.Image(img, 210, 54)
 
 		except:
-			img = Blender.Image.Load(
-				os.path.join(Blender.Get("scriptsdir"), "animtk", "logo.png")
-			)
-	
-		Blender.Draw.Image(img, 210, 54)
+                        pass
 
 		Blender.BGL.glDisable(Blender.BGL.GL_BLEND)
 

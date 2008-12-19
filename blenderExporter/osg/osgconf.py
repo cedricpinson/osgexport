@@ -41,6 +41,7 @@ class Config(object):
         self.relative_path = map.get("RELATIVE_PATH", False)
         self.anim_bake = map.get("BAKE", "FORCE")
         self.export_anim = map.get("EXORTANIM", True)
+        self.object_selected = map.get("OBJECT_SELECTED", None)
         self.fullpath = ""
         self.exclude_objects = []
         osglog.LOGFILE = None
@@ -88,8 +89,10 @@ class Config(object):
     # It also stores the formatted name for our use later, which is handy if we want to
     # create a "master" viewer file or to inform the user which files were actually created.
     def getFullName(self, extension):
-        f = "%s%s.%s" % (self.fullpath, self.filename, extension)
-#        f = self.fullpath[-1:] == os.sep and "%s%s.%s" % (self.fullpath, self.filename,"osg") or "%s_%s.%s" % (self.fullpath, name,extension)
+        if self.filename[-(len(extension)+1):] == "." + extension:
+            f = "%s%s" % (self.fullpath, self.filename)
+        else:
+            f = "%s%s.%s" % (self.fullpath, self.filename, extension)
         return f
 
 # FILENAME   = ""

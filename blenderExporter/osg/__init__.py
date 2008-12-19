@@ -50,7 +50,7 @@ def parseArgs(parse):
 			a    = strip(a).upper()
 			v    = strip(v)
 
-			print "OpenScenGraph AnimTK Option [", a, "] =", v
+			print "OpenScenGraph Option [", a, "] =", v
 			{
 				"FILENAME":   lambda: argmap.setdefault(a,v),
 				"FLOATPRE":   lambda: argmap.setdefault(a,int(v)),
@@ -61,7 +61,8 @@ def parseArgs(parse):
 				"LOG":        lambda: argmap.setdefault(a,str2bool(v)),
 				"SELECTED":   lambda: argmap.setdefault(a,v),
                                 "RELATIVE_PATH": lambda: argmap.setdefault(a,str2bool(v)),
-				"FORMATNUM":  lambda: argmap.setdefault(a,int(v))
+				"FORMATNUM":  lambda: argmap.setdefault(a,int(v)),
+                                "OBJECT_SELECTED": lambda: argmap.setdefault(a,v)
 			}[a]()
 
         if len(argmap):
