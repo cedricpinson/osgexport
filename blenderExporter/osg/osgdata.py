@@ -298,7 +298,110 @@ def getBakedIpos(obj, ori_ipo, anim_fps):
     new_ipo = animtion_bake_constraints.bakeFrames(obj, new_ipo)
     return new_ipo
 
-def getBakedAction(ob_arm, action, sample_rate):
+
+def getBakedAction(armatureObject, action , sample_rate = 25):
+    """
+        Bakes supplied action for supplied armature.
+        Returns baked action.
+    """
+    pose = armatureObject.getPose()
+    armature_data = armatureObject.getData();
+    pose_bones = pose.bones.values()
+    rest_bones = armature_data.bones
+
+    POSE_XFORM = [Blender.Object.Pose.LOC, Blender.Object.Pose.ROT, Blender.Object.Pose.SIZE ]
+    #POSE_XFORM= [Object.Pose.LOC,Object.Pose.ROT,Object.Pose.SIZE]
+ 
+    blender_fps = 25
+    if sample_rate > blender_fps:
+        sample_rate = blender_fps
+    step = blender_fps / sample_rate
+    
+    startFrame= min(action.getFrameNumbers());
+    endFrame= max(action.getFrameNumbers());
+ 
+       
+    dummy_action_name = "_" + action.name
+    # Get the dummy action if it has no users
+    try:
+        baked_action = bpy.data.actions[dummy_action_name]
+    except:
+        baked_action = None
+    
+    if not baked_action:
+        baked_action          = bpy.data.actions.new(dummy_action_name)
+        baked_action.fakeUser = False
+    for channel in baked_action.getChannelNames():
+        baked_action.removeChannel(channel)
+    
+    old_quats={}
+    old_locs={}
+    old_sizes={}
+    
+    baked_locs={}
+    baked_quats={}
+    baked_sizes={}
+    
+    action.setActive(armatureObject)
+    frames = range(startFrame, endFrame+1, int(step))
+    if frames[-1:] != endFrame :
+        frames.append(endFrame)
+    for current_frame in frames:
+
+        Blender.Set('curframe', current_frame)
+        for i in range(len(pose_bones)):
+            
+            bone_name=pose_bones[i].name;
+
+            rest_bone=rest_bones[bone_name]
+            matrix = Matrix(pose_bones[i].poseMatrix)
+            rest_matrix= Matrix(rest_bone.matrix['ARMATURESPACE'])
+            
+            parent_bone=rest_bone.parent
+
+            if parent_bone:
+                parent_pose_bone=pose.bones[parent_bone.name]
+                matrix=matrix * Matrix(parent_pose_bone.poseMatrix).invert()
+                rest_matrix=rest_matrix * Matrix(parent_bone.matrix['ARMATURESPACE']).invert()
+            
+            #print "before\n", matrix
+            #print "before quat\n", pose_bones[i].quat;
+                
+            #print "localised pose matrix\n", matrix
+            #print "localised rest matrix\n", rest_matrix
+            matrix=matrix * Matrix(rest_matrix).invert()
+                
+                
+            old_quats[bone_name] = Quaternion(pose_bones[i].quat);
+            old_locs[bone_name] = Vector(pose_bones[i].loc);
+            old_sizes[bone_name] = Vector(pose_bones[i].size);
+            
+            baked_locs[bone_name] = Vector(matrix.translationPart())
+            baked_quats[bone_name] = Quaternion(matrix.toQuat())
+            baked_sizes[bone_name] = Vector(matrix.scalePart())
+
+        baked_action.setActive(armatureObject)
+        Blender.Set('curframe', current_frame)
+        for i in range(len(pose_bones)):
+            pose_bones[i].quat = baked_quats[pose_bones[i].name]
+            pose_bones[i].loc = baked_locs[pose_bones[i].name]
+            pose_bones[i].size = baked_sizes[pose_bones[i].name]
+            pose_bones[i].insertKey(armatureObject, current_frame, POSE_XFORM)
+            
+        action.setActive(armatureObject)
+        Blender.Set('curframe', current_frame)
+
+        for name, quat in old_quats.iteritems():
+            pose.bones[name].quat=quat
+            
+        for name, loc in old_locs.iteritems():
+            pose.bones[name].loc=loc
+            
+        
+    pose.update()
+    return baked_action
+
+def getBakedAction3(ob_arm, action, sample_rate):
         #print "test ob action enter ", ob_arm.action
         blender_fps = 25
 	if sample_rate > blender_fps:
@@ -390,7 +493,6 @@ def getBakedAction(ob_arm, action, sample_rate):
 
 			# create a full new action
 			pose_bone.insertKey(ob_arm, int(frame_index + 1), POSE_XFORM)
-			
 		frame_index += step
 	
 	ob_arm.action = backup_action
