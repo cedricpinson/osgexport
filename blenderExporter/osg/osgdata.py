@@ -522,6 +522,7 @@ class Export(object):
         self.animations = {}
         self.images = set()
         self.lights = {}
+        self.root = None
 
     def setArmatureInRestMode(self):
         for arm in bpy.data.objects:
@@ -784,7 +785,10 @@ class Export(object):
         for i in self.images:
             if i is not None:
                 log("unpack file to " + i.getFilename())
-                i.unpack(Blender.UnpackModes.USE_LOCAL)
+                try:
+                    i.unpack(Blender.UnpackModes.USE_LOCAL)
+                except:
+                    log("error while trying to unpack file " + i.getFilename())
 
         if self.config.log_file is not None:
             self.config.closeLogfile()
