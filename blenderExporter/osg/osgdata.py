@@ -48,7 +48,7 @@ Quaternion = Blender.Mathutils.Quaternion
 Matrix     = Blender.Mathutils.Matrix
 Euler      = Blender.Mathutils.Euler
 
-DEBUG = True
+DEBUG = False
 def debug(str):
     if DEBUG:
         log(str)
@@ -958,8 +958,11 @@ class BlenderObjectToGeometry(object):
                                 geom.uvs[i].array = default_uv.array
                                 
                             s.texture_attributes[i].append(t)
-                            if t.source_image.getDepth() > 24: # there is an alpha
-                                s.modes.append(("GL_BLEND","ON"))
+                            try:
+                                if t.source_image.getDepth() > 24: # there is an alpha
+                                    s.modes.append(("GL_BLEND","ON"))
+                            except:
+                                log("can't read the source image file for texture %s" % t.getName())
                 debug("state set %s" % str(s))
 
         # adjust uvs channels if no textures assigned
@@ -999,7 +1002,7 @@ class BlenderObjectToGeometry(object):
                     return 1
                 elif colors[n][vert1][i] < colors[n][vert2][i]:
                     return 1
-        return 1
+        return 0
 
     def createGeomForMaterialIndex(self, material_index, mesh):
         geom = self.geom_type()
@@ -1249,7 +1252,8 @@ class BlenderObjectToGeometry(object):
         material_index = 0
         if len(mesh.materials) == 0:
             geom = self.createGeomForMaterialIndex(0, mesh)
-            geometry_list.append(geom)
+            if geom is not None:
+                geometry_list.append(geom)
         else:
             for material in mesh.materials:
                 geom = self.createGeomForMaterialIndex(material_index, mesh)
