@@ -1,6 +1,6 @@
 import osgconf
 
-VERSION = "0.0.1"
+VERSION = "0.8.0"
 AUTHOR  = "Jeremy Moles, Cedric Pinson"
 EMAIL   = "jeremy@emperorlinux.com, mornifle@plopbyte.net"
 URL     = "http://www.plopbyte.net, http://hg.plopbyte.net/osgexport"
