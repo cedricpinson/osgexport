@@ -64,6 +64,15 @@ class Writer(object):
     def __str__(self):
         return self.__repr__()
 
+class ShadowObject(Writer):
+    def __init__(self, *args, **kwargs):
+        Writer.__init__(self, *args, **kwargs)
+        self.target = args[0]
+    
+    def ascii(self):
+        text = "$#Use " + self.target.generateID() + "\n"
+        return text
+
 class Object(Writer):
     def __init__(self, *args, **kwargs):
         Writer.__init__(self, *args, **kwargs)

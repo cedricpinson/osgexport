@@ -135,7 +135,7 @@ class AnimTKGUI(object):
 		self.addPushButton("cancel", "Cancel", w=98, stayHoriz=True)
 		self.addPushButton("write", "Write", w=98, stayHoriz=True)
 		self.addString("AUTHOR", "Author's Name")
-		self.addToggle("LOG", "Create Logfile")
+#		self.addToggle("LOG", "Create Logfile")
 		self.addToggle("SELECTED", "Only Exported Selected")
 		self.addToggle("VIEWERFILE", "...", w=150)
 		self.addToggle("RELATIVE", "Relative", w=46, stayHoriz=True)
@@ -147,7 +147,7 @@ class AnimTKGUI(object):
 		self.objects["help"].callback   = lambda: self.RegisterHelp()
 		self.objects["cancel"].callback = lambda: Blender.Draw.Exit()
 		self.objects["write"].callback  = lambda: self.Write()
-	
+
 		# It does not work for me because Blender.Get("scriptsdir") returns
 		# /usr/share/blender/scripts, so first try in user script dir, and if not found
 		# try in scriptdir
@@ -209,7 +209,7 @@ class AnimTKGUI(object):
 				FILENAME   = %s;
 			""" % (
 				self.objects["AUTHOR"].val,
-				self.objects["LOG"].val,
+				True, #self.objects["LOG"].val,
 				self.objects["SELECTED"].val,
 				self.objects["INDENT"].val,
 				self.objects["FLOATPRE"].val,
