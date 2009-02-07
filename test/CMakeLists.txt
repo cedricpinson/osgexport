@@ -17,17 +17,30 @@
 # Authors:
 #  Cedric Pinson <mornifle@plopbyte.net
 
-SET(TEST_NAME "exporter")
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-bug_multimaterial.py.in 
+  ${CMAKE_CURRENT_BINARY_DIR}/test-bug_multimaterial.py
+  IMMEDIATE @ONLY
+  )
+ADD_TEST("test-bug_multimaterial" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-bug_multimaterial.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-geometry_and_material.py.in 
+  ${CMAKE_CURRENT_BINARY_DIR}/test-geometry_and_material.py
+  IMMEDIATE @ONLY
+  )
+ADD_TEST("test-geometry_and_material" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-geometry_and_material.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-exporter.py.in 
   ${CMAKE_CURRENT_BINARY_DIR}/test-exporter.py
   IMMEDIATE @ONLY
   )
+ADD_TEST("test-exporter" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-exporter.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+
 
 # copy php file to test it in the build environnement"
 ADD_CUSTOM_TARGET( copy_blender_testfile ALL
   cmake -E copy_if_different ${PROJECT_SOURCE_DIR}/test/test.blend ${CMAKE_CURRENT_BINARY_DIR}
   )
 
-ADD_TEST("${TEST_NAME}" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-exporter.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )

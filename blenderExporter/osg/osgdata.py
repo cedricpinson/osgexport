@@ -48,7 +48,7 @@ Quaternion = Blender.Mathutils.Quaternion
 Matrix     = Blender.Mathutils.Matrix
 Euler      = Blender.Mathutils.Euler
 
-DEBUG = False
+DEBUG = True
 def debug(str):
     if DEBUG:
         log(str)
@@ -835,19 +835,20 @@ class Export(object):
 
 	hasVertexGroup = len(mesh.getData(False, True).getVertGroupNames()) != 0
 
-        geometry = None
+        geometries = []
         if exportInfluence is False or hasVertexGroup is False:
             converter = BlenderObjectToGeometry(object = mesh)
-            geometry = converter.convert()
+            geometries = converter.convert()
         else:
             converter = BlenderObjectToRigGeometry(object = mesh)
-            geometry = converter.convert()
-        if geometry is not None:
-            if geometry.stateset is not None: # register images to unpack them at the end
-                images = getImageFilesFromStateSet(geometry.stateset)
-                for i in images:
-                    self.images.add(i)
-            geode.drawables.append(geometry)
+            geometries = converter.convert()
+        if len(geometries) > 0:
+            for geom in geometries:
+                if geom.stateset is not None: # register images to unpack them at the end
+                    images = getImageFilesFromStateSet(geom.stateset)
+                    for i in images:
+                        self.images.add(i)
+                geode.drawables.append(geom)
         return geode
 
     def createLight(self, obj):
@@ -889,22 +890,8 @@ class BlenderLightToLightSource(object):
 class BlenderObjectToGeometry(object):
     def __init__(self, *args, **kwargs):
         self.object = kwargs["object"]
-        self.geometry = Geometry()
+        self.geom_type = Geometry
         self.mesh = self.object.getData(False, True)
-        self.vertexes = None
-        self.uvs = {}
-
-    def hasTexture(self):
-        if len(self.mesh.materials) > 0:
-            # support only one material by mesh right now
-            mat_source = self.mesh.materials[0]
-            if mat_source is None:
-                return False
-            texture_list = mat_source.getTextures()
-            for i in range(0, len(texture_list)):
-                if texture_list[i] is not None:
-                    return True
-        return False
 
     def createTexture2D(self, mtex):
         image_object = mtex.tex.getImage()
@@ -917,13 +904,13 @@ class BlenderObjectToGeometry(object):
         texture.source_image = image_object
         return texture
 
-    def createStateSet(self):
+    def createStateSet(self, index_material, mesh, geom):
         s = StateSet()
-        uvs = self.uvs
-        self.uvs = {}
-        if len(self.mesh.materials) > 0:
+        uvs = geom.uvs
+        geom.uvs = {}
+        if len(mesh.materials) > 0:
             # support only one material by mesh right now
-            mat_source = self.mesh.materials[0]
+            mat_source = mesh.materials[index_material]
             if mat_source is not None:
                 m = Material()
                 refl = mat_source.getRef()
@@ -961,54 +948,32 @@ class BlenderObjectToGeometry(object):
                             uv_layer =  texture_list[i].uvlayer
                             if len(uv_layer) > 0:
                                 debug("texture %s use uv layer %s" % (i, uv_layer))
-                                self.uvs[i] = TexCoordArray()
-                                self.uvs[i].array = uvs[uv_layer].array
-                                self.uvs[i].index = i
+                                geom.uvs[i] = TexCoordArray()
+                                geom.uvs[i].array = uvs[uv_layer].array
+                                geom.uvs[i].index = i
                             elif default_uv:
                                 debug("texture %s use default uv layer %s" % (i, default_uv_key))
-                                self.uvs[i] = TexCoordArray()
-                                self.uvs[i].index = i
-                                self.uvs[i].array = default_uv.array
+                                geom.uvs[i] = TexCoordArray()
+                                geom.uvs[i].index = i
+                                geom.uvs[i].array = default_uv.array
                                 
                             s.texture_attributes[i].append(t)
                             if t.source_image.getDepth() > 24: # there is an alpha
                                 s.modes.append(("GL_BLEND","ON"))
-
                 debug("state set %s" % str(s))
 
         # adjust uvs channels if no textures assigned
-        print "result uvs ", self.uvs.keys()
-        if len(self.uvs.keys()) == 0:
+        print "result uvs ", geom.uvs.keys()
+        if len(geom.uvs.keys()) == 0:
             debug("no texture set, adjust uvs channels, in arbitrary order")
             index = 0
             for k in uvs.keys():
                 uvs[k].index = index
                 index += 1
-            self.uvs = uvs
+            geom.uvs = uvs
         return s
 
-
-    def compVertices(self, face1, vert1, face2, vert2):
-        if (not face1.smooth) or (not face2.smooth): return 0
-        if self.mesh.faceUV:
-            if (len(face1.uv) != len(face2.uv)): return 0
-        if self.mesh.vertexColors:
-            if (len(face1.col) != len(face2.col)): return 0
-
-        if self.mesh.faceUV:
-            if (len(face1.uv) == len(face1.v)):
-                if face1.uv[vert1][0] != face2.uv[vert2][0]: return 0
-                if face1.uv[vert1][1] != face2.uv[vert2][1]: return 0
-
-        if self.mesh.vertexColors:
-            if (len(face1.col) == len(face1.v)):
-                if face1.col[vert1].r != face2.col[vert2].r: return 0
-                if face1.col[vert1].g != face2.col[vert2].g: return 0
-                if face1.col[vert1].b != face2.col[vert2].b: return 0
-                if face1.col[vert1].a != face2.col[vert2].a: return 0
-        return 1
-
-    def compVertices2(self, vert1, vert2, vertexes, normals, colors, uvs):
+    def equalVertices(self, vert1, vert2, vertexes, normals, colors, uvs):
         for i in range(0,3):
             if vertexes[vert1].co[i] > vertexes[vert2].co[i]:
                 return 1
@@ -1034,107 +999,73 @@ class BlenderObjectToGeometry(object):
                     return 1
                 elif colors[n][vert1][i] < colors[n][vert2][i]:
                     return 1
-        return 0
+        return 1
 
-    def calcVertices(self, faces, vertices):
-        result=[] # list of osg vertices, contains the vertex index and a normal
-        mapping=[] # internal map, to find duplicates
-        mapping_result=[] # resulting mapping [face][vertex] -> osg_vertex index
-        for v in vertices:
-            mapping.append([])
-
-        curf=0
-        vreal=0
-        for face in faces:
-            curv=0
-            local_map = [] # osg indexes for each vertex
-            for vertex in face.v:
-                vindex = vertex.index
-                found=0
-                for f in mapping[vindex]:
-                    if self.compVertices(face, curv, faces[f[0]], f[1]) == 1:
-                        found=1
-                        mapping[vindex].append([curf, curv, f[2]])
-                        local_map.append(f[2])
-                        break
-                if found == 0:
-                    mapping[vindex].append([curf, curv, vreal])
-                    local_map.append(vreal)
-                    if face.smooth: result.append([vindex, vertices[vindex].no])
-                    else: result.append([vindex, face.no])
-                    vreal = vreal + 1
-                curv = curv + 1
-            curf = curf + 1
-            mapping_result.append(local_map)
-        self.faceVertexes2Index = mapping_result
-        return [result,mapping_result]
-
-
-    def makeVertices(self, vertices, osg_vertices):
-        vec3array = VertexArray()
-        normalarray = NormalArray()
-        for vertex in osg_vertices:
-            coord=vertices[vertex[0]].co
-            vec3array.array.append([coord[0], coord[1], coord[2] ])
-
-        for vertex_normal in osg_vertices:
-            ncoord=vertex_normal[1]
-            normalarray.array.append([ncoord[0], ncoord[1], ncoord[2]])
-
-        self.vertexes = vec3array
-        self.normals = normalarray
-
-
-    def calcVertices2(self, mesh):
-
+    def createGeomForMaterialIndex(self, material_index, mesh):
+        geom = self.geom_type()
         if (len(mesh.faces) == 0):
             log("objest %s has no faces" % self.object.getName())
-            return False
-        log("mesh %s" % self.object.getName())
+            return None
+        if len(mesh.materials):
+            title = "mesh %s with material %s" % (self.object.getName(), mesh.materials[material_index])
+        else:
+            title = "mesh %s without material" % (self.object.getName())
+        log(title)
 
         vertexes = []
         collected_faces = []
         for face in mesh.faces:
+            if face.mat != material_index:
+                continue
             f = []
+            fdebug = []
             for vertex in face.verts:
                 index = len(vertexes)
                 vertexes.append(vertex)
                 f.append(index)
+                fdebug.append(vertex.index)
+            debug("true face %s" % str(fdebug))
             debug("face %s" % str(f))
             collected_faces.append((face,f))
 
+        if (len(collected_faces) == 0):
+            log("objest %s has no faces for this material" % self.object.getName())
+            end_title = '-' * len(title)
+            log(end_title)
+            return None
+
         colors = {}
-        if self.mesh.vertexColors:
-            names = self.mesh.getColorLayerNames()
-            backup_name = self.mesh.activeColorLayer
+        if mesh.vertexColors:
+            names = mesh.getColorLayerNames()
+            backup_name = mesh.activeColorLayer
             for name in names:
-                self.mesh.activeColorLayer = name
-                self.mesh.update()
+                mesh.activeColorLayer = name
+                mesh.update()
                 color_array = []
-                for face in mesh.faces:
+                for face,f in collected_faces:
                     for i in range(0, len(face.verts)):
                         color_array.append(face.col[i])
                 colors[name] = color_array
-            self.mesh.activeColorLayer = backup_name
-            self.mesh.update()
+            mesh.activeColorLayer = backup_name
+            mesh.update()
 
         uvs = {}
-        if self.mesh.faceUV:
-            names = self.mesh.getUVLayerNames()
-            backup_name = self.mesh.activeUVLayer
+        if mesh.faceUV:
+            names = mesh.getUVLayerNames()
+            backup_name = mesh.activeUVLayer
             for name in names:
-                self.mesh.activeUVLayer = name
-                self.mesh.update()
+                mesh.activeUVLayer = name
+                mesh.update()
                 uv_array = []
-                for face in mesh.faces:
+                for face,f in collected_faces:
                     for i in range(0, len(face.verts)):
                         uv_array.append(face.uv[i])
                 uvs[name] = uv_array
-            self.mesh.activeUVLayer = backup_name
-            self.mesh.update()
+            mesh.activeUVLayer = backup_name
+            mesh.update()
 
         normals = []
-        for face in mesh.faces:
+        for face,f in collected_faces:
             if face.smooth:
                 for vert in face.verts:
                     normals.append(vert.no)
@@ -1159,7 +1090,7 @@ class BlenderObjectToGeometry(object):
             for j in range(i+1, len(vertexes)):
                 if tagged_vertexes[j] is True: # avoid processing more than one time a vertex
                     continue
-                different = self.compVertices2(i, j, vertexes, normals, colors, uvs)
+                different = self.equalVertices(i, j, vertexes, normals, colors, uvs)
                 if not different:
                     debug("   vertex %s is the same" % j)
                     merged_vertexes[j] = index
@@ -1177,10 +1108,14 @@ class BlenderObjectToGeometry(object):
         faces = []
         for (original, face) in collected_faces:
             f = []
+            fdebug = []
             for v in face:
                 f.append(merged_vertexes[v])
+                fdebug.append(vertexes[mapping_vertexes[merged_vertexes[v]][0]].index)
             faces.append(f)
             debug("new face %s" % str(f))
+            debug("true face %s" % str(fdebug))
+            
         log("faces %s" % str(len(faces)))
 
 	vgroups = {}
@@ -1211,7 +1146,7 @@ class BlenderObjectToGeometry(object):
 
         if (len(vgroups)):
             log("vertex groups %s" % str(len(vgroups)))
-        self.groups = vgroups
+        geom.groups = vgroups
         
         osg_vertexes = VertexArray()
         osg_normals = NormalArray()
@@ -1298,201 +1233,39 @@ class BlenderObjectToGeometry(object):
                 nface = nface + 1
             primitives.append(quads)
 
-        self.uvs = osg_uvs
-        self.vertexes = osg_vertexes
-        self.normals = osg_normals
-        self.primitives = primitives
-        s = "mesh %s" % self.object.getName()
-        s = '-' * len(s)
-        log(s)
-        return True
+        geom.uvs = osg_uvs
+        geom.vertexes = osg_vertexes
+        geom.normals = osg_normals
+        geom.primitives = primitives
+        geom.setName(self.object.getName())
+        geom.stateset = self.createStateSet(material_index, mesh, geom)
+
+        end_title = '-' * len(title)
+        log(end_title)
+        return geom
+
+    def process(self, mesh):
+        geometry_list = []
+        material_index = 0
+        if len(mesh.materials) == 0:
+            geom = self.createGeomForMaterialIndex(0, mesh)
+            geometry_list.append(geom)
+        else:
+            for material in mesh.materials:
+                geom = self.createGeomForMaterialIndex(material_index, mesh)
+                if geom is not None:
+                    geometry_list.append(geom)
+                material_index += 1
+        return geometry_list
 
     def convert(self):
-        geom = self.geometry
         if self.mesh.vertexUV:
             log("Warning mesh %s use sticky UV and it's not supported" % self.object.getName())
 
-        if self.calcVertices2(self.mesh) is False:
-            return None
-
-        geom.vertexes = self.vertexes
-        geom.normals = self.normals
-        geom.primitives = self.primitives
-        geom.setName(self.object.getName())
-        geom.uvs = self.uvs
-        geom.stateset = self.createStateSet()
-        geom.uvs = self.uvs
-        geom.groups = self.groups
-        return geom
-
-    def makeFaces(self, faces, vertices_osg, mapping, hasTcoords):
-        if (len(faces) == 0):
-            log("objest %s has no faces" % self.object.getName())
-            return False
-
-        nlin = 0
-        ntri = 0
-        nquad = 0
-        # counting number of lines, triangles and quads
-        for face in faces:
-            nv = len(face.v)
-            if nv == 2:
-                nlin = nlin + 1
-            elif nv == 3:
-                ntri = ntri + 1
-            elif nv == 4:
-                nquad = nquad + 1
-            else:
-                print "Can't manage faces with %s vertices" % nv
-
-        # counting number of primitives (one for lines, one for triangles and one for quads)
-        numprims = 0
-        if (nlin > 0):
-            numprims = numprims + 1
-        if (ntri > 0):
-            numprims = numprims + 1
-        if (nquad > 0):
-            numprims = numprims + 1
-
-        # Now we write each primitive
-        self.primitives = []
-        if nlin > 0:
-            lines = DrawElements()
-            lines.type = "LINES"
-            nface=0
-            for face in faces:
-                vlist=face.v
-                nv=len(vlist)
-                if nv == 2:
-                    lines.indexes.append(mapping[nface][0])
-                    lines.indexes.append(mapping[nface][1])
-                nface = nface + 1
-
-            self.primitives.append(lines)
-
-        if ntri > 0:
-            triangles = DrawElements()
-            triangles.type = "TRIANGLES"
-            nface=0
-            for face in faces:
-              vlist=face.v
-              nv=len(vlist)
-              if nv == 3:
-                    triangles.indexes.append(mapping[nface][0])
-                    triangles.indexes.append(mapping[nface][1])
-                    triangles.indexes.append(mapping[nface][2])
-              nface = nface + 1
-
-            self.primitives.append(triangles)
-
-        if nquad > 0:
-            quads = DrawElements()
-            quads.type = "QUADS"
-            nface=0
-            for face in faces:
-              vlist=face.v
-              nv=len(vlist)
-              if nv == 4:
-                    quads.indexes.append(mapping[nface][0])
-                    quads.indexes.append(mapping[nface][1])
-                    quads.indexes.append(mapping[nface][2])
-                    quads.indexes.append(mapping[nface][3])
-              nface = nface + 1
-
-            self.primitives.append(quads)
-
-        if hasTcoords:
-            self.uvs['0'] = TexCoordArray()
-
-            # Calculating per-vertex texture coordinates
-            tc = self.uvs['0']
-            for v in vertices_osg:
-              tc.array.append( (0,0) )
-
-            curface=0
-            for face in faces:
-                curv=0
-                if (len(face.uv) == len(face.v)):
-                    for vertex in face.v:
-                        if (curv < 4):
-                            tc.array[ mapping[curface][curv] ] = face.uv[curv]
-                        curv = curv + 1
-                curface = curface + 1
-
-        if self.mesh.vertexColors:
-            if faces[0].col:
-                self.colors = []
-                # Calculating per-vertex colors
-                vc = self.colors
-                for v in vertices_osg:
-                  vc.append( (0,0,0,0) )
-
-                curface=0
-                for face in faces:
-                    curv=0
-                    if (len(face.col) >= len(face.v)):
-                        for vertex in face.v:
-                            if (curv < 4):
-                                vc[ mapping[curface][curv] ] = (face.col[curv].r/255.0, face.col[curv].g/255.0, face.col[curv].b/255.0, face.col[curv].a/255.0)
-                            curv = curv + 1
-                    else:
-                        log( str(len(face.col)) + " aren't enough colors for " + str(len(face.v)) + " vertices in one face!")
-                    curface = curface + 1
-
-        return True
+        list = self.process(self.mesh)
+        return list
 
 class BlenderObjectToRigGeometry(BlenderObjectToGeometry):
     def __init__(self, *args, **kwargs):
         BlenderObjectToGeometry.__init__(self, *args, **kwargs)
-        self.groups = None
-        self.geometry = RigGeometry()
-
-    def convert4(self):
-        geom = RigGeometry()
-        [result, mapping] = self.calcVertices(self.mesh.faces, self.mesh.verts)
-        self.makeVertices(self.mesh.verts, result)
-        self.makeInluence(result)
-        ok = self.makeFaces(self.mesh.faces, result, mapping, self.hasTexture())
-        if ok is False:
-            return None
-        geom.vertexes = self.vertexes
-        geom.normals = self.normals
-        geom.primitives = self.primitives
-        geom.uvs = self.uvs
-        geom.groups = self.groups
-        geom.setName(self.object.getName())
-        geom.stateset = self.createStateSet()
-        self.geometry = geom
-        return geom
-
-    def makeInluence(self, resultVertexes):
-	mesh = self.object.getData(False, True)
-	groups = mesh.getVertGroupNames()
-
-	skin = {}
-	blender2osg = {}
-        
-	for i in range(0,len(resultVertexes)):
-		osgIndex     = i
-		blenderIndex = resultVertexes[i][0]
-                if not blender2osg.has_key(blenderIndex):
-                        blender2osg[blenderIndex] = []
-		blender2osg[blenderIndex].append(osgIndex)
-        
-	for i in groups:
-		#log(i)
-		vertexes = []
-		for idx, weight in mesh.getVertsFromGroup(i, 1):
-			if weight < 0.001:
-				log( "warning " + str(idx) + " to has a weight too small (" + str(weight) + "), skipping vertex")
-				continue
-                        for v in blender2osg[idx]:
-                                vertexes.append([v, weight])
-                if len(vertexes) == 0:
-                        log( "warning " + str(i) + " has not vertexes, skip it, if really unsued you should clean it")
-                else:
-                        vg = VertexGroup()
-                        vg.targetGroupName = i
-                        vg.vertexes = vertexes
-                        skin[i] = vg
-        self.groups = skin
+        self.geom_type = RigGeometry

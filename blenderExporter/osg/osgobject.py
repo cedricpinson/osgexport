@@ -440,7 +440,7 @@ class StateSet(Object):
         Object.__init__(self, *args, **kwargs)
         self.modes = []
         self.attributes = []
-        self.texture_attributes = {'0': []}
+        self.texture_attributes = {}
 
     def className(self):
         return "StateSet"

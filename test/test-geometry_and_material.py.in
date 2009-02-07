@@ -1,0 +1,168 @@
+#!BPY
+# -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
+# Copyright (C) 2008 Cedric Pinson
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+# Authors:
+#  Cedric Pinson <mornifle@plopbyte.net>
+#
+
+"""
+Name: 'osgexporter (.osg)'
+Blender: 248
+Group: 'Export'
+Tip: 'Export armature/bone/action data to osg formats.'
+"""
+
+from twisted.trial import unittest, runner, reporter
+from twisted.internet import reactor, defer
+from twisted.python import failure
+import twisted
+import math
+
+import sys
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
+
+import Blender
+import bpy
+import osg
+from osg.osgobject import *
+from osg.osgdata import *
+
+
+def close(a, b, threshold):
+    for i in range(0,len(a)):
+        if math.fabs(a[i] - b[i]) > threshold:
+            return False
+    return True
+
+class Exporter(unittest.TestCase):
+    # ------------------------------------------------------
+    def setUp(self):
+        osg.osgobject.initReferenceCount()
+
+    def tearDown(self):
+        pass
+
+                
+    def testBlenderObjectToGeometry(self):
+        geomquad = BlenderObjectToGeometry(object = bpy.data.objects["CubeQuads"])
+        geom = geomquad.convert()[0]
+        self.assertEquals(False, len(geom.stateset.texture_attributes) > 0)
+
+        self.assertEquals("CubeQuads", geom.name)
+        self.assertEquals(True, geom.vertexes != None)
+        self.assertEquals(24, len(geom.vertexes.array))
+        self.assertEquals(True, geom.normals != None)
+        self.assertEquals(24, len(geom.normals.array))
+        self.assertEquals(1, len(geom.primitives))
+        self.assertEquals("QUADS", geom.primitives[0].type)
+        self.assertEquals(24, len(geom.primitives[0].indexes))
+
+
+        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangle"])
+        geom = geomtriangle.convert()[0]
+        #print geom
+        self.assertEquals(True, geom.vertexes != None)
+        self.assertEquals(32, len(geom.vertexes.array))
+        self.assertEquals(True, geom.normals != None)
+        self.assertEquals(32, len(geom.normals.array))
+        self.assertEquals(1, len(geom.primitives))
+        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals(36, len(geom.primitives[0].indexes))
+
+
+        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangleSmooth"])
+        geom = geomtriangle.convert()[0]
+        #print geom
+        self.assertEquals(True, geom.vertexes != None)
+        self.assertEquals(8, len(geom.vertexes.array))
+        self.assertEquals(True, geom.normals != None)
+        self.assertEquals(8, len(geom.normals.array))
+        self.assertEquals(1, len(geom.primitives))
+        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals(36, len(geom.primitives[0].indexes))
+
+
+        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangleTextured"])
+        geom = geomtriangle.convert()[0]
+        #print geom
+        self.assertEquals(True, geom.vertexes != None)
+        self.assertEquals(4*6, len(geom.vertexes.array))
+        self.assertEquals(True, geom.uvs != None)
+        print geom.uvs.keys()
+        self.assertEquals(4*6, len(geom.uvs[0].array))
+        self.assertEquals(True, geom.normals != None)
+        self.assertEquals(4*6, len(geom.normals.array))
+        self.assertEquals(True, geom.stateset != None)
+        print geom.stateset.texture_attributes
+        self.assertEquals(1, len(geom.stateset.texture_attributes[0]))
+        self.assertEquals("textures/bbb.png", geom.stateset.texture_attributes[0][0].file )
+        self.assertEquals(1, len(geom.primitives))
+        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals(36, len(geom.primitives[0].indexes))
+
+    def testMultiUVS(self):
+        sc = bpy.data.scenes["MultiUVS"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.process()
+        exporter.write()
+
+    def testGeometry(self):
+        scene = bpy.data.scenes["Geometry"]
+        bpy.data.scenes.active = scene
+        exporter = Export()
+        exporter.process()
+        exporter.write()
+
+    def testBlenderMaterial(self):
+        geomquad = BlenderObjectToGeometry(object = bpy.data.objects["CubeMaterial"])
+        geom_list = geomquad.convert()
+        geom = geom_list[0]
+        self.assertEquals((0.0,0.0,0.0,1.0),geom.stateset.attributes[0].emission)
+        self.assertEquals(True, close((0.64,0.64,0.64,1.0),geom.stateset.attributes[0].diffuse, 0.01) )
+        self.assertEquals(True, close((0.64,0.64,0.64,1.0),geom.stateset.attributes[0].diffuse, 0.01) )
+        self.assertEquals(True, close((0.5,0.5,0.5,1.0),geom.stateset.attributes[0].specular, 0.01) )
+        self.assertEquals(12.5 ,geom.stateset.attributes[0].shininess)
+
+    def testExportBlenderMaterial(self):
+        sc = bpy.data.scenes["Materials"]
+        bpy.data.scenes.active = sc
+        exporter = Export()
+        exporter.config.anim_bake = ""
+        exporter.config.export_anim = False
+        exporter.config.filename = "materials"
+        exporter.process()
+        exporter.write()
+        self.assertEquals(True, len(exporter.items) != 0)
+
+
+def Run():
+        loader = runner.TestLoader()
+        loader.methodPrefix = "test"
+        suite = loader.suiteFactory()
+        suite.addTest(loader.loadClass(Exporter))
+        return runner.TrialRunner(
+                reporter.VerboseTextReporter,
+                tracebackFormat='default',
+                ).run(suite)
+
+if __name__ == '__main__':
+        if Run().wasSuccessful():
+                sys.exit(0)
+        else:
+                sys.exit(1)
