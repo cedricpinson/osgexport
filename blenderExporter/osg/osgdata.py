@@ -962,7 +962,7 @@ class BlenderObjectToGeometry(object):
                                 if t.source_image.getDepth() > 24: # there is an alpha
                                     s.modes.append(("GL_BLEND","ON"))
                             except:
-                                log("can't read the source image file for texture %s" % t.getName())
+                                log("can't read the source image file for texture %s" % t)
                 debug("state set %s" % str(s))
 
         # adjust uvs channels if no textures assigned
