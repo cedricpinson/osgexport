@@ -913,6 +913,8 @@ class BlenderObjectToGeometry(object):
             mat_source = mesh.materials[index_material]
             if mat_source is not None:
                 m = Material()
+                s.setName(mat_source.getName())
+
                 refl = mat_source.getRef()
                 m.diffuse = (mat_source.R * refl, mat_source.G * refl, mat_source.B * refl, mat_source.alpha)
 
