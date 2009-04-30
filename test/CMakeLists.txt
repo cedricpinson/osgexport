@@ -17,6 +17,14 @@
 # Authors:
 #  Cedric Pinson <mornifle@plopbyte.net
 
+
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-armature.py.in 
+  ${CMAKE_CURRENT_BINARY_DIR}/test-armature.py
+  IMMEDIATE @ONLY
+  )
+ADD_TEST("test-armature" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-armature.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-bug_multimaterial.py.in 
   ${CMAKE_CURRENT_BINARY_DIR}/test-bug_multimaterial.py

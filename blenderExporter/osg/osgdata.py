@@ -787,8 +787,6 @@ class Export(object):
                 ls.light.light_num = light_num
                 st.modes.append(("GL_LIGHT%s" % light_num, "ON"))
                 light_num += 1
-
-                
         
 
     def write(self):
@@ -917,6 +915,11 @@ class BlenderObjectToGeometry(object):
 
                 refl = mat_source.getRef()
                 m.diffuse = (mat_source.R * refl, mat_source.G * refl, mat_source.B * refl, mat_source.alpha)
+
+                # if alpha not 1 then we set the blending mode on
+                debug("state material alpha %s" % str(mat_source.alpha))
+                if mat_source.alpha != 1.0:
+                    s.modes.append(("GL_BLEND", "ON"))
 
                 ambient_factor = mat_source.getAmb()
                 m.ambient = (mat_source.R * ambient_factor, mat_source.G * ambient_factor, mat_source.B * ambient_factor, 1)
@@ -1091,19 +1094,23 @@ class BlenderObjectToGeometry(object):
             index = len(mapping_vertexes)
             merged_vertexes[i] = index
             mapping_vertexes.append([i])
-            debug("process vertex %s" % i)
+            if DEBUG is True:
+                debug("process vertex %s" % i)
             for j in range(i+1, len(vertexes)):
                 if tagged_vertexes[j] is True: # avoid processing more than one time a vertex
                     continue
                 different = self.equalVertices(i, j, vertexes, normals, colors, uvs)
                 if not different:
-                    debug("   vertex %s is the same" % j)
+                    if DEBUG is True:
+                        debug("   vertex %s is the same" % j)
                     merged_vertexes[j] = index
                     tagged_vertexes[j] = True
                     mapping_vertexes[index].append(j)
 
-        for i in range(0, len(mapping_vertexes)):
-            debug("vertex %s contains %s" % (str(i), str(mapping_vertexes[i])))
+
+        if DEBUG is True:
+            for i in range(0, len(mapping_vertexes)):
+                debug("vertex %s contains %s" % (str(i), str(mapping_vertexes[i])))
 
         if len(mapping_vertexes) != len(vertexes):
             log("vertexes reduced from %s to %s" % (str(len(vertexes)),len(mapping_vertexes)))
@@ -1116,10 +1123,12 @@ class BlenderObjectToGeometry(object):
             fdebug = []
             for v in face:
                 f.append(merged_vertexes[v])
-                fdebug.append(vertexes[mapping_vertexes[merged_vertexes[v]][0]].index)
+                if DEBUG is True:
+                    fdebug.append(vertexes[mapping_vertexes[merged_vertexes[v]][0]].index)
             faces.append(f)
-            debug("new face %s" % str(f))
-            debug("true face %s" % str(fdebug))
+            if DEBUG is True:
+                debug("new face %s" % str(f))
+                debug("true face %s" % str(fdebug))
             
         log("faces %s" % str(len(faces)))
 
@@ -1133,20 +1142,23 @@ class BlenderObjectToGeometry(object):
                 original_vertexes2optimized[index].append(i)
 
 	for i in mesh.getVertGroupNames():
-            verts = []
+            verts = {}
             for idx, weight in mesh.getVertsFromGroup(i, 1):
                 if weight < 0.001:
                     log( "warning " + str(idx) + " to has a weight too small (" + str(weight) + "), skipping vertex")
                     continue
                 if original_vertexes2optimized.has_key(idx):
                     for v in original_vertexes2optimized[idx]:
-                        verts.append([v, weight])
+                        if not verts.has_key(v):
+                            verts[v] = weight
+                        #verts.append([v, weight])
             if len(verts) == 0:
                 log( "warning " + str(i) + " has not vertexes, skip it, if really unsued you should clean it")
             else:
+                vertex_weight_list = [ list(e) for e in verts.items() ]
                 vg = VertexGroup()
                 vg.targetGroupName = i
-                vg.vertexes = verts
+                vg.vertexes = vertex_weight_list
                 vgroups[i] = vg
 
         if (len(vgroups)):
