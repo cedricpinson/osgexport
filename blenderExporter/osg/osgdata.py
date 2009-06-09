@@ -785,7 +785,8 @@ class Export(object):
             light_num = 0
             for name, ls in self.lights.items():
                 ls.light.light_num = light_num
-                st.modes.append(("GL_LIGHT%s" % light_num, "ON"))
+                key = "GL_LIGHT%s" % light_num
+                st.modes[key] = "ON"
                 light_num += 1
         
 
@@ -921,7 +922,7 @@ class BlenderObjectToGeometry(object):
                 # if alpha not 1 then we set the blending mode on
                 if DEBUG: debug("state material alpha %s" % str(mat_source.alpha))
                 if mat_source.alpha != 1.0:
-                    s.modes.append(("GL_BLEND", "ON"))
+                    s.modes["GL_BLEND"] = "ON"
 
                 ambient_factor = mat_source.getAmb()
                 m.ambient = (mat_source.R * ambient_factor, mat_source.G * ambient_factor, mat_source.B * ambient_factor, 1)
@@ -969,7 +970,7 @@ class BlenderObjectToGeometry(object):
                             s.texture_attributes[i].append(t)
                             try:
                                 if t.source_image.getDepth() > 24: # there is an alpha
-                                    s.modes.append(("GL_BLEND","ON"))
+                                    s.modes["GL_BLEND"] = "ON"
                             except:
                                 log("can't read the source image file for texture %s" % t)
                 if DEBUG: debug("state set %s" % str(s))
@@ -1015,7 +1016,7 @@ class BlenderObjectToGeometry(object):
     def createGeomForMaterialIndex(self, material_index, mesh):
         geom = self.geom_type()
         if (len(mesh.faces) == 0):
-            log("objest %s has no faces" % self.object.getName())
+            log("object %s has no faces, so no materials" % self.object.getName())
             return None
         if len(mesh.materials):
             title = "mesh %s with material %s" % (self.object.getName(), mesh.materials[material_index])
@@ -1040,7 +1041,7 @@ class BlenderObjectToGeometry(object):
             collected_faces.append((face,f))
 
         if (len(collected_faces) == 0):
-            log("objest %s has no faces for this material" % self.object.getName())
+            log("object %s has no faces for sub material slot %s" % (self.object.getName(), str(material_index)))
             end_title = '-' * len(title)
             log(end_title)
             return None

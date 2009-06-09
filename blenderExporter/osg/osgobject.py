@@ -438,7 +438,7 @@ class LightModel(StateAttribute):
 class StateSet(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
-        self.modes = []
+        self.modes = {}
         self.attributes = []
         self.texture_attributes = {}
 
@@ -453,7 +453,7 @@ class StateSet(Object):
 
     def printContent(self):
         text = Object.printContent(self)
-        for i in self.modes:
+        for i in self.modes.iteritems():
             if i is not None:
                 text += "$#%s %s\n" %i
         for i in self.attributes:
