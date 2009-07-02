@@ -129,7 +129,7 @@ def findArmatureObjectForAction(action):
 def findObjectForIpo(ipo):
     index = ipo.name.rfind('-')
     if index != -1:
-        objname = ipo.name[index:]
+        objname = ipo.name[index+1:]
         try:
             obj = bpy.data.objects[objname]
             log("bake ipo %s to object %s" % (ipo.name, objname))
@@ -420,7 +420,7 @@ def getBakedIpos(obj, ori_ipo, anim_fps):
 
     dummy_object = None
     if obj is None:
-        log('WARNING Bake ipo without object, it means that it will not be possible to bake constraint, use an iponame that contains the object associated to him, like myipo-MyObject')
+        log('WARNING Bake ipo %s without object, it means that it will not be possible to bake constraint, use an name ipo that contains the object associated to him, like myipo-MyObject' % ori_ipo.name)
         obj = bpy.data.scenes.active.objects.new('Empty')
         dummy_object = obj
 
@@ -431,7 +431,7 @@ def getBakedIpos(obj, ori_ipo, anim_fps):
         obj.setIpo(previous_ipo)
 
     if dummy_object:
-        bpy.data.objects.unlink(dummy_object)
+        bpy.data.scenes.active.objects.unlink(dummy_object)
         
     return baked
 
