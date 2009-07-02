@@ -131,13 +131,13 @@ def findObjectForIpo(ipo):
     if index != -1:
         objname = ipo.name[index+1:]
         try:
-            obj = bpy.data.objects[objname]
+            obj = bpy.data.scenes.active.objects[objname]
             log("bake ipo %s to object %s" % (ipo.name, objname))
             return obj
         except:
             return None
 
-    for o in bpy.data.objects:
+    for o in bpy.data.scenes.active.objects:
         if o.getIpo() == ipo:
             log("bake ipo %s to object %s" % (ipo.name, o.name))
             return o
