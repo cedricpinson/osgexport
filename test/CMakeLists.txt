@@ -46,6 +46,13 @@ CONFIGURE_FILE(
   )
 ADD_TEST("test-exporter" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-exporter.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-baked_ipo.py.in
+  ${CMAKE_CURRENT_BINARY_DIR}/test-baked_ipo.py
+  IMMEDIATE @ONLY
+  )
+ADD_TEST("test-bake_ipo" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-baked_ipo.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+
 
 # copy php file to test it in the build environnement"
 ADD_CUSTOM_TARGET( copy_blender_testfile ALL

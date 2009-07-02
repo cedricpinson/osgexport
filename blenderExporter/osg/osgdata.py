@@ -17,7 +17,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.net>
 #
 # Copyright (C) 2002-2006 Ruben Lopez <ryu@gpul.org>
 #
@@ -31,6 +31,9 @@
 
 import Blender
 import Blender.Mathutils
+from   Blender.Mathutils import *
+from   Blender import Ipo
+from   Blender import BezTriple
 import bpy
 import sys
 import math
@@ -42,13 +45,12 @@ import osglog
 from osglog import log
 from osgobject import *
 
-
 Vector     = Blender.Mathutils.Vector
 Quaternion = Blender.Mathutils.Quaternion
 Matrix     = Blender.Mathutils.Matrix
 Euler      = Blender.Mathutils.Euler
 
-DEBUG = False
+DEBUG = True
 def debug(str):
     if DEBUG:
         log(str)
@@ -122,6 +124,24 @@ def findArmatureObjectForAction(action):
             for bname, bone in a.bones.items():
                 if isActionLinkedToObject(action, bname) is True:
                     return o
+    return None
+
+def findObjectForIpo(ipo):
+    index = ipo.name.rfind('-')
+    if index != -1:
+        objname = ipo.name[index:]
+        try:
+            obj = bpy.data.objects[objname]
+            log("bake ipo %s to object %s" % (ipo.name, objname))
+            return obj
+        except:
+            return None
+
+    for o in bpy.data.objects:
+        if o.getIpo() == ipo:
+            log("bake ipo %s to object %s" % (ipo.name, o.name))
+            return o
+    return None
 
 def exportKeyframeSplitRotationTranslationScale(ipo, fps):
 	SUPPORTED_IPOS = (
@@ -250,58 +270,170 @@ def exportKeyframeSplitRotationTranslationScale(ipo, fps):
 		channels.append(channel_samplers[key])
 	return channels
 
+
+COORDINATE_SYSTEMS = ['local','real']
+COORD_LOCAL = 0
+COORD_REAL = 1
+usrCoord = COORD_LOCAL # what the user wants
+usrDelta = [0,0,0,0,0,0,0,0,0] #order specific - Loc xyz Rot xyz
+R2D = 18/3.1415  # radian to grad
+########################################
+def getCurves(ipo):
+	ipos = [
+			ipo[Ipo.OB_LOCX],
+			ipo[Ipo.OB_LOCY],
+			ipo[Ipo.OB_LOCZ],
+			ipo[Ipo.OB_ROTX], #get the curves in this order
+			ipo[Ipo.OB_ROTY],
+			ipo[Ipo.OB_ROTZ],
+			ipo[Ipo.OB_SCALEX], #get the curves in this order
+			ipo[Ipo.OB_SCALEY],
+			ipo[Ipo.OB_SCALEZ]
+			]
+	return ipos
+
+########################################
+def getLocLocal(ob):
+	key = [
+			ob.LocX, 
+			ob.LocY, 
+			ob.LocZ,
+			ob.RotX*R2D, #get the curves in this order
+			ob.RotY*R2D, 
+			ob.RotZ*R2D,
+			ob.SizeX, 
+			ob.SizeY, 
+			ob.SizeZ,
+			]
+	return key
+
+########################################
+def getLocReal(ob):
+	obMatrix = ob.matrixWorld #Thank you IdeasMan42
+	loc = obMatrix.translationPart()
+	rot = obMatrix.toEuler()
+	scale = obMatrix.scalePart()
+	key = [
+			loc.x,
+			loc.y,
+			loc.z,
+			rot.x/10,
+			rot.y/10,
+			rot.z/10,
+                        scale.x,
+                        scale.y,
+                        scale.z,
+			]
+	return key
+########################################
+def getLocRot(ob,space):
+	if space in xrange(len(COORDINATE_SYSTEMS)):
+		if space == COORD_LOCAL:
+			key = getLocLocal(ob)
+			return key
+		elif space == COORD_REAL:
+			key = getLocReal(ob)
+			return key
+		else: #hey, programmers make mistakes too.
+			debug('Fatal Error: getLoc called with %i' % space)
+	return
+
+########################################
+def addPoint(time,keyLocRotSize,ipos):
+	for i in range(len(ipos)):
+		point = BezTriple.New() #this was new with Blender 2.45 API
+		point.pt = (time, keyLocRotSize[i])
+		point.handleTypes = [1,1]
+
+		ipos[i].append(point)
+	return ipos
+
+def getRangeFromIpo(ipo):
+    first_frame = 1
+    last_frame = 1
+    for channel in ipo:
+        for key in channel.bezierPoints:
+            if key.vec[1][0] > last_frame:
+                last_frame = int(key.vec[1][0])
+    debug("range of ipo %s : %s %s " % (ipo.name, first_frame,last_frame))
+    return (first_frame, last_frame, first_frame)
+
+########################################
+def bakeFrames(ob,myipo): #bakes an object in a scene, returning the IPO containing the curves
+	myipoName = myipo.getName()
+	debug('Baking frames for scene %s object %s to ipo %s' % (bpy.data.scenes.active.getName(),ob.getName(),myipoName))
+	ipos = getCurves(myipo)
+	#TODO: Gui setup idea: myOffset
+	# reset action to start at frame 1 or at location
+	myOffset=0 #=1-staframe
+	#loop through frames in the animation. Often, there is rollup and the mocap starts late
+	staframe,endframe,curframe = getRangeFromIpo(ob.getIpo())
+	for frame in range(staframe, endframe+1):
+		#tell Blender to advace to frame
+		Blender.Set('curframe',frame) # computes the constrained location of the 'real' objects
+                
+		#using the constrained Loc Rot of the object, set the location of the unconstrained clone. Yea! Clones are FreeMen
+		key = getLocRot(ob,usrCoord) #a key is a set of specifed exact channel values (LocRotScale) for a certain frame
+		key = [a+b for a,b in zip(key, usrDelta)] #offset to the new location
+		myframe= frame+myOffset
+		Blender.Set('curframe',myframe)
+		
+		time = Blender.Get('curtime') #for BezTriple
+		ipos = addPoint(time,key,ipos) #add this data at this time to the ipos
+		debug('%s %i %.3f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f' % (myipoName, myframe, time, key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7], key[8]))
+	Blender.Set('curframe',staframe)
+	return ipos
+
+
 def getBakedIpos(obj, ori_ipo, anim_fps):
 
-    ipo=Blender.Ipo.New('Object', ori_ipo.getName() + "_bake")
-    ipo.addCurve('LocX')
-    ipo.addCurve('LocY')
-    ipo.addCurve('LocZ')
-    ipo.addCurve('RotX')
-    ipo.addCurve('RotY')
-    ipo.addCurve('RotZ')
-    ipo.addCurve('ScaleX')
-    ipo.addCurve('ScaleY')
-    ipo.addCurve('ScaleZ')
-
-    ipos = [
-        ipo[Ipo.OB_LOCX],
-        ipo[Ipo.OB_LOCY],
-        ipo[Ipo.OB_LOCZ],
-        ipo[Ipo.OB_ROTX], #get the curves in this order
-        ipo[Ipo.OB_ROTY],
-        ipo[Ipo.OB_ROTZ],
-        ipo[Ipo.OB_SCALEX], #get the curves in this order
-        ipo[Ipo.OB_SCALEY],
-        ipo[Ipo.OB_SCALEZ]
-        ]
-
-    start = 0
-    end = start + 1
-    for i in ipos:
-        print i
-
-    return new_ipo
-    for frame in range(staframe, endframe+1):
-        if DEBUG: debug(80,'Baking Frame %i' % frame)
-		#tell Blender to advace to frame
-        Blender.Set(CURFRAME,frame) # computes the constrained location of the 'real' objects
-        if not BATCH: Blender.Redraw() # no secrets, let user see what we are doing
-        
-		#using the constrained Loc Rot of the object, set the location of the unconstrained clone. Yea! Clones are FreeMen
-        key = getLocRot(ob,usrCoord) #a key is a set of specifed exact channel values (LocRotScale) for a certain frame
-        key = [a+b for a,b in zip(key, usrDelta)] #offset to the new location
-
-        myframe= frame+myOffset
-        Blender.Set(CURFRAME,myframe)
-        
-        time = Blender.Get('curtime') #for BezTriple
-        ipos = addPoint(time,key,ipos) #add this data at this time to the ipos
-        if DEBUG: debug(100,'%s %i %.3f %.2f %.2f %.2f %.2f %.2f %.2f' % (myipoName, myframe, time, key[0], key[1], key[2], key[3], key[4], key[5]))
+    # Get the dummy action if it has no users
+    dummy_ipos_name = ori_ipo.getName() + "_bake"
+    try:
+        baked = bpy.data.ipos[dummy_ipos_name]
+    except:
+        baked = None
     
+    if not baked:
+        baked = bpy.data.ipos.new(dummy_ipos_name,'Object')
+        baked.fakeUser = False
+    else:
+        baked[Ipo.OB_LOCX] = None
+        baked[Ipo.OB_LOCY] = None
+        baked[Ipo.OB_LOCZ] = None
+        baked[Ipo.OB_ROTX] = None
+        baked[Ipo.OB_ROTY] = None
+        baked[Ipo.OB_ROTZ] = None
+        baked[Ipo.OB_SCALEX] = None
+        baked[Ipo.OB_SCALEY] = None
+        baked[Ipo.OB_SCALEZ] = None
 
-    new_ipo = animtion_bake_constraints.bakeFrames(obj, new_ipo)
-    return new_ipo
+    baked.addCurve('LocX')
+    baked.addCurve('LocY')
+    baked.addCurve('LocZ')
+    baked.addCurve('RotX')
+    baked.addCurve('RotY')
+    baked.addCurve('RotZ')
+    baked.addCurve('ScaleX')
+    baked.addCurve('ScaleY')
+    baked.addCurve('ScaleZ')
 
+    dummy_object = None
+    if obj is None:
+        log('WARNING Bake ipo without object, it means that it will not be possible to bake constraint, use an iponame that contains the object associated to him, like myipo-MyObject')
+        obj = bpy.data.scenes.active.objects.new('Empty')
+        dummy_object = obj
+
+    if obj is not None:
+        previous_ipo = obj.getIpo()
+        obj.setIpo(ori_ipo)
+        bakeFrames(obj, baked)
+        obj.setIpo(previous_ipo)
+
+    if dummy_object:
+        bpy.data.objects.unlink(dummy_object)
+        
+    return baked
 
 def getBakedAction(armatureObject, action , sample_rate = 25):
     """
@@ -699,6 +831,7 @@ class Export(object):
         return animation
 
     def createAnimationsFromList(self, animation_list):
+        if DEBUG: debug("create animation from list %s" % (str(animation_list)))
         animations_result = {}
         for anim in animation_list:
             res = None
@@ -707,14 +840,19 @@ class Export(object):
             elif len(list(bpy.data.actions)) and type(anim) is type(list(bpy.data.actions)[0]):
                 res = self.createAnimationFromAction(anim)
             if res is not None:
+                if DEBUG: debug("animation \"%s\" created" % (res.name))
                 self.animations[res.name] = res
+            else:
+                log("WARNING can't create animation from %s" % anim)
+                
         
 
     def createAnimationFromIpo(self, ipo, name = None):
         if name is None:
             name = "unknown"
         ipos_baked = ipo
-        if False is True and self.config.anim_bake.lower() == "force":
+        if self.config.anim_bake.lower() == "force":
+            obj = findObjectForIpo(ipo)
             ipos_baked = getBakedIpos(obj, ipo, self.config.anim_fps)
         animation = Animation()
         animation.setName(ipo.name + "_ipo")
