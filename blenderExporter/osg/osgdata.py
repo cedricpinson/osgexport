@@ -50,7 +50,7 @@ Quaternion = Blender.Mathutils.Quaternion
 Matrix     = Blender.Mathutils.Matrix
 Euler      = Blender.Mathutils.Euler
 
-DEBUG = True
+DEBUG = False
 def debug(str):
     if DEBUG:
         log(str)
