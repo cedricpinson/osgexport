@@ -1,0 +1,17 @@
+Notes
+
+To export rigged model from blender you have to name your VertexGroup? with the bone name, because the association is done by name. 
+If you have more than One bone in a vertex group, it will not work. It's something that has to be fixed. you can get the last 
+version of blender exporter here http://hg.plopbyte.net/osgexport/
+Features
+
+    * Export Mesh, Light, Transform
+    * Export Action (Rigged mesh) and IPOS
+    * Support Group in blender, and create instance in the blender file
+    * Export multi uvs, multi texture, multi materials 
+
+Todo
+
+    * Reduce the multi vertex bone information exported in RigGeometry? (a new bug)
+    * Share texture in stateset
+    * Update gui 

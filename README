@@ -1,3 +1,7 @@
+to get this exporter, get mercurial http://mercurial.selenic.com/wiki/
+then 
+hg clone http://hg.plopbyte.net/osgexport/
+
 To install this export follow instructions in file INSTALL
 
 How to report a bug:
