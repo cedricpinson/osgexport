@@ -1054,6 +1054,10 @@ class BlenderObjectToGeometry(object):
                 m = Material()
                 s.setName(mat_source.getName())
 
+                mode = mat_source.getMode()
+                if mode & Blender.Material.Modes['SHADELESS']:
+                    s.modes["GL_LIGHTING"] = "OFF"
+
                 refl = mat_source.getRef()
                 m.diffuse = (mat_source.R * refl, mat_source.G * refl, mat_source.B * refl, mat_source.alpha)
 
