@@ -16,7 +16,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.net>
 #  Jeremy Moles <jeremy@emperorlinux.com>
 
 
