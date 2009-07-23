@@ -15,7 +15,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.net>
 #  Jeremy Moles <jeremy@emperorlinux.com>
 
 
@@ -23,6 +23,12 @@
 import os
 import osglog
 import osgobject
+from osglog import log
+
+DEBUG = False
+def debug(str):
+    if DEBUG:
+        log(str)
 
 class Config(object):
     def __init__(self, map = None):

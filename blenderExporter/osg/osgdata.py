@@ -42,18 +42,16 @@ from sys import exit
 import osg
 from osg import osgconf
 import osglog
+from osgbake import BakeIpoForMaterial, BakeIpoForObject, BakeAction
 from osglog import log
 from osgobject import *
+from osgconf import debug
+from osgconf import DEBUG
 
 Vector     = Blender.Mathutils.Vector
 Quaternion = Blender.Mathutils.Quaternion
 Matrix     = Blender.Mathutils.Matrix
 Euler      = Blender.Mathutils.Euler
-
-DEBUG = False
-def debug(str):
-    if DEBUG:
-        log(str)
 
 def getImageFilesFromStateSet(stateset):
     list = []
@@ -143,510 +141,6 @@ def findObjectForIpo(ipo):
             return o
     return None
 
-def exportKeyframeSplitRotationTranslationScale(ipo, fps):
-	SUPPORTED_IPOS = (
-		'RotX', 'RotY', 'RotZ',
-		'QuatW', 'QuatX', 'QuatY', 'QuatZ',
-		'LocX', 'LocY', 'LocZ',
-		'ScaleX', 'ScaleY', 'ScaleZ'
-	)
-        
-	channels         = []
-	channel_times    = {'Rotation': set(), 'Translation': set(), 'Scale': set()}
-	channel_names    = {'Rotation': 'rotation', 'Translation': 'position', 'Scale': 'scale'}
-	channel_samplers = {'Rotation': None, 'Translation': None, 'Scale': None}
-	channel_ipos     = {'Rotation': [], 'Translation': [], 'Scale': []}
-
-	duration = 0
-
-	for curve in ipo:
-		if curve.name not in SUPPORTED_IPOS:
-			continue
-
-		elif curve.name[ : 3] == "Rot" or curve.name[ : 4] == "Quat":
-			times = channel_times['Rotation']
-			channel_ipos['Rotation'].append(curve)
-
-		elif curve.name[ : 3] == "Loc":
-			times = channel_times['Translation']
-			channel_ipos['Translation'].append(curve)
-
-		elif curve.name[ : 5] == "Scale":
-			times = channel_times['Scale']
-			channel_ipos['Scale'].append(curve)
-
-		for p in curve.bezierPoints:
-			times.add(p.pt[0])
-
-	for key in channel_times.iterkeys():
-		time = list(channel_times[key])
-		time.sort()
-		channel_times[key] = time
-                
-		if len(time) > 0:
-			channel_samplers[key] = Channel()
-                
-	for key in channel_times.iterkeys():
-		if channel_samplers[key] is None:
-			continue
-
-		#log(key)
-		times = channel_times[key]
-		
-		for time in times:
-			realtime = (time - 1) / fps
-			
-			if realtime > duration:
-				duration = realtime
-
-			trans = Vector()
-			quat  = Quaternion()
-			scale = Vector()
-			rot   = Euler()
-			rtype = None
-
-			# I know this can be cleaned up...
-			for curve in channel_ipos[key]:
-				val       = curve[time]
-				bezPoints = curve.bezierPoints
-				if curve.name == 'LocX':
-					trans[0] = val
-				elif curve.name == 'LocY':
-					trans[1] = val
-				elif curve.name == 'LocZ':
-					trans[2] = val
-				elif curve.name == 'QuatW':
-					quat.w = val
-					rtype  = "Quat"
-				elif curve.name == 'QuatX':
-					quat.x = val
-					rtype  = "Quat"
-				elif curve.name == 'QuatY':
-					quat.y = val
-					rtype  = "Quat"
-				elif curve.name == 'QuatZ':
-					quat.z = val
-					rtype  = "Quat"
-				elif curve.name == 'ScaleX':
-					scale[0] = val
-				elif curve.name == 'ScaleY':
-					scale[1] = val
-				elif curve.name == 'ScaleZ':
-					scale[2] = val
-				elif curve.name == 'RotX':
-					rot.x = val * 10
-					rtype = "Euler"
-				elif curve.name == 'RotY':
-					rot.y = val * 10
-					rtype = "Euler"
-				elif curve.name == 'RotZ':
-					rot.z = val * 10
-					rtype = "Euler"
-				else:
-					continue
-			
-			if key == 'Scale':
-				channel_samplers[key].keys.append((realtime, scale[0], scale[1], scale[2]))
-				channel_samplers[key].type = "Vec3"
-                                channel_samplers[key].setName("scale")
-				
-			elif key == 'Rotation':
-				if rtype == "Quat":
-					quat.normalize()
-                                        channel_samplers[key].keys.append((realtime, quat.x, quat.y, quat.z, quat.w))
-                                        channel_samplers[key].type = "Quat"
-                                        channel_samplers[key].setName("quaternion")
-					
-				elif rtype == "Euler":
-                                        channel_samplers[key].keys.append((realtime, math.radians(rot.x)  , math.radians(rot.y), math.radians(rot.z) ))
-                                        channel_samplers[key].type = "Vec3"
-                                        channel_samplers[key].setName("euler")
-					
-			elif key == 'Translation':
-				channel_samplers[key].keys.append((realtime, trans[0], trans[1], trans[2]))
-				channel_samplers[key].type = "Vec3"
-                                channel_samplers[key].setName("position")
-				
-		channels.append(channel_samplers[key])
-	return channels
-
-
-COORDINATE_SYSTEMS = ['local','real']
-COORD_LOCAL = 0
-COORD_REAL = 1
-usrCoord = COORD_LOCAL # what the user wants
-usrDelta = [0,0,0,0,0,0,0,0,0] #order specific - Loc xyz Rot xyz
-R2D = 18/3.1415  # radian to grad
-########################################
-def getCurves(ipo):
-	ipos = [
-			ipo[Ipo.OB_LOCX],
-			ipo[Ipo.OB_LOCY],
-			ipo[Ipo.OB_LOCZ],
-			ipo[Ipo.OB_ROTX], #get the curves in this order
-			ipo[Ipo.OB_ROTY],
-			ipo[Ipo.OB_ROTZ],
-			ipo[Ipo.OB_SCALEX], #get the curves in this order
-			ipo[Ipo.OB_SCALEY],
-			ipo[Ipo.OB_SCALEZ]
-			]
-	return ipos
-
-########################################
-def getLocLocal(ob):
-	key = [
-			ob.LocX, 
-			ob.LocY, 
-			ob.LocZ,
-			ob.RotX*R2D, #get the curves in this order
-			ob.RotY*R2D, 
-			ob.RotZ*R2D,
-			ob.SizeX, 
-			ob.SizeY, 
-			ob.SizeZ,
-			]
-	return key
-
-########################################
-def getLocReal(ob):
-	obMatrix = ob.matrixWorld #Thank you IdeasMan42
-	loc = obMatrix.translationPart()
-	rot = obMatrix.toEuler()
-	scale = obMatrix.scalePart()
-	key = [
-			loc.x,
-			loc.y,
-			loc.z,
-			rot.x/10,
-			rot.y/10,
-			rot.z/10,
-                        scale.x,
-                        scale.y,
-                        scale.z,
-			]
-	return key
-########################################
-def getLocRot(ob,space):
-	if space in xrange(len(COORDINATE_SYSTEMS)):
-		if space == COORD_LOCAL:
-			key = getLocLocal(ob)
-			return key
-		elif space == COORD_REAL:
-			key = getLocReal(ob)
-			return key
-		else: #hey, programmers make mistakes too.
-			debug('Fatal Error: getLoc called with %i' % space)
-	return
-
-########################################
-def addPoint(time,keyLocRotSize,ipos):
-	for i in range(len(ipos)):
-		point = BezTriple.New() #this was new with Blender 2.45 API
-		point.pt = (time, keyLocRotSize[i])
-		point.handleTypes = [1,1]
-
-		ipos[i].append(point)
-	return ipos
-
-def getRangeFromIpo(ipo):
-    first_frame = 1
-    last_frame = 1
-    for channel in ipo:
-        for key in channel.bezierPoints:
-            if key.vec[1][0] > last_frame:
-                last_frame = int(key.vec[1][0])
-    debug("range of ipo %s : %s %s " % (ipo.name, first_frame,last_frame))
-    return (first_frame, last_frame, first_frame)
-
-########################################
-def bakeFrames(ob,myipo): #bakes an object in a scene, returning the IPO containing the curves
-	myipoName = myipo.getName()
-	debug('Baking frames for scene %s object %s to ipo %s' % (bpy.data.scenes.active.getName(),ob.getName(),myipoName))
-	ipos = getCurves(myipo)
-	#TODO: Gui setup idea: myOffset
-	# reset action to start at frame 1 or at location
-	myOffset=0 #=1-staframe
-	#loop through frames in the animation. Often, there is rollup and the mocap starts late
-	staframe,endframe,curframe = getRangeFromIpo(ob.getIpo())
-	for frame in range(staframe, endframe+1):
-		#tell Blender to advace to frame
-		Blender.Set('curframe',frame) # computes the constrained location of the 'real' objects
-                
-		#using the constrained Loc Rot of the object, set the location of the unconstrained clone. Yea! Clones are FreeMen
-		key = getLocRot(ob,usrCoord) #a key is a set of specifed exact channel values (LocRotScale) for a certain frame
-		key = [a+b for a,b in zip(key, usrDelta)] #offset to the new location
-		myframe= frame+myOffset
-		Blender.Set('curframe',myframe)
-		
-		time = Blender.Get('curtime') #for BezTriple
-		ipos = addPoint(time,key,ipos) #add this data at this time to the ipos
-		debug('%s %i %.3f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f' % (myipoName, myframe, time, key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7], key[8]))
-	Blender.Set('curframe',staframe)
-	return ipos
-
-
-def getBakedIpos(obj, ori_ipo, anim_fps):
-
-    # Get the dummy action if it has no users
-    dummy_ipos_name = ori_ipo.getName() + "_bake"
-    try:
-        baked = bpy.data.ipos[dummy_ipos_name]
-    except:
-        baked = None
-    
-    if not baked:
-        baked = bpy.data.ipos.new(dummy_ipos_name,'Object')
-        baked.fakeUser = False
-    else:
-        baked[Ipo.OB_LOCX] = None
-        baked[Ipo.OB_LOCY] = None
-        baked[Ipo.OB_LOCZ] = None
-        baked[Ipo.OB_ROTX] = None
-        baked[Ipo.OB_ROTY] = None
-        baked[Ipo.OB_ROTZ] = None
-        baked[Ipo.OB_SCALEX] = None
-        baked[Ipo.OB_SCALEY] = None
-        baked[Ipo.OB_SCALEZ] = None
-
-    baked.addCurve('LocX')
-    baked.addCurve('LocY')
-    baked.addCurve('LocZ')
-    baked.addCurve('RotX')
-    baked.addCurve('RotY')
-    baked.addCurve('RotZ')
-    baked.addCurve('ScaleX')
-    baked.addCurve('ScaleY')
-    baked.addCurve('ScaleZ')
-
-    dummy_object = None
-    if obj is None:
-        log('WARNING Bake ipo %s without object, it means that it will not be possible to bake constraint, use an name ipo that contains the object associated to him, like myipo-MyObject' % ori_ipo.name)
-        obj = bpy.data.scenes.active.objects.new('Empty')
-        dummy_object = obj
-
-    if obj is not None:
-        previous_ipo = obj.getIpo()
-        obj.setIpo(ori_ipo)
-        bakeFrames(obj, baked)
-        obj.setIpo(previous_ipo)
-
-    if dummy_object:
-        bpy.data.scenes.active.objects.unlink(dummy_object)
-        
-    return baked
-
-def getBakedAction(armatureObject, action , sample_rate = 25):
-    """
-        Bakes supplied action for supplied armature.
-        Returns baked action.
-    """
-    pose = armatureObject.getPose()
-    armature_data = armatureObject.getData();
-    pose_bones = pose.bones.values()
-    rest_bones = armature_data.bones
-
-    POSE_XFORM = [Blender.Object.Pose.LOC, Blender.Object.Pose.ROT, Blender.Object.Pose.SIZE ]
-    #POSE_XFORM= [Object.Pose.LOC,Object.Pose.ROT,Object.Pose.SIZE]
- 
-    blender_fps = 25
-    if sample_rate > blender_fps:
-        sample_rate = blender_fps
-    step = blender_fps / sample_rate
-    
-    startFrame= min(action.getFrameNumbers());
-    endFrame= max(action.getFrameNumbers());
- 
-       
-    dummy_action_name = "_" + action.name
-    # Get the dummy action if it has no users
-    try:
-        baked_action = bpy.data.actions[dummy_action_name]
-    except:
-        baked_action = None
-    
-    if not baked_action:
-        baked_action          = bpy.data.actions.new(dummy_action_name)
-        baked_action.fakeUser = False
-    for channel in baked_action.getChannelNames():
-        baked_action.removeChannel(channel)
-    
-    old_quats={}
-    old_locs={}
-    old_sizes={}
-    
-    baked_locs={}
-    baked_quats={}
-    baked_sizes={}
-    
-    action.setActive(armatureObject)
-    frames = range(startFrame, endFrame+1, int(step))
-    if frames[-1:] != endFrame :
-        frames.append(endFrame)
-    for current_frame in frames:
-
-        Blender.Set('curframe', current_frame)
-        for i in range(len(pose_bones)):
-            
-            bone_name=pose_bones[i].name;
-
-            rest_bone=rest_bones[bone_name]
-            matrix = Matrix(pose_bones[i].poseMatrix)
-            rest_matrix= Matrix(rest_bone.matrix['ARMATURESPACE'])
-            
-            parent_bone=rest_bone.parent
-
-            if parent_bone:
-                parent_pose_bone=pose.bones[parent_bone.name]
-                matrix=matrix * Matrix(parent_pose_bone.poseMatrix).invert()
-                rest_matrix=rest_matrix * Matrix(parent_bone.matrix['ARMATURESPACE']).invert()
-            
-            #print "before\n", matrix
-            #print "before quat\n", pose_bones[i].quat;
-                
-            #print "localised pose matrix\n", matrix
-            #print "localised rest matrix\n", rest_matrix
-            matrix=matrix * Matrix(rest_matrix).invert()
-                
-                
-            old_quats[bone_name] = Quaternion(pose_bones[i].quat);
-            old_locs[bone_name] = Vector(pose_bones[i].loc);
-            old_sizes[bone_name] = Vector(pose_bones[i].size);
-            
-            baked_locs[bone_name] = Vector(matrix.translationPart())
-            baked_quats[bone_name] = Quaternion(matrix.toQuat())
-            baked_sizes[bone_name] = Vector(matrix.scalePart())
-
-        baked_action.setActive(armatureObject)
-        Blender.Set('curframe', current_frame)
-        for i in range(len(pose_bones)):
-            pose_bones[i].quat = baked_quats[pose_bones[i].name]
-            pose_bones[i].loc = baked_locs[pose_bones[i].name]
-            pose_bones[i].size = baked_sizes[pose_bones[i].name]
-            pose_bones[i].insertKey(armatureObject, current_frame, POSE_XFORM)
-            
-        action.setActive(armatureObject)
-        Blender.Set('curframe', current_frame)
-
-        for name, quat in old_quats.iteritems():
-            pose.bones[name].quat=quat
-            
-        for name, loc in old_locs.iteritems():
-            pose.bones[name].loc=loc
-            
-        
-    pose.update()
-    return baked_action
-
-def getBakedAction3(ob_arm, action, sample_rate):
-        #print "test ob action enter ", ob_arm.action
-        blender_fps = 25
-	if sample_rate > blender_fps:
-		sample_rate = blender_fps
-
-	step = blender_fps / sample_rate
-
-	frames      = action.getFrameNumbers()
-	start_frame = min(frames)
-	end_frame   = max(frames)
-	'''
-	If you are currently getting IPO's this function can be used to
-	return a list of frame aligned bone dictionary's
-	
-	The data in these can be swaped in for the IPO loc and quat
-	
-	If you want to bake an action, this is not as hard and the ipo hack can be removed.
-	'''
-	
-	# --------------------------------- Dummy Action! Only for this functon
-	backup_action     = ob_arm.action
-	backup_frame      = Blender.Get('curframe')
-	DUMMY_ACTION_NAME = action.name + "_baked"
-
-	# Get the dummy action if it has no users
-	try:
-		new_action = bpy.data.actions[DUMMY_ACTION_NAME]
-	except:
-		new_action = None
-	
-	if not new_action:
-		new_action          = bpy.data.actions.new(DUMMY_ACTION_NAME)
-		new_action.fakeUser = False
-
-	POSE_XFORM = [Blender.Object.Pose.LOC, Blender.Object.Pose.ROT, Blender.Object.Pose.SIZE ]
-	
-	# Each dict a frame
-	bake_data = [{} for i in xrange(1+end_frame-start_frame)]
-	pose          = ob_arm.getPose()
-	armature_data = ob_arm.getData()
-	pose_bones    = pose.bones
-	
-	# --------------------------------- Build a list of arma data for reuse
-	armature_bone_data = []
-	bones_index        = {}
-
-	for bone_name, rest_bone in armature_data.bones.items():
-		pose_bone       = pose_bones[bone_name]
-		rest_matrix     = rest_bone.matrix['ARMATURESPACE']
-		rest_matrix_inv = rest_matrix.copy().invert()
-
-		armature_bone_data.append([len(bones_index), -1, bone_name, rest_bone, rest_matrix, rest_matrix_inv, pose_bone, None])
-		
-		bones_index[bone_name] = len(bones_index)
-	
-	# Set the parent ID's
-	for bone_name, pose_bone in pose_bones.items():
-		parent = pose_bone.parent
-
-		if parent:
-			bone_index   = bones_index[bone_name]
-			parent_index = bones_index[parent.name]
-
-			armature_bone_data[bone_index][1] = parent_index
-	
-	# --------------------------------- Main loop to collect IPO data
-	frame_index = 0
-	
-	for current_frame in xrange(start_frame, end_frame + 1):
-		ob_arm.action = action
-		Blender.Set('curframe', current_frame)
-		ob_arm.action = new_action
-		
-		for index, parent_index, bone_name, rest_bone, rest_matrix, rest_matrix_inv, pose_bone, ipo in armature_bone_data:
-			matrix      = pose_bone.poseMatrix
-			parent_bone = rest_bone.parent
-			
-			if parent_index != -1:
-				parent_pose_matrix     = armature_bone_data[parent_index][6].poseMatrix
-				parent_bone_matrix_inv = armature_bone_data[parent_index][5]
-				matrix                 = matrix * parent_pose_matrix.copy().invert()
-				rest_matrix            = rest_matrix * parent_bone_matrix_inv
-			
-			matrix=matrix * rest_matrix.copy().invert()
-			
-			pose_bone.quat = matrix.toQuat()
-			pose_bone.loc  = matrix.translationPart()
-			pose_bone.size  = matrix.scalePart()
-
-			# create a full new action
-			pose_bone.insertKey(ob_arm, int(frame_index + 1), POSE_XFORM)
-		frame_index += step
-	
-	ob_arm.action = backup_action
-	Blender.Set('curframe', backup_frame)
-
-        # if no action was previously set
-        # then we put the pose in a rest position to avoid bad matrix when exporting
-        # object
-        if ob_arm.action is None:
-                for bone_name, rest_bone in ob_arm.getPose().bones.items():
-                        rest_bone.quat = Quaternion()
-                        rest_bone.loc = Vector(0,0,0)
-                        rest_bone.size = Vector(1,1,1)
-                ob_arm.getPose().update()
-        
-        #print "test ob action leave ", ob_arm.action
-	return new_action
-
 class Export(object):
     def __init__(self, config = None):
         object.__init__(self)
@@ -688,7 +182,8 @@ class Export(object):
 
         if obj.getIpo():
             anim = None
-            anim = self.createAnimationFromIpo(obj.getIpo(), obj.getName())
+            ipo2animation = BlenderIpoOrActionToAnimation(ipo = obj.getIpo(), config = self.config)
+            anim = ipo2animation.createAnimationFromIpo(obj.getName())
             self.animations[anim.name] = anim
 
             update_callback = UpdateTransform()
@@ -803,32 +298,11 @@ class Export(object):
                 if action.getName().find("_baked",-len("_baked")) is not -1:
                         continue
                 if isActionLinkedToObject(action, posbones.keys()) is True:
-                    anim = self.createAnimationFromAction(action)
+                    action2animation = BlenderIpoOrActionToAnimation(action = action, config = self.config)
+                    anim = action2animation.createAnimationFromAction()
                     if anim is not None:
                         self.animations[anim.name] = anim
         return skeleton
-
-    def createAnimationFromAction(self, action):
-        # check if it's already a baked action (if yes we skip it)
-        if action.getName().find("_baked",-len("_baked")) is not -1:
-            return None
-
-        action_name = action.getName()
-        armature = findArmatureObjectForAction(action)
-        if armature is not None and self.config.anim_bake.lower() == "force":
-            action = getBakedAction(armature, action, self.config.anim_fps)
-
-        animation = Animation()
-        animation.setName(action_name)
-        for obj_name, ipo in action.getAllChannelIpos().items():
-            # TODO: I'm not sure what's going on here? :)
-            # It means it's an solid object animation.
-            if obj_name == 'Object':
-                log("WARNING dont support Object Action export (%s)" % action_name)
-                return None
-
-            self.convertIpoToAnimation(obj_name, animation, ipo)
-        return animation
 
     def createAnimationsFromList(self, animation_list):
         if DEBUG: debug("create animation from list %s" % (str(animation_list)))
@@ -836,39 +310,18 @@ class Export(object):
         for anim in animation_list:
             res = None
             if len(list(bpy.data.ipos)) and type(anim) is type(list(bpy.data.ipos)[0]):
-                res = self.createAnimationFromIpo(anim)
+                ipo2animation = BlenderIpoOrActionToAnimation(ipo = anim, config = self.config)
+                res = ipo2animation.createAnimationFromIpo()
+
             elif len(list(bpy.data.actions)) and type(anim) is type(list(bpy.data.actions)[0]):
-                res = self.createAnimationFromAction(anim)
+                action2animation = BlenderIpoOrActionToAnimation(action = anim, config = self.config)
+                res = action2animation.createAnimationFromAction()
             if res is not None:
                 if DEBUG: debug("animation \"%s\" created" % (res.name))
                 self.animations[res.name] = res
             else:
                 log("WARNING can't create animation from %s" % anim)
                 
-        
-
-    def createAnimationFromIpo(self, ipo, name = None):
-        if name is None:
-            name = "unknown"
-        ipos_baked = ipo
-        if self.config.anim_bake.lower() == "force":
-            obj = findObjectForIpo(ipo)
-            ipos_baked = getBakedIpos(obj, ipo, self.config.anim_fps)
-        animation = Animation()
-        animation.setName(ipo.name + "_ipo")
-        self.convertIpoToAnimation(name, animation, ipos_baked)
-        return animation
-
-    def convertIpoToAnimation(self, name, ani, ipo):
-        if not ipo:
-            ipo = []
-        # Or we could call the other "type" here.
-        channels = exportKeyframeSplitRotationTranslationScale(ipo, self.config.anim_fps)
-        for i in channels:
-            i.target = name
-            ani.channels.append(i)
-
-
     def process(self):
         initReferenceCount()
         self.scene_name = bpy.data.scenes.active.name
@@ -994,6 +447,7 @@ class Export(object):
         self.lights[lightsource.name] = lightsource # will be used to index lightnum at the end
         return lightsource
 
+
 class BlenderLightToLightSource(object):
     def __init__(self, *args, **kwargs):
         self.object = kwargs["lamp"]
@@ -1048,7 +502,6 @@ class BlenderObjectToGeometry(object):
         if DEBUG: debug("geometry uvs %s" % (str(uvs)))
         geom.uvs = {}
         if len(mesh.materials) > 0:
-            # support only one material by mesh right now
             mat_source = mesh.materials[index_material]
             if mat_source is not None:
                 m = Material()
@@ -1429,3 +882,211 @@ class BlenderObjectToRigGeometry(BlenderObjectToGeometry):
     def __init__(self, *args, **kwargs):
         BlenderObjectToGeometry.__init__(self, *args, **kwargs)
         self.geom_type = RigGeometry
+
+
+class BlenderIpoOrActionToAnimation(object):
+
+    def __init__(self, *args, **kwargs):
+        self.ipos = kwargs.get("ipo", None)
+        self.action = kwargs.get("action", None)
+        self.config = kwargs["config"]
+        self.animation = None
+
+    def getTypeOfIpo(self, ipo):
+        try:
+            ipo.curveConsts['MAT_R']
+            return "Material"
+        except:
+            pass
+
+        try:
+            ipo.curveConsts['OB_LOCX']
+            return "Object"
+        except:
+            pass
+        return None
+
+    def createAnimationFromIpo(self, name = None):
+        ipo = self.ipos
+        if name is None:
+            name = "unknown"
+        ipos_baked = ipo
+        if self.config.anim_bake.lower() == "force":
+            ipotype = self.getTypeOfIpo(ipo)
+            if ipotype == "Object":
+                obj = findObjectForIpo(ipo)
+                baker = BakeIpoForObject(object = obj, ipo = ipo, config = None)
+                ipos_baked = baker.getBakedIpos()
+            elif ipotype == "Material":
+                mat = findMaterialForIpo(ipo)
+                baker = BakeIpoForMaterial(material = mat, ipo = ipo, config = None)
+                ipos_baked = baker.getBakedIpos()
+            else:
+                log("WARNING dont know ipo type %s" % ipo.getName())
+        animation = Animation()
+        animation.setName(ipo.name + "_ipo")
+        self.convertIpoToAnimation(name, animation, ipos_baked)
+        self.animation = animation
+        return animation
+
+    def createAnimationFromAction(self):
+        action = self.action
+        # check if it's already a baked action (if yes we skip it)
+        if action.getName().find("_baked",-len("_baked")) is not -1:
+            return None
+
+        action_name = action.getName()
+        armature = findArmatureObjectForAction(action)
+        if armature is not None and self.config.anim_bake.lower() == "force":
+            baker = BakeAction(armature = armature, action = action, config = self.config)
+            action = baker.getBakedAction()
+
+        animation = Animation()
+        animation.setName(action_name)
+        for obj_name, ipo in action.getAllChannelIpos().items():
+            # TODO: I'm not sure what's going on here? :)
+            # It means it's an solid object animation.
+            if obj_name == 'Object':
+                log("WARNING dont support Object Action export (%s)" % action_name)
+                return None
+
+            self.convertIpoToAnimation(obj_name, animation, ipo)
+        self.animation = animation
+        return animation
+
+    def convertIpoToAnimation(self, name, ani, ipo):
+        if not ipo:
+            ipo = []
+        # Or we could call the other "type" here.
+        channels = self.exportKeyframeSplitRotationTranslationScale(ipo, self.config.anim_fps)
+        for i in channels:
+            i.target = name
+            ani.channels.append(i)
+
+    def exportKeyframeSplitRotationTranslationScale(self, ipo, fps):
+        SUPPORTED_IPOS = (
+            'RotX', 'RotY', 'RotZ',
+            'QuatW', 'QuatX', 'QuatY', 'QuatZ',
+            'LocX', 'LocY', 'LocZ',
+            'ScaleX', 'ScaleY', 'ScaleZ'
+            'R', 'G', 'B', 'Alpha'
+            )
+
+        channels         = []
+        channel_times    = {'Rotation': set(), 'Translation': set(), 'Scale': set(), 'Color' : set() }
+        channel_names    = {'Rotation': 'rotation', 'Translation': 'position', 'Scale': 'scale', 'Color' : 'color'}
+        channel_samplers = {'Rotation': None, 'Translation': None, 'Scale': None, 'Color' : None}
+        channel_ipos     = {'Rotation': [], 'Translation': [], 'Scale': [], 'Color': []}
+        duration = 0
+
+        for curve in ipo:
+            if curve.name not in SUPPORTED_IPOS:
+                continue
+
+            elif curve.name[ : 3] == "Rot" or curve.name[ : 4] == "Quat":
+                times = channel_times['Rotation']
+                channel_ipos['Rotation'].append(curve)
+
+            elif curve.name[ : 3] == "Loc":
+                times = channel_times['Translation']
+                channel_ipos['Translation'].append(curve)
+
+            elif curve.name[ : 5] == "Scale":
+                times = channel_times['Scale']
+                channel_ipos['Scale'].append(curve)
+
+            for p in curve.bezierPoints:
+                times.add(p.pt[0])
+
+        for key in channel_times.iterkeys():
+            time = list(channel_times[key])
+            time.sort()
+            channel_times[key] = time
+
+            if len(time) > 0:
+                channel_samplers[key] = Channel()
+
+        for key in channel_times.iterkeys():
+            if channel_samplers[key] is None:
+                continue
+
+            times = channel_times[key]
+
+            for time in times:
+                realtime = (time - 1) / fps
+
+                if realtime > duration:
+                    duration = realtime
+
+                trans = Vector()
+                quat  = Quaternion()
+                scale = Vector()
+                rot   = Euler()
+                rtype = None
+
+                            # I know this can be cleaned up...
+                for curve in channel_ipos[key]:
+                    val       = curve[time]
+                    bezPoints = curve.bezierPoints
+
+                    if curve.name == 'LocX':
+                        trans[0] = val
+                    elif curve.name == 'LocY':
+                        trans[1] = val
+                    elif curve.name == 'LocZ':
+                        trans[2] = val
+                    elif curve.name == 'QuatW':
+                        quat.w = val
+                        rtype  = "Quat"
+                    elif curve.name == 'QuatX':
+                        quat.x = val
+                        rtype  = "Quat"
+                    elif curve.name == 'QuatY':
+                        quat.y = val
+                        rtype  = "Quat"
+                    elif curve.name == 'QuatZ':
+                        quat.z = val
+                        rtype  = "Quat"
+                    elif curve.name == 'ScaleX':
+                        scale[0] = val
+                    elif curve.name == 'ScaleY':
+                        scale[1] = val
+                    elif curve.name == 'ScaleZ':
+                        scale[2] = val
+                    elif curve.name == 'RotX':
+                        rot.x = val * 10
+                        rtype = "Euler"
+                    elif curve.name == 'RotY':
+                        rot.y = val * 10
+                        rtype = "Euler"
+                    elif curve.name == 'RotZ':
+                        rot.z = val * 10
+                        rtype = "Euler"
+                    else:
+                        continue
+
+                if key == 'Scale':
+                    channel_samplers[key].keys.append((realtime, scale[0], scale[1], scale[2]))
+                    channel_samplers[key].type = "Vec3"
+                    channel_samplers[key].setName("scale")
+
+                elif key == 'Rotation':
+                    if rtype == "Quat":
+                        quat.normalize()
+                        channel_samplers[key].keys.append((realtime, quat.x, quat.y, quat.z, quat.w))
+                        channel_samplers[key].type = "Quat"
+                        channel_samplers[key].setName("quaternion")
+
+                    elif rtype == "Euler":
+                        channel_samplers[key].keys.append((realtime, math.radians(rot.x)  , math.radians(rot.y), math.radians(rot.z) ))
+                        channel_samplers[key].type = "Vec3"
+                        channel_samplers[key].setName("euler")
+
+                elif key == 'Translation':
+                    channel_samplers[key].keys.append((realtime, trans[0], trans[1], trans[2]))
+                    channel_samplers[key].type = "Vec3"
+                    channel_samplers[key].setName("position")
+
+            channels.append(channel_samplers[key])
+            #print channel_samplers[key]
+        return channels
