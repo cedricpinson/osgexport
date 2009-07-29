@@ -1,3 +1,4 @@
+# -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
 # Copyright (C) 2008 Cedric Pinson, Jeremy Moles
 #
 # This program is free software; you can redistribute it and/or modify

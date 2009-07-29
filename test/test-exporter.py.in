@@ -52,7 +52,7 @@ def close(a, b, threshold):
 class Exporter(unittest.TestCase):
     # ------------------------------------------------------
     def setUp(self):
-        osg.osgobject.initReferenceCount()
+        osg.osgobject.Object.resetWriter()
 
     def tearDown(self):
         pass

@@ -1,4 +1,5 @@
 #!BPY
+# -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
 # Copyright (C) 2008 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
@@ -16,7 +17,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.net>
 #
 
 """
@@ -43,24 +44,22 @@ __email__   = osg.EMAIL
 __url__     = osg.URL
 __bpydoc__  = osg.DOC
 
-def AnimTKExport(config=None):
-	export = osg.osgdata.Export(config)
-
-	print "....................", config.filename
-
-	export.process()
-	export.write()
+def OpenSceneGraphExport(config=None):
+    export = osg.osgdata.Export(config)
+    print "....................", config.filename
+    export.process()
+    export.write()
 
 if __name__ == "__main__":
-	# If the user wants to run in "batch" mode, assume that ParseArgs
-	# will correctly set atkconf data and go.
-        config = osg.parseArgs(sys.argv)
-	
-	if config:
-		AnimTKExport(config)
-		Blender.Quit()
+    # If the user wants to run in "batch" mode, assume that ParseArgs
+    # will correctly set atkconf data and go.
+    config = osg.parseArgs(sys.argv)
+    
+    if config:
+        OpenSceneGraphExport(config)
+        Blender.Quit()
 
 	# Otherwise, let the atkcgui module take over.
-	else:
-		gui = osg.osggui.AnimTKGUI(AnimTKExport)
-		gui.Register()
+    else:
+        gui = osg.osggui.OSGGUI(OpenSceneGraphExport)
+        gui.Register()

@@ -32,12 +32,6 @@ CONCAT    = lambda s, j="": j.join(str(v) for v in s)
 STRFLT    = lambda f: "%%.%df" % FLOATPRE % float(f)
 INDENT    = 2
 
-OBJECT_COUNTER = 0
-
-def initReferenceCount():
-    global OBJECT_COUNTER
-    OBJECT_COUNTER = 0
-
 
 def findObject(name, root):
     if root.name == name:
@@ -58,7 +52,8 @@ class Writer(object):
 
     def __repr__(self):
         ret = ""
-        text = self.ascii().replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
+#        text = self.ascii().replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
+        text = Object.writeInstanceOrUseIt(self).replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
         return ret + text
 
     def __str__(self):
@@ -74,13 +69,28 @@ class ShadowObject(Writer):
         return text
 
 class Object(Writer):
+    instances = {}
+    wrote_elements = {}
+    
     def __init__(self, *args, **kwargs):
         Writer.__init__(self, *args, **kwargs)
         self.dataVariance = "UNKNOWN"
         self.name = "None"
-        global OBJECT_COUNTER
-        self.counter = OBJECT_COUNTER
-        OBJECT_COUNTER += 1
+        self.counter = len(Object.instances)
+        Object.instances[self] = True
+
+    @staticmethod
+    def resetWriter():
+        Object.instances = {}
+        wrote_elements = {}
+
+    @staticmethod
+    def writeInstanceOrUseIt(obj):
+        if Object.wrote_elements.has_key(obj):
+            shadow_object = ShadowObject(obj)
+            return shadow_object.ascii()
+        Object.wrote_elements[obj] = True
+        return obj.ascii()
 
     def generateID(self):
         return "uniqid_" + self.className() + "_" + str(self.counter)
@@ -108,6 +118,19 @@ class UpdateTransform(Object):
 
     def className(self):
         return "UpdateTransform"
+
+    def ascii(self):
+        text = "$osgAnimation::%s {\n" % self.className()
+        text += Object.printContent(self)
+        text += "$}\n"
+        return text
+
+class UpdateMaterial(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+
+    def className(self):
+        return "UpdateMaterial"
 
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
@@ -257,12 +280,19 @@ class MatrixTransform(Group):
 class StateAttribute(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
+        self.update_callbacks = []
 
     def className(self):
         return "StateAttribute"
 
     def printContent(self):
         text = Object.printContent(self)
+        if len(self.update_callbacks) > 0:
+            text += "$#UpdateCallbacks {\n"
+            for i in self.update_callbacks:
+                i.indent_level = self.indent_level + 2
+                text += str(i)
+            text += "$#}\n"
         return text
 
 class StateTextureAttribute(StateAttribute):
@@ -847,7 +877,7 @@ class Channel(Object):
         return "Channel"
 
     def ascii(self):
-        text = "$Channel {\n"
+        text = "$%s {\n" % self.type
         text += self.printContent()
         text += "$}\n"
         return text
@@ -855,7 +885,7 @@ class Channel(Object):
     def printContent(self):
         text = "$#name \"%s\"\n" % self.name
         text += "$#target \"%s\"\n" % self.target
-        text += "$#Keyframes \"%s\" %s {\n" % (self.type, len(self.keys))
+        text += "$#Keyframes %s {\n" % (len(self.keys))
         for i in self.keys:
             text += "$##key"
             for a in range(0, len(i)):

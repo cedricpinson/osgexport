@@ -55,6 +55,7 @@ Euler      = Blender.Mathutils.Euler
 
 def getImageFilesFromStateSet(stateset):
     list = []
+    if DEBUG: debug("stateset %s" % str(stateset))
     if stateset is not None and len(stateset.texture_attributes) > 0:
         for unit, attributes in stateset.texture_attributes.items():
             for a in attributes:
@@ -141,6 +142,46 @@ def findObjectForIpo(ipo):
             return o
     return None
 
+def findMaterialForIpo(ipo):
+    index = ipo.name.rfind('-')
+    if index != -1:
+        objname = ipo.name[index+1:]
+        try:
+            obj = bpy.data.materials[objname]
+            log("bake ipo %s to material %s" % (ipo.name, objname))
+            return obj
+        except:
+            return None
+
+    for o in bpy.data.materials:
+        if o.getIpo() == ipo:
+            log("bake ipo %s to material %s" % (ipo.name, o.name))
+            return o
+    return None
+
+def createAnimationGenericObject(osg_object, blender_object, config, UpdateCallback):
+    if config.export_anim is not True:
+        return None
+
+    ipo = blender_object.getIpo()
+    if ipo:
+        anim = None
+        ipo2animation = BlenderIpoOrActionToAnimation(ipo = ipo, config = config)
+        anim = ipo2animation.createAnimationFromIpo(blender_object.getName())
+
+        update_callback = UpdateCallback()
+        update_callback.setName(osg_object.name)
+        osg_object.update_callbacks.append(update_callback)
+        return anim
+    return None
+
+def createAnimationObjectAndSetCallback(osg_node, obj, config):
+    return createAnimationGenericObject(osg_node, obj, config, UpdateTransform)
+
+def createAnimationMaterialAndSetCallback(osg_node, obj, config):
+    return createAnimationGenericObject(osg_node, obj, config, UpdateMaterial)
+
+
 class Export(object):
     def __init__(self, config = None):
         object.__init__(self)
@@ -154,6 +195,7 @@ class Export(object):
         self.lights = {}
         self.root = None
         self.uniq_objects = {}
+        self.uniq_stateset = {}
 
     def setArmatureInRestMode(self):
         for arm in bpy.data.objects:
@@ -176,7 +218,7 @@ class Export(object):
         if item is not None:
             self.items.append(item)
 
-    def createAnimationIpo(self, osg_node, obj):
+    def createAnimationObject(self, osg_node, obj):
         if self.config.export_anim is not True:
             return
 
@@ -205,11 +247,14 @@ class Export(object):
         item = None
         if self.uniq_objects.has_key(obj):
             log(str("use referenced item for " + obj.getName() + " " + obj.getType()))
-            item = ShadowObject(self.uniq_objects[obj])
+            item = self.uniq_objects[obj] #ShadowObject(self.uniq_objects[obj])
         else:
             if obj.getType() == "Armature":
                 item = self.createSkeletonAndAnimations(obj)
-                self.createAnimationIpo(item, obj)
+                anim = createAnimationObjectAndSetCallback(item, obj, self.config)
+                if anim : 
+                    self.animations[anim.name] = anim
+
             elif obj.getType() == "Mesh":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
                 # matrix for our use. Not if an armature we force it to be in rest position to compute
@@ -219,7 +264,11 @@ class Export(object):
                 item.setName(obj.getName())
                 item.matrix = matrix
                 objectItem = self.createMesh(obj)
-                self.createAnimationIpo(item, obj)
+
+                anim = createAnimationObjectAndSetCallback(item, obj, self.config)
+                if anim : 
+                    self.animations[anim.name] = anim
+
                 item.children.append(objectItem)
             elif obj.getType() == "Lamp":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
@@ -230,7 +279,10 @@ class Export(object):
                 item.setName(obj.getName())
                 item.matrix = matrix
                 lightItem = self.createLight(obj)
-                self.createAnimationIpo(item, obj)
+                anim = createAnimationObjectAndSetCallback(item, obj, self.config)
+                if anim : 
+                    self.animations[anim.name] = anim
+
                 item.children.append(lightItem)
             elif obj.getType() == "Empty":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
@@ -240,7 +292,9 @@ class Export(object):
                 item = MatrixTransform()
                 item.setName(obj.getName())
                 item.matrix = matrix
-                self.createAnimationIpo(item, obj)
+                anim = createAnimationObjectAndSetCallback(item, obj, self.config)
+                if anim : 
+                    self.animations[anim.name] = anim
                 self.evaluateGroup(obj, item, rootItem)
             else:
                 log(str("WARNING " + obj.getName() + " " + obj.getType() + " not exported"))
@@ -323,7 +377,7 @@ class Export(object):
                 log("WARNING can't create animation from %s" % anim)
                 
     def process(self):
-        initReferenceCount()
+        Object.resetWriter()
         self.scene_name = bpy.data.scenes.active.name
         if self.config.validFilename() is False:
             self.config.filename += self.scene_name
@@ -379,7 +433,12 @@ class Export(object):
                 key = "GL_LIGHT%s" % light_num
                 st.modes[key] = "ON"
                 light_num += 1
-        
+
+        for key in self.uniq_stateset.iterkeys():
+            if self.uniq_stateset[key] is not None: # register images to unpack them at the end
+                images = getImageFilesFromStateSet(self.uniq_stateset[key])
+                for i in images:
+                    self.images.add(i)
 
     def write(self):
         if len(self.items) == 0:
@@ -427,18 +486,16 @@ class Export(object):
 
         geometries = []
         if exportInfluence is False or hasVertexGroup is False:
-            converter = BlenderObjectToGeometry(object = mesh)
+            converter = BlenderObjectToGeometry(object = mesh, config = self.config, uniq_stateset = self.uniq_stateset)
             geometries = converter.convert()
         else:
-            converter = BlenderObjectToRigGeometry(object = mesh)
+            converter = BlenderObjectToRigGeometry(object = mesh, config = self.config, uniq_stateset = self.uniq_stateset)
             geometries = converter.convert()
         if len(geometries) > 0:
             for geom in geometries:
-                if geom.stateset is not None: # register images to unpack them at the end
-                    images = getImageFilesFromStateSet(geom.stateset)
-                    for i in images:
-                        self.images.add(i)
                 geode.drawables.append(geom)
+            for name in converter.material_animations.iterkeys():
+                self.animations[name] = converter.material_animations[name]
         return geode
 
     def createLight(self, obj):
@@ -481,8 +538,11 @@ class BlenderLightToLightSource(object):
 class BlenderObjectToGeometry(object):
     def __init__(self, *args, **kwargs):
         self.object = kwargs["object"]
+        self.config = kwargs.get("config", osgconf.Config())
+        self.uniq_stateset = kwargs.get("uniq_stateset", {})
         self.geom_type = Geometry
         self.mesh = self.object.getData(False, True)
+        self.material_animations = {}
 
     def createTexture2D(self, mtex):
         image_object = mtex.tex.getImage()
@@ -496,16 +556,66 @@ class BlenderObjectToGeometry(object):
         texture.source_image = image_object
         return texture
 
-    def createStateSet(self, index_material, mesh, geom):
-        s = StateSet()
+    def adjustUVLayerFromMaterial(self, geom, material):
         uvs = geom.uvs
         if DEBUG: debug("geometry uvs %s" % (str(uvs)))
         geom.uvs = {}
+
+        texture_list = material.getTextures()
+        if DEBUG: debug("texture list %s" % str(texture_list))
+
+        # find a default channel if exist uv
+        default_uv = None
+        default_uv_key = None
+        if (len(uvs)) == 1:
+            default_uv_key = uvs.keys()[0]
+            default_uv = uvs[default_uv_key]
+
+        for i in range(0, len(texture_list)):
+            if texture_list[i] is not None:
+                uv_layer =  texture_list[i].uvlayer
+
+                if len(uv_layer) > 0 and not uvs.has_key(uv_layer):
+                    log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (mat_source.getName(), texture_list[i], uv_layer, geom.name))
+                if len(uv_layer) > 0 and uvs.has_key(uv_layer):
+                    if DEBUG: debug("texture %s use uv layer %s" % (i, uv_layer))
+                    geom.uvs[i] = TexCoordArray()
+                    geom.uvs[i].array = uvs[uv_layer].array
+                    geom.uvs[i].index = i
+                elif default_uv:
+                    if DEBUG: debug("texture %s use default uv layer %s" % (i, default_uv_key))
+                    geom.uvs[i] = TexCoordArray()
+                    geom.uvs[i].index = i
+                    geom.uvs[i].array = default_uv.array
+
+        # adjust uvs channels if no textures assigned
+        if len(geom.uvs.keys()) == 0:
+            if DEBUG: debug("no texture set, adjust uvs channels, in arbitrary order")
+            index = 0
+            for k in uvs.keys():
+                uvs[k].index = index
+                index += 1
+            geom.uvs = uvs
+        return
+
+    def createStateSet(self, index_material, mesh, geom):
+        s = StateSet()
         if len(mesh.materials) > 0:
             mat_source = mesh.materials[index_material]
+            if self.uniq_stateset.has_key(mat_source):
+                #s = ShadowObject(self.uniq_stateset[mat_source])
+                s = self.uniq_stateset[mat_source]
+                return s
+
             if mat_source is not None:
+                self.uniq_stateset[mat_source] = s
                 m = Material()
+                m.setName(mat_source.getName())
                 s.setName(mat_source.getName())
+
+                anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config)
+                if anim :
+                    self.material_animations[anim.name] = anim
 
                 mode = mat_source.getMode()
                 if mode & Blender.Material.Modes['SHADELESS']:
@@ -534,13 +644,6 @@ class BlenderObjectToGeometry(object):
                 texture_list = mat_source.getTextures()
                 if DEBUG: debug("texture list %s" % str(texture_list))
 
-                # find a default channel if exist uv
-                default_uv = None
-                default_uv_key = None
-                if (len(uvs)) == 1:
-                    default_uv_key = uvs.keys()[0]
-                    default_uv = uvs[default_uv_key]
-                
                 for i in range(0, len(texture_list)):
                     if texture_list[i] is not None:
                         t = self.createTexture2D(texture_list[i])
@@ -548,20 +651,6 @@ class BlenderObjectToGeometry(object):
                         if t is not None:
                             if not s.texture_attributes.has_key(i):
                                 s.texture_attributes[i] = []
-                            uv_layer =  texture_list[i].uvlayer
-                            if len(uv_layer) > 0 and not uvs.has_key(uv_layer):
-                                log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (mat_source.getName(), t.name, uv_layer, geom.name))
-                            if len(uv_layer) > 0 and uvs.has_key(uv_layer):
-                                if DEBUG: debug("texture %s use uv layer %s" % (i, uv_layer))
-                                geom.uvs[i] = TexCoordArray()
-                                geom.uvs[i].array = uvs[uv_layer].array
-                                geom.uvs[i].index = i
-                            elif default_uv:
-                                if DEBUG: debug("texture %s use default uv layer %s" % (i, default_uv_key))
-                                geom.uvs[i] = TexCoordArray()
-                                geom.uvs[i].index = i
-                                geom.uvs[i].array = default_uv.array
-                                
                             s.texture_attributes[i].append(t)
                             try:
                                 if t.source_image.getDepth() > 24: # there is an alpha
@@ -569,15 +658,6 @@ class BlenderObjectToGeometry(object):
                             except:
                                 log("can't read the source image file for texture %s" % t)
                 if DEBUG: debug("state set %s" % str(s))
-
-        # adjust uvs channels if no textures assigned
-        if len(geom.uvs.keys()) == 0:
-            if DEBUG: debug("no texture set, adjust uvs channels, in arbitrary order")
-            index = 0
-            for k in uvs.keys():
-                uvs[k].index = index
-                index += 1
-            geom.uvs = uvs
         return s
 
     def equalVertices(self, vert1, vert2, vertexes, normals, colors, uvs):
@@ -852,6 +932,9 @@ class BlenderObjectToGeometry(object):
         geom.setName(self.object.getName())
         geom.stateset = self.createStateSet(material_index, mesh, geom)
 
+        if len(mesh.materials) > 0 and mesh.materials[material_index] is not None:
+            self.adjustUVLayerFromMaterial(geom, mesh.materials[material_index])
+
         end_title = '-' * len(title)
         log(end_title)
         return geom
@@ -890,11 +973,12 @@ class BlenderIpoOrActionToAnimation(object):
         self.ipos = kwargs.get("ipo", None)
         self.action = kwargs.get("action", None)
         self.config = kwargs["config"]
+        self.object = kwargs.get("object", None)
         self.animation = None
 
     def getTypeOfIpo(self, ipo):
         try:
-            ipo.curveConsts['MAT_R']
+            ipo.curveConsts['MA_R']
             return "Material"
         except:
             pass
@@ -954,21 +1038,21 @@ class BlenderIpoOrActionToAnimation(object):
         self.animation = animation
         return animation
 
-    def convertIpoToAnimation(self, name, ani, ipo):
+    def convertIpoToAnimation(self, name, anim, ipo):
         if not ipo:
             ipo = []
         # Or we could call the other "type" here.
         channels = self.exportKeyframeSplitRotationTranslationScale(ipo, self.config.anim_fps)
         for i in channels:
             i.target = name
-            ani.channels.append(i)
+            anim.channels.append(i)
 
     def exportKeyframeSplitRotationTranslationScale(self, ipo, fps):
         SUPPORTED_IPOS = (
             'RotX', 'RotY', 'RotZ',
             'QuatW', 'QuatX', 'QuatY', 'QuatZ',
             'LocX', 'LocY', 'LocZ',
-            'ScaleX', 'ScaleY', 'ScaleZ'
+            'ScaleX', 'ScaleY', 'ScaleZ',
             'R', 'G', 'B', 'Alpha'
             )
 
@@ -980,24 +1064,31 @@ class BlenderIpoOrActionToAnimation(object):
         duration = 0
 
         for curve in ipo:
+            if DEBUG: debug("ipo %s curve %s with %s keys" % (ipo.getName(), curve.name, len(curve.bezierPoints)))
             if curve.name not in SUPPORTED_IPOS:
+                if DEBUG: debug("ipo %s curve %s not supported" % (ipo.getName(), curve.name))
                 continue
 
-            elif curve.name[ : 3] == "Rot" or curve.name[ : 4] == "Quat":
+            elif curve.name == "RotX" or curve.name == "RotY" or curve.name == "RotZ" or curve.name == "QuatX" or curve.name == "QuatY" or curve.name == "QuatZ" or curve.name == "QuatW":
                 times = channel_times['Rotation']
                 channel_ipos['Rotation'].append(curve)
 
-            elif curve.name[ : 3] == "Loc":
+            elif curve.name == "LocX" or curve.name == "LocY" or curve.name == "LocZ":
                 times = channel_times['Translation']
                 channel_ipos['Translation'].append(curve)
 
-            elif curve.name[ : 5] == "Scale":
+            elif curve.name == "ScaleX" or curve.name == "ScaleY" or curve.name == "ScaleZ":
                 times = channel_times['Scale']
                 channel_ipos['Scale'].append(curve)
+
+            elif curve.name == "R" or curve.name == "G" or curve.name == "B" or curve.name == "Alpha":
+                times = channel_times['Color']
+                channel_ipos['Color'].append(curve)
 
             for p in curve.bezierPoints:
                 times.add(p.pt[0])
 
+        if DEBUG: debug("ipo %s sort time for curves" % (ipo.getName()))
         for key in channel_times.iterkeys():
             time = list(channel_times[key])
             time.sort()
@@ -1005,11 +1096,17 @@ class BlenderIpoOrActionToAnimation(object):
 
             if len(time) > 0:
                 channel_samplers[key] = Channel()
+            if DEBUG: debug("ipo %s time sorted %s %s" % (ipo.getName(), key, len(time)))
 
+
+        if DEBUG: debug("ipo %s fill channels" % (ipo.getName()))
         for key in channel_times.iterkeys():
             if channel_samplers[key] is None:
+                if DEBUG: debug("ipo %s nothing to fill for channel %s" % (ipo.getName(), key))
                 continue
+            if DEBUG: debug("ipo %s fill channel %s" % (ipo.getName(), key))
 
+            #if DEBUG: debug("ipo %s process %s " % (ipo.getName(), key))
             times = channel_times[key]
 
             for time in times:
@@ -1022,11 +1119,13 @@ class BlenderIpoOrActionToAnimation(object):
                 quat  = Quaternion()
                 scale = Vector()
                 rot   = Euler()
+                color   = [1,1,1,1]
                 rtype = None
 
-                            # I know this can be cleaned up...
+                # I know this can be cleaned up...
                 for curve in channel_ipos[key]:
                     val       = curve[time]
+                    if DEBUG: debug("ipo %s process curve %s at %s value is %s" % (ipo.getName(), curve.name, time, val))
                     bezPoints = curve.bezierPoints
 
                     if curve.name == 'LocX':
@@ -1062,30 +1161,44 @@ class BlenderIpoOrActionToAnimation(object):
                     elif curve.name == 'RotZ':
                         rot.z = val * 10
                         rtype = "Euler"
+                    elif curve.name == 'R':
+                        color[0] = val
+                    elif curve.name == 'G':
+                        color[1] = val
+                    elif curve.name == 'B':
+                        color[2] = val
+                    elif curve.name == 'Alpha':
+                        color[3] = val
                     else:
                         continue
 
                 if key == 'Scale':
+#                    if DEBUG: debug("ipo %s process %s %s %s %s %s" % (ipo.getName(), key, realtime, scale[0], scale[1], scale[2]))
                     channel_samplers[key].keys.append((realtime, scale[0], scale[1], scale[2]))
-                    channel_samplers[key].type = "Vec3"
+                    channel_samplers[key].type = "Vec3LinearChannel"
                     channel_samplers[key].setName("scale")
 
                 elif key == 'Rotation':
                     if rtype == "Quat":
                         quat.normalize()
                         channel_samplers[key].keys.append((realtime, quat.x, quat.y, quat.z, quat.w))
-                        channel_samplers[key].type = "Quat"
+                        channel_samplers[key].type = "QuatSphericalLinearChannel"
                         channel_samplers[key].setName("quaternion")
 
                     elif rtype == "Euler":
                         channel_samplers[key].keys.append((realtime, math.radians(rot.x)  , math.radians(rot.y), math.radians(rot.z) ))
-                        channel_samplers[key].type = "Vec3"
+                        channel_samplers[key].type = "Vec3LinearChannel"
                         channel_samplers[key].setName("euler")
 
                 elif key == 'Translation':
                     channel_samplers[key].keys.append((realtime, trans[0], trans[1], trans[2]))
-                    channel_samplers[key].type = "Vec3"
+                    channel_samplers[key].type = "Vec3LinearChannel"
                     channel_samplers[key].setName("position")
+
+                elif key == 'Color':
+                    channel_samplers[key].keys.append((realtime, color[0], color[1], color[2], color[3]))
+                    channel_samplers[key].type = "Vec4LinearChannel"
+                    channel_samplers[key].setName("diffuse")
 
             channels.append(channel_samplers[key])
             #print channel_samplers[key]
