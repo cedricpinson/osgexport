@@ -576,7 +576,7 @@ class BlenderObjectToGeometry(object):
                 uv_layer =  texture_list[i].uvlayer
 
                 if len(uv_layer) > 0 and not uvs.has_key(uv_layer):
-                    log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (mat_source.getName(), texture_list[i], uv_layer, geom.name))
+                    log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (material.getName(), texture_list[i], uv_layer, geom.name))
                 if len(uv_layer) > 0 and uvs.has_key(uv_layer):
                     if DEBUG: debug("texture %s use uv layer %s" % (i, uv_layer))
                     geom.uvs[i] = TexCoordArray()
@@ -977,6 +977,7 @@ class BlenderIpoOrActionToAnimation(object):
         self.animation = None
 
     def getTypeOfIpo(self, ipo):
+        if DEBUG: debug("%s curvs consts %s" % (ipo.name, str(ipo.curveConsts)))
         try:
             ipo.curveConsts['MA_R']
             return "Material"
@@ -997,6 +998,7 @@ class BlenderIpoOrActionToAnimation(object):
         ipos_baked = ipo
         if self.config.anim_bake.lower() == "force":
             ipotype = self.getTypeOfIpo(ipo)
+            if DEBUG: debug("createAnimationFromIpo ipo %s of type %s" % (str(name), str(ipotype)))
             if ipotype == "Object":
                 obj = findObjectForIpo(ipo)
                 baker = BakeIpoForObject(object = obj, ipo = ipo, config = None)

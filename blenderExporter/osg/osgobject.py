@@ -33,15 +33,32 @@ STRFLT    = lambda f: "%%.%df" % FLOATPRE % float(f)
 INDENT    = 2
 
 
-def findObject(name, root):
+def findNode(name, root):
     if root.name == name:
         return root
     if isinstance(root, Group) is False:
         return None
     for i in root.children:
-        found = findObject(name, i)
+        found = findNode(name, i)
         if found is not None:
             return found
+    return None
+
+def findMaterial(name, root):
+    if root.stateset is not None:
+        for i in root.stateset.attributes:
+            if isinstance(i, Material) is True and i.name == name:
+                return i
+    if isinstance(root, Geode) is True:
+        for i in root.drawables:
+            found = findMaterial(name, i)
+            if found is not None:
+                return found
+    if isinstance(root, Group) is True:
+        for i in root.children:
+            found = findMaterial(name, i)
+            if found is not None:
+                return found
     return None
 
 class Writer(object):
@@ -288,7 +305,7 @@ class StateAttribute(Object):
     def printContent(self):
         text = Object.printContent(self)
         if len(self.update_callbacks) > 0:
-            text += "$#UpdateCallbacks {\n"
+            text += "$#UpdateCallback {\n"
             for i in self.update_callbacks:
                 i.indent_level = self.indent_level + 2
                 text += str(i)
