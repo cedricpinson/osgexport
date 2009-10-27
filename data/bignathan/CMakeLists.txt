@@ -17,11 +17,7 @@
 # Authors:
 #  Cedric Pinson <mornifle@plopbyte.net
 
-INCLUDE(MacroUtils)
 
-ADD_SUBDIRECTORY(robot)
-ADD_SUBDIRECTORY(example)
-ADD_SUBDIRECTORY(walker)
-ADD_SUBDIRECTORY(avatar)
-ADD_SUBDIRECTORY(nathan)
-ADD_SUBDIRECTORY(bignathan)
+SET ( DATA_SOURCE ${PROJECT_SOURCE_DIR}/data/bignathan/bigcharacter.blend )
+SET ( DATA_TARGET  bignathan )
+BUILD_DATA()

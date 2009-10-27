@@ -402,8 +402,8 @@ class BakeIpoForMaterial(object):
         self.bakeFrames(baked)
         self.material.setIpo(previous_ipo)
 
-        if dummy_mat:
-            bpy.data.materials.unlink(dummy_mat)
+#        if dummy_mat:
+#            bpy.data.materials.unlink(dummy_mat)
 
         self.result_ipo = baked
         return self.result_ipo
