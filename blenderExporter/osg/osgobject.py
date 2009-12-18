@@ -27,6 +27,7 @@ from osglog import log
 
 
 Matrix    = Blender.Mathutils.Matrix
+Vector    = Blender.Mathutils.Vector
 FLOATPRE  = 5
 CONCAT    = lambda s, j="": j.join(str(v) for v in s)
 STRFLT    = lambda f: "%%.%df" % FLOATPRE % float(f)
@@ -90,9 +91,9 @@ class Object(Writer):
     wrote_elements = {}
     
     def __init__(self, *args, **kwargs):
-        Writer.__init__(self, *args, **kwargs)
+        Writer.__init__(self, *args)
         self.dataVariance = "UNKNOWN"
-        self.name = "None"
+        self.name = kwargs.get('name', "None")
         self.counter = len(Object.instances)
         Object.instances[self] = True
 
@@ -129,17 +130,26 @@ class Object(Writer):
             text += "$#name \"%s\"\n" % self.name
         return text
 
-class UpdateTransform(Object):
+class UpdateMatrixTransform(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
+        self.stacked_transforms = []
 
     def className(self):
-        return "UpdateTransform"
+        return "UpdateMatrixTransform"
 
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
+        text += self.printContent()
         text += "$}\n"
+        return text
+
+    def printContent(self):
+        text =""
+        for s in self.stacked_transforms:
+            s.indent_level = self.indent_level + 1
+            text += str(s)
         return text
 
 class UpdateMaterial(Object):
@@ -155,9 +165,125 @@ class UpdateMaterial(Object):
         text += "$}\n"
         return text
 
-class UpdateBone(Object):
+class StackedMatrixElement(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
+        if self.name == "None":
+            self.name = "matrix"
+        self.matrix = kwargs.get('matrix', Matrix().resize4x4().identity())
+
+    def className(self):
+        return "StackedMatrixElement"
+
+    def ascii(self):
+        text = "$osgAnimation::%s {\n" % self.className()
+        text += Object.printContent(self)
+        text += self.printContent()
+        text += "$}\n"
+        return text
+
+    def generateID(self):
+        return None
+
+    def printContent(self):
+        text = "$#Matrix {\n"
+        for i in range(0,4):
+            text += "$##%s %s %s %s\n" % (STRFLT(self.matrix[i][0]), STRFLT(self.matrix[i][1]),STRFLT(self.matrix[i][2]), STRFLT(self.matrix[i][3]))
+        text += "$#}\n"
+        return text
+
+class StackedTranslateElement(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+        self.translate = Vector(0,0,0)
+        self.name = "translate"
+
+    def className(self):
+        return "StackedTranslateElement"
+
+    def ascii(self):
+        text = "$osgAnimation::%s {\n" % self.className()
+        text += Object.printContent(self)
+        text += "$}\n"
+        return text
+
+    def generateID(self):
+        return None
+
+    def printContent(self):
+        text = "$#translate %s %s %s\n" % (STRFLT(self.translate[0]), STRFLT(self.translate[1]),STRFLT(self.translate[2]))
+        return text
+
+class StackedScaleElement(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+        self.scale = Vector(1,1,1)
+        self.name = "scale"
+
+    def className(self):
+        return "StackedScaleElement"
+
+    def ascii(self):
+        text = "$osgAnimation::%s {\n" % self.className()
+        text += Object.printContent(self)
+        text += "$}\n"
+        return text
+
+    def generateID(self):
+        return None
+
+    def printContent(self):
+        text = "$#scale %s %s %s\n" % (STRFLT(self.scale[0]), STRFLT(self.scale[1]),STRFLT(self.scale[2]))
+        return text
+
+class StackedRotateAxisElement(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+        self.axis = kwargs.get('axis', Vector(1,0,0))
+        self.angle = kwargs.get('angle', 0)
+
+    def className(self):
+        return "StackedRotateAxisElement"
+
+    def ascii(self):
+        text = "$osgAnimation::%s {\n" % self.className()
+        text += Object.printContent(self)
+        text += "$}\n"
+        return text
+
+    def generateID(self):
+        return None
+
+    def printContent(self):
+        text = "$#axis %s %s %s\n" % (STRFLT(self.axis[0]), STRFLT(self.axis[1]),STRFLT(self.axis[2]))
+        text = "$#angle %s\n" % (STRFLT(self.angle))
+        return text
+
+class StackedQuaternionElement(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+        self.quaternion = Matrix().resize4x4().identity().toQuat()
+        self.name = "quaternion"
+
+    def className(self):
+        return "StackedQuaternionElement"
+
+    def ascii(self):
+        text = "$osgAnimation::%s {\n" % self.className()
+        text += Object.printContent(self)
+        text += "$}\n"
+        return text
+
+    def generateID(self):
+        return None
+
+    def printContent(self):
+        text = "$#quaternion %s %s %s %s\n" % (STRFLT(self.quaternion.x(), STRFLT(self.quaternion.y()),STRFLT(self.quaternion.z()),STRFLT(self.quaternion.w()) ))
+        return text
+
+class UpdateBone(UpdateMatrixTransform):
+    def __init__(self, *args, **kwargs):
+        UpdateMatrixTransform.__init__(self, *args, **kwargs)
 
     def className(self):
         return "UpdateBone"
@@ -165,6 +291,7 @@ class UpdateBone(Object):
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
+        text += UpdateMatrixTransform.printContent(self)
         text += "$}\n"
         return text
 
@@ -664,14 +791,14 @@ class Geometry(Object):
         return text
 
 ################################## animation node ######################################
-class Bone(Group):
+class Bone(MatrixTransform):
     def __init__(self, skeleton = None, bone = None, parent=None, **kwargs):
-        Group.__init__(self, **kwargs)
+        MatrixTransform.__init__(self, **kwargs)
         self.dataVariance = "DYNAMIC"
         self.parent = parent
         self.skeleton = skeleton
         self.bone = bone
-        self.matrix = {'BONESPACE': Matrix().resize4x4().identity() }
+        self.bone_matrix = {'BONESPACE': Matrix().resize4x4().identity() }
 
     def buildBoneChildren(self):
         if self.skeleton is None or self.bone is None:
@@ -682,25 +809,33 @@ class Bone(Group):
         update_callback.setName(self.name)
         self.update_callbacks.append(update_callback)
 
-        self.matrix['BONESPACE'] = self.bone.matrix['BONESPACE'].copy().resize4x4()
+        self.bone_matrix['BONESPACE'] = self.bone.matrix['BONESPACE'].copy().resize4x4()
 
         if self.parent:
-            parent_tail = self.parent.bone.tail['BONESPACE'] * self.parent.matrix['BONESPACE'].rotationPart().copy().invert()
-            parent_head = self.parent.bone.head['BONESPACE'] * self.parent.matrix['BONESPACE'].rotationPart().copy().invert()
+            parent_tail = self.parent.bone.tail['BONESPACE'] * self.parent.bone_matrix['BONESPACE'].rotationPart().copy().invert()
+            parent_head = self.parent.bone.head['BONESPACE'] * self.parent.bone_matrix['BONESPACE'].rotationPart().copy().invert()
 
             pos = parent_tail - parent_head + self.bone.head['BONESPACE']
 
-            self.matrix['BONESPACE'][3][0] = pos[0]
-            self.matrix['BONESPACE'][3][1] = pos[1]
-            self.matrix['BONESPACE'][3][2] = pos[2]
-            self.matrix['ARMATURESPACE']   = self.matrix['BONESPACE'] * self.parent.matrix['ARMATURESPACE']
+            self.bone_matrix['BONESPACE'][3][0] = pos[0]
+            self.bone_matrix['BONESPACE'][3][1] = pos[1]
+            self.bone_matrix['BONESPACE'][3][2] = pos[2]
+            self.bone_matrix['ARMATURESPACE']   = self.bone_matrix['BONESPACE'] * self.parent.bone_matrix['ARMATURESPACE']
 
         else:
             pos = self.bone.head['BONESPACE']
-            self.matrix['BONESPACE'][3][0] = pos[0]
-            self.matrix['BONESPACE'][3][1] = pos[1]
-            self.matrix['BONESPACE'][3][2] = pos[2]
-            self.matrix['ARMATURESPACE']   = self.matrix['BONESPACE'].copy()
+            self.bone_matrix['BONESPACE'][3][0] = pos[0]
+            self.bone_matrix['BONESPACE'][3][1] = pos[1]
+            self.bone_matrix['BONESPACE'][3][2] = pos[2]
+            self.bone_matrix['ARMATURESPACE']   = self.bone_matrix['BONESPACE'].copy()
+
+        # add bind matrix in localspace callback
+        update_callback.stacked_transforms.append(StackedMatrixElement(name = "bindmatrix", matrix = self.bone_matrix['BONESPACE'].copy()))
+        update_callback.stacked_transforms.append(StackedTranslateElement())
+        update_callback.stacked_transforms.append(StackedQuaternionElement())
+        update_callback.stacked_transforms.append(StackedScaleElement())
+
+        self.matrix = self.bone_matrix['BONESPACE'].copy()
 
         if not self.bone.hasChildren():
             return
@@ -723,11 +858,20 @@ class Bone(Group):
         text += Object.printContent(self)
         text += Node.printContent(self)
         text += self.printContent()
+        text += MatrixTransform.printContent(self)
         text += Group.printContent(self)
         text += "$}\n"
         return text
 
     def printContent(self):
+        matrix = self.bone_matrix['ARMATURESPACE'].copy()
+        matrix.invert()
+        text = "$#InvBindMatrixInSkeletonSpace {\n"
+        for i in range(0,4):
+            text += "$##%s %s %s %s\n" % (STRFLT(matrix[i][0]), STRFLT(matrix[i][1]),STRFLT(matrix[i][2]), STRFLT(matrix[i][3]))
+        text += "$#}\n"
+        return text
+
         matrix = self.matrix['BONESPACE'].copy()
         text = "$#bindQuaternion %s %s %s %s\n" % (
             STRFLT(matrix.toQuat().x),
@@ -748,7 +892,9 @@ class Skeleton(Bone):
     def __init__(self, name, matrix):
         Bone.__init__(self)
         self.boneList = []
-        self.matrix['BONESPACE'] = matrix
+        self.bone_matrix['BONESPACE'] = matrix
+        self.bone_matrix['ARMATURESPACE'] = matrix
+        self.matrix = matrix
         self.setName(name)
         self.update_callbacks = []
         self.update_callbacks.append(UpdateSkeleton())
@@ -766,6 +912,7 @@ class Skeleton(Bone):
         text += Object.printContent(self)
         text += Node.printContent(self)
         text += Bone.printContent(self)
+        text += MatrixTransform.printContent(self)
         text += Group.printContent(self)
         text += "$}\n"
         return text

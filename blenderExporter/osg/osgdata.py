@@ -159,7 +159,7 @@ def findMaterialForIpo(ipo):
             return o
     return None
 
-def createAnimationGenericObject(osg_object, blender_object, config, UpdateCallback):
+def createAnimationGenericObject(osg_object, blender_object, config, update_callback):
     if config.export_anim is not True:
         return None
 
@@ -169,17 +169,25 @@ def createAnimationGenericObject(osg_object, blender_object, config, UpdateCallb
         ipo2animation = BlenderIpoOrActionToAnimation(ipo = ipo, config = config)
         anim = ipo2animation.createAnimationFromIpo(blender_object.getName())
 
-        update_callback = UpdateCallback()
         update_callback.setName(osg_object.name)
         osg_object.update_callbacks.append(update_callback)
         return anim
     return None
 
+def createUpdateMatrixTransform():
+    callback = UpdateMatrixTransform()
+    callback.stacked_transforms.append(StackedTranslateElement())
+    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_z', axis = Vector(0,0,1) ))
+    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_y', axis = Vector(0,1,0) ))
+    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_x', axis = Vector(1,0,0) ))
+    callback.stacked_transforms.append(StackedScaleElement())
+    return callback
+
 def createAnimationObjectAndSetCallback(osg_node, obj, config):
-    return createAnimationGenericObject(osg_node, obj, config, UpdateTransform)
+    return createAnimationGenericObject(osg_node, obj, config, createUpdateMatrixTransform())
 
 def createAnimationMaterialAndSetCallback(osg_node, obj, config):
-    return createAnimationGenericObject(osg_node, obj, config, UpdateMaterial)
+    return createAnimationGenericObject(osg_node, obj, config, UpdateMaterial())
 
 
 class Export(object):
@@ -228,7 +236,7 @@ class Export(object):
             anim = ipo2animation.createAnimationFromIpo(obj.getName())
             self.animations[anim.name] = anim
 
-            update_callback = UpdateTransform()
+            update_callback = UpdateMatrixTransform()
             update_callback.setName(osg_node.name)
             osg_node.update_callbacks.append(update_callback)
 
@@ -315,7 +323,7 @@ class Export(object):
                 # parent bone to object bone
                 armature = obj.getParent()
                 matrixArmatureInWorldSpace = armature.getMatrix('worldspace')
-                matrixBoneinArmatureSpace = bone.matrix['ARMATURESPACE']
+                matrixBoneinArmatureSpace = bone.bone_matrix['ARMATURESPACE']
                 boneInWorldSpace = matrixBoneinArmatureSpace * matrixArmatureInWorldSpace
                 matrix = getDeltaMatrixFromMatrix(boneInWorldSpace, obj.getMatrix('worldspace'))
                 item.matrix = matrix
@@ -1059,10 +1067,10 @@ class BlenderIpoOrActionToAnimation(object):
             )
 
         channels         = []
-        channel_times    = {'Rotation': set(), 'Translation': set(), 'Scale': set(), 'Color' : set() }
-        channel_names    = {'Rotation': 'rotation', 'Translation': 'position', 'Scale': 'scale', 'Color' : 'color'}
-        channel_samplers = {'Rotation': None, 'Translation': None, 'Scale': None, 'Color' : None}
-        channel_ipos     = {'Rotation': [], 'Translation': [], 'Scale': [], 'Color': []}
+        channel_times    = {'EulerX': set(), 'EulerY': set(), 'EulerZ': set(), 'Rotation': set(), 'Translation': set(), 'Scale': set(), 'Color' : set() }
+        channel_names    = {'EulerX': 'euler_x', 'EulerY': 'euler_y', 'EulerZ': 'euler_z', 'Rotation': 'rotation', 'Translation': 'position', 'Scale': 'scale', 'Color' : 'color'}
+        channel_samplers = {'EulerX': None, 'EulerY': None, 'EulerZ': None, 'Rotation': None, 'Translation': None, 'Scale': None, 'Color' : None}
+        channel_ipos     = {'EulerX': [], 'EulerY': [], 'EulerZ': [], 'Rotation': [], 'Translation': [], 'Scale': [], 'Color': []}
         duration = 0
 
         for curve in ipo:
@@ -1071,9 +1079,21 @@ class BlenderIpoOrActionToAnimation(object):
                 if DEBUG: debug("ipo %s curve %s not supported" % (ipo.getName(), curve.name))
                 continue
 
-            elif curve.name == "RotX" or curve.name == "RotY" or curve.name == "RotZ" or curve.name == "QuatX" or curve.name == "QuatY" or curve.name == "QuatZ" or curve.name == "QuatW":
+            elif curve.name == "QuatX" or curve.name == "QuatY" or curve.name == "QuatZ" or curve.name == "QuatW":
                 times = channel_times['Rotation']
                 channel_ipos['Rotation'].append(curve)
+
+            elif curve.name == "RotX":
+                times = channel_times['EulerX']
+                channel_ipos['EulerX'].append(curve)
+
+            elif curve.name == "RotY":
+                times = channel_times['EulerY']
+                channel_ipos['EulerY'].append(curve)
+
+            elif curve.name == "RotZ":
+                times = channel_times['EulerZ']
+                channel_ipos['EulerZ'].append(curve)
 
             elif curve.name == "LocX" or curve.name == "LocY" or curve.name == "LocZ":
                 times = channel_times['Translation']
@@ -1138,16 +1158,12 @@ class BlenderIpoOrActionToAnimation(object):
                         trans[2] = val
                     elif curve.name == 'QuatW':
                         quat.w = val
-                        rtype  = "Quat"
                     elif curve.name == 'QuatX':
                         quat.x = val
-                        rtype  = "Quat"
                     elif curve.name == 'QuatY':
                         quat.y = val
-                        rtype  = "Quat"
                     elif curve.name == 'QuatZ':
                         quat.z = val
-                        rtype  = "Quat"
                     elif curve.name == 'ScaleX':
                         scale[0] = val
                     elif curve.name == 'ScaleY':
@@ -1156,13 +1172,10 @@ class BlenderIpoOrActionToAnimation(object):
                         scale[2] = val
                     elif curve.name == 'RotX':
                         rot.x = val * 10
-                        rtype = "Euler"
                     elif curve.name == 'RotY':
                         rot.y = val * 10
-                        rtype = "Euler"
                     elif curve.name == 'RotZ':
                         rot.z = val * 10
-                        rtype = "Euler"
                     elif curve.name == 'R':
                         color[0] = val
                     elif curve.name == 'G':
@@ -1181,16 +1194,25 @@ class BlenderIpoOrActionToAnimation(object):
                     channel_samplers[key].setName("scale")
 
                 elif key == 'Rotation':
-                    if rtype == "Quat":
-                        quat.normalize()
-                        channel_samplers[key].keys.append((realtime, quat.x, quat.y, quat.z, quat.w))
-                        channel_samplers[key].type = "QuatSphericalLinearChannel"
-                        channel_samplers[key].setName("quaternion")
+                    quat.normalize()
+                    channel_samplers[key].keys.append((realtime, quat.x, quat.y, quat.z, quat.w))
+                    channel_samplers[key].type = "QuatSphericalLinearChannel"
+                    channel_samplers[key].setName("quaternion")
 
-                    elif rtype == "Euler":
-                        channel_samplers[key].keys.append((realtime, math.radians(rot.x)  , math.radians(rot.y), math.radians(rot.z) ))
-                        channel_samplers[key].type = "Vec3LinearChannel"
-                        channel_samplers[key].setName("euler")
+                elif key == 'EulerX':
+                    channel_samplers[key].keys.append((realtime, math.radians(rot.x)))
+                    channel_samplers[key].type = "FloatLinearChannel"
+                    channel_samplers[key].setName("euler_x")
+
+                elif key == 'EulerY':
+                    channel_samplers[key].keys.append((realtime, math.radians(rot.y)))
+                    channel_samplers[key].type = "FloatLinearChannel"
+                    channel_samplers[key].setName("euler_y")
+
+                elif key == 'EulerZ':
+                    channel_samplers[key].keys.append((realtime, math.radians(rot.z) ))
+                    channel_samplers[key].type = "FloatLinearChannel"
+                    channel_samplers[key].setName("euler_z")
 
                 elif key == 'Translation':
                     channel_samplers[key].keys.append((realtime, trans[0], trans[1], trans[2]))
