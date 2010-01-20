@@ -493,12 +493,19 @@ class Export(object):
 	hasVertexGroup = len(mesh.getData(False, True).getVertGroupNames()) != 0
 
         geometries = []
-        if exportInfluence is False or hasVertexGroup is False:
-            converter = BlenderObjectToGeometry(object = mesh, config = self.config, uniq_stateset = self.uniq_stateset)
-            geometries = converter.convert()
+        converter = BlenderObjectToGeometry(object = mesh, config = self.config, uniq_stateset = self.uniq_stateset)
+        sources_geometries = converter.convert()
+
+        if exportInfluence is True and hasVertexGroup is True:
+            for geom in sources_geometries:
+                rig_geom = RigGeometry()
+                rig_geom.sourcegeometry = geom
+                rig_geom.copyFrom(geom)
+                rig_geom.groups = geom.groups
+                geometries.append(rig_geom)
         else:
-            converter = BlenderObjectToRigGeometry(object = mesh, config = self.config, uniq_stateset = self.uniq_stateset)
-            geometries = converter.convert()
+            geometries = sources_geometries
+
         if len(geometries) > 0:
             for geom in geometries:
                 geode.drawables.append(geom)
@@ -697,7 +704,8 @@ class BlenderObjectToGeometry(object):
         return 0
 
     def createGeomForMaterialIndex(self, material_index, mesh):
-        geom = self.geom_type()
+        geom = Geometry()
+        geom.groups = {}
         if (len(mesh.faces) == 0):
             log("object %s has no faces, so no materials" % self.object.getName())
             return None
@@ -1068,7 +1076,7 @@ class BlenderIpoOrActionToAnimation(object):
 
         channels         = []
         channel_times    = {'EulerX': set(), 'EulerY': set(), 'EulerZ': set(), 'Rotation': set(), 'Translation': set(), 'Scale': set(), 'Color' : set() }
-        channel_names    = {'EulerX': 'euler_x', 'EulerY': 'euler_y', 'EulerZ': 'euler_z', 'Rotation': 'rotation', 'Translation': 'position', 'Scale': 'scale', 'Color' : 'color'}
+        channel_names    = {'EulerX': 'euler_x', 'EulerY': 'euler_y', 'EulerZ': 'euler_z', 'Rotation': 'rotation', 'Translation': 'translate', 'Scale': 'scale', 'Color' : 'color'}
         channel_samplers = {'EulerX': None, 'EulerY': None, 'EulerZ': None, 'Rotation': None, 'Translation': None, 'Scale': None, 'Color' : None}
         channel_ipos     = {'EulerX': [], 'EulerY': [], 'EulerZ': [], 'Rotation': [], 'Translation': [], 'Scale': [], 'Color': []}
         duration = 0
@@ -1217,7 +1225,7 @@ class BlenderIpoOrActionToAnimation(object):
                 elif key == 'Translation':
                     channel_samplers[key].keys.append((realtime, trans[0], trans[1], trans[2]))
                     channel_samplers[key].type = "Vec3LinearChannel"
-                    channel_samplers[key].setName("position")
+                    channel_samplers[key].setName("translate")
 
                 elif key == 'Color':
                     channel_samplers[key].keys.append((realtime, color[0], color[1], color[2], color[3]))

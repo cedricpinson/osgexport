@@ -62,20 +62,38 @@ def findMaterial(name, root):
                 return found
     return None
 
+
 class Writer(object):
+    instances = {}
+    wrote_elements = {}
+
     def __init__(self, comment = None):
         object.__init__(self)
         self.comment = comment
         self.indent_level = 0
+        self.counter = len(Writer.instances)
+        Writer.instances[self] = True
 
     def __repr__(self):
         ret = ""
 #        text = self.ascii().replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
-        text = Object.writeInstanceOrUseIt(self).replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
+        text = Writer.writeInstanceOrUseIt(self).replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
         return ret + text
 
     def __str__(self):
         return self.__repr__()
+
+    @staticmethod
+    def resetWriter():
+        Writer.instances = {}
+        wrote_elements = {}
+
+    @staticmethod
+    def writeInstanceOrUseIt(obj):
+        if Writer.wrote_elements.has_key(obj) and obj.shadow_object is not None:
+            return obj.shadow_object.ascii()
+        Writer.wrote_elements[obj] = True
+        return obj.ascii()
 
 class ShadowObject(Writer):
     def __init__(self, *args, **kwargs):
@@ -83,32 +101,21 @@ class ShadowObject(Writer):
         self.target = args[0]
     
     def ascii(self):
-        text = "$#Use " + self.target.generateID() + "\n"
+        text = "$Use " + self.target.generateID() + "\n"
         return text
 
+
 class Object(Writer):
-    instances = {}
-    wrote_elements = {}
     
     def __init__(self, *args, **kwargs):
         Writer.__init__(self, *args)
+        self.shadow_object = ShadowObject(self)
         self.dataVariance = "UNKNOWN"
         self.name = kwargs.get('name', "None")
-        self.counter = len(Object.instances)
-        Object.instances[self] = True
 
-    @staticmethod
-    def resetWriter():
-        Object.instances = {}
-        wrote_elements = {}
-
-    @staticmethod
-    def writeInstanceOrUseIt(obj):
-        if Object.wrote_elements.has_key(obj):
-            shadow_object = ShadowObject(obj)
-            return shadow_object.ascii()
-        Object.wrote_elements[obj] = True
-        return obj.ascii()
+    def copyFrom(self, obj):
+        self.name = obj.name
+        self.dataVariance = obj.dataVariance
 
     def generateID(self):
         return "uniqid_" + self.className() + "_" + str(self.counter)
@@ -644,63 +651,83 @@ class StateSet(Object):
                 text += "$#}\n"
         return text
 
-class VertexArray(Object):
+class ShadowVertexArrayObject(Writer):
     def __init__(self, *args, **kwargs):
-        Object.__init__(self, *args, **kwargs)
+        Writer.__init__(self)
+        self.target = args[0]
+        self.binding = None
+    
+    def ascii(self):
+        text = ""
+        if self.binding is not None:
+            text += "$" + self.binding + "\n"
+        text += "$" + self.target.className() + " Use " + self.target.generateID() + "\n"
+        return text
+
+class VertexArray(Writer):
+    def __init__(self, *args, **kwargs):
+        Writer.__init__(self)
         self.array = kwargs.get('array', [])
+        self.shadow_object = ShadowVertexArrayObject(self, "Vec3Array")
 
     def className(self):
         return "VertexArray"
 
+    def generateID(self):
+        return self.className() + "_" + str(self.counter)
+
     def ascii(self):
-        text = "$%s %s {\n" % (self.className(), str(len(self.array)))
+        text = "$%s UniqueID %s Vec3Array %s\n${\n" % (self.className(), self.generateID(), str(len(self.array)))
         for i in self.array:
                 text += "$#%s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]))
         text += "$}\n"
         return text
 
-class NormalArray(Writer):
+
+class NormalArray(VertexArray):
     def __init__(self, *args, **kwargs):
-        Writer.__init__(self, *args, **kwargs)
-        self.array = []
+        VertexArray.__init__(self, *args, **kwargs)
+        self.shadow_object = ShadowVertexArrayObject(self, "Vec3Array")
+        self.shadow_object.binding = "NormalBinding PER_VERTEX"
 
     def className(self):
         return "NormalArray"
 
     def ascii(self):
         text = "$NormalBinding PER_VERTEX\n"
-        text += "$%s %s {\n" % (self.className(), len(self.array))
+        text += "$%s UniqueID %s Vec3Array %s\n${\n" % (self.className(), self.generateID(), len(self.array))
         for i in self.array:
                 text += "$#%s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]))
         text += "$}\n"
         return text
 
-class ColorArray(Writer):
+class ColorArray(VertexArray):
     def __init__(self, *args, **kwargs):
-        Writer.__init__(self, *args, **kwargs)
-        self.array = []
+        VertexArray.__init__(self, *args, **kwargs)
+        self.shadow_object = ShadowVertexArrayObject(self, "Vec4Array")
+        self.shadow_object.binding = "ColorBinding PER_VERTEX"
 
     def className(self):
         return "ColorArray"
 
     def ascii(self):
-        text = "$%s Vec4Array %s {\n" % (self.className(), len(self.array))
+        text = "$%s UniqueID %s Vec4Array %s\n${\n" % (self.className(), self.generateID(), len(self.array))
         for i in self.array:
                 text += "$#%s %s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]), STRFLT(i[3]))
         text += "$}\n"
         return text
 
-class TexCoordArray(Writer):
+class TexCoordArray(VertexArray):
     def __init__(self, *args, **kwargs):
-        Writer.__init__(self, *args, **kwargs)
-        self.array = []
+        VertexArray.__init__(self, *args, **kwargs)
         self.index = 0
+        self.shadow_object = ShadowVertexArrayObject(self, "Vec2Array")
 
     def className(self):
         return "TexCoordArray"
 
     def ascii(self):
-        text = "$%s %s Vec2Array %s {\n" % (self.className(), self.index,  len(self.array))
+        text = "$%s %s UniqueID %s Vec2Array %s\n${\n" % (self.className(), self.index, self.generateID(),  len(self.array))
         for i in self.array:
                 text += "$#%s %s\n" % (STRFLT(i[0]), STRFLT(i[1]))
         text += "$}\n"
@@ -711,6 +738,7 @@ class DrawElements(Object):
         Object.__init__(self, *args, **kwargs)
         self.indexes = []
         self.type = None
+        self.shadow_object = None
 
     def getSizeArray(self):
         element = "DrawElementsUByte"
@@ -757,6 +785,15 @@ class Geometry(Object):
     def className(self):
         return "Geometry"
 
+    def copyFrom(self, geometry):
+        Object.copyFrom(self, geometry)
+        self.primitives = geometry.primitives
+        self.vertexes = geometry.vertexes
+        self.normals = geometry.normals
+        self.colors = geometry.colors
+        self.uvs = geometry.uvs
+        self.stateset = geometry.stateset
+
     def ascii(self):
         text = "$%s {\n" % self.className()
         text += Object.printContent(self)
@@ -766,9 +803,6 @@ class Geometry(Object):
 
     def printContent(self):
         text = ""
-        if self.stateset is not None:
-            self.stateset.indent_level = self.indent_level + 1
-            text += str(self.stateset)
         if len(self.primitives):
             text += "$#Primitives %s {\n" % (str(len(self.primitives)))
             for i in self.primitives:
@@ -781,13 +815,16 @@ class Geometry(Object):
         if self.normals:
             self.normals.indent_level = self.indent_level + 1
             text += str(self.normals)
+        if self.colors:
+            self.colors.indent_level = self.indent_level + 1
+            text += str(self.colors)
         for i in self.uvs.values():
             if i:
                 i.indent_level = self.indent_level + 1
                 text += str(i)
-        if self.colors:
-            self.colors.indent_level = self.indent_level + 1
-            text += str(self.colors)
+        if self.stateset is not None:
+            self.stateset.indent_level = self.indent_level + 1
+            text += str(self.stateset)
         return text
 
 ################################## animation node ######################################
@@ -888,12 +925,10 @@ class Bone(MatrixTransform):
         return text
 
 
-class Skeleton(Bone):
+class Skeleton(MatrixTransform):
     def __init__(self, name, matrix):
-        Bone.__init__(self)
+        MatrixTransform.__init__(self)
         self.boneList = []
-        self.bone_matrix['BONESPACE'] = matrix
-        self.bone_matrix['ARMATURESPACE'] = matrix
         self.matrix = matrix
         self.setName(name)
         self.update_callbacks = []
@@ -911,7 +946,6 @@ class Skeleton(Bone):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
         text += Node.printContent(self)
-        text += Bone.printContent(self)
         text += MatrixTransform.printContent(self)
         text += Group.printContent(self)
         text += "$}\n"
@@ -922,6 +956,7 @@ class RigGeometry(Geometry):
         Geometry.__init__(self, *args, **kwargs)
         self.groups = {}
         self.dataVariance = "DYNAMIC"
+        self.sourcegeometry = None
 
     def className(self):
         return "RigGeometry"
@@ -941,6 +976,9 @@ class RigGeometry(Geometry):
             for name, grp in self.groups.items():
                 grp.indent_level = self.indent_level + 1
                 text += str(grp)
+
+        self.sourcegeometry.indent_level = self.indent_level + 1
+        text += str(self.sourcegeometry)
         return text
 
 class AnimationManagerBase(Object):
