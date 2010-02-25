@@ -126,7 +126,8 @@ class Exporter(unittest.TestCase):
         array.array.append((0,1,20))
         result = str(array)
         text = """NormalBinding PER_VERTEX
-NormalArray 1 {
+NormalArray UniqueID NormalArray_0 Vec3Array 1
+{
   0.00000 1.00000 20.00000
 }
 """

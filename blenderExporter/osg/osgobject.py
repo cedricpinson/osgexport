@@ -211,6 +211,7 @@ class StackedTranslateElement(Object):
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
+        text += self.printContent()
         text += "$}\n"
         return text
 
@@ -233,6 +234,7 @@ class StackedScaleElement(Object):
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
+        text += self.printContent()
         text += "$}\n"
         return text
 
@@ -255,6 +257,7 @@ class StackedRotateAxisElement(Object):
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
+        text += self.printContent()
         text += "$}\n"
         return text
 
@@ -263,7 +266,7 @@ class StackedRotateAxisElement(Object):
 
     def printContent(self):
         text = "$#axis %s %s %s\n" % (STRFLT(self.axis[0]), STRFLT(self.axis[1]),STRFLT(self.axis[2]))
-        text = "$#angle %s\n" % (STRFLT(self.angle))
+        text += "$#angle %s\n" % (STRFLT(self.angle))
         return text
 
 class StackedQuaternionElement(Object):
@@ -278,6 +281,7 @@ class StackedQuaternionElement(Object):
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
+        text += self.printContent()
         text += "$}\n"
         return text
 
@@ -285,7 +289,7 @@ class StackedQuaternionElement(Object):
         return None
 
     def printContent(self):
-        text = "$#quaternion %s %s %s %s\n" % (STRFLT(self.quaternion.x(), STRFLT(self.quaternion.y()),STRFLT(self.quaternion.z()),STRFLT(self.quaternion.w()) ))
+        text = "$#quaternion %s %s %s %s\n" % (STRFLT(self.quaternion.x), STRFLT(self.quaternion.y),STRFLT(self.quaternion.z),STRFLT(self.quaternion.w) )
         return text
 
 class UpdateBone(UpdateMatrixTransform):
@@ -977,8 +981,9 @@ class RigGeometry(Geometry):
                 grp.indent_level = self.indent_level + 1
                 text += str(grp)
 
-        self.sourcegeometry.indent_level = self.indent_level + 1
-        text += str(self.sourcegeometry)
+        if self.sourcegeometry is not None:
+            self.sourcegeometry.indent_level = self.indent_level + 1
+            text += str(self.sourcegeometry)
         return text
 
 class AnimationManagerBase(Object):
