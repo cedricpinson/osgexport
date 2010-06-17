@@ -30,10 +30,11 @@ Tip: 'Export armature/bone/action/mesh data to osg formats.'
 
 import sys
 import os
+import Blender
+
 sys.path.insert(0, "./")
 sys.path.append(os.path.join(Blender.Get("scriptsdir"),"blenderExporter"))
 
-import Blender
 import bpy
 import osg
 import osg.osgdata
