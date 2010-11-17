@@ -675,34 +675,6 @@ class BlenderObjectToGeometry(object):
                 if DEBUG: debug("state set %s" % str(s))
         return s
 
-    def equalVertices(self, vert1, vert2, vertexes, normals, colors, uvs):
-        for i in range(0,3):
-            if vertexes[vert1].co[i] > vertexes[vert2].co[i]:
-                return 1
-            elif vertexes[vert1].co[i] < vertexes[vert2].co[i]:
-                return 1
-
-        for i in range(0,3):
-            if normals[vert1][i] > normals[vert2][i]:
-                return 1
-            elif normals[vert1][i] < normals[vert2][i]:
-                return 1
-
-        for n in uvs.keys():
-            for i in range(0,2):
-                if uvs[n][vert1][i] > uvs[n][vert2][i]:
-                    return 1
-                elif uvs[n][vert1][i] < uvs[n][vert2][i]:
-                    return 1
-
-        for n in colors.keys():
-            for i in range(0,4):
-                if colors[n][vert1][i] > colors[n][vert2][i]:
-                    return 1
-                elif colors[n][vert1][i] < colors[n][vert2][i]:
-                    return 1
-        return 0
-
     def createGeomForMaterialIndex(self, material_index, mesh):
         geom = Geometry()
         geom.groups = {}
@@ -783,23 +755,41 @@ class BlenderObjectToGeometry(object):
             merged_vertexes.append(i)
             tagged_vertexes.append(False)
 
+        def get_vertex_key(index):
+            return (
+                (vertexes[i].co[0], vertexes[i].co[1], vertexes[i].co[2]),
+                (normals[i][0], normals[i][1], normals[i][2]),
+                tuple([x[i] for x in uvs.keys()]),
+                tuple([x[i] for x in colors.keys()])
+                )
+
+        # Build a dictionary of indexes to all the vertexes that
+        # are equal.
+        vertex_dict = {}
+        for i in range(0, len(vertexes)):
+            key = get_vertex_key(i)
+            if vertex_dict.has_key(key):
+                vertex_dict[key].append(i)
+            else:
+                vertex_dict[key] = [i]
+
         for i in range(0, len(vertexes)):
             if tagged_vertexes[i] is True: # avoid processing more than one time a vertex
                 continue
             index = len(mapping_vertexes)
             merged_vertexes[i] = index
             mapping_vertexes.append([i])
-            if DEBUG: debug("process vertex %s" % i)
-            for j in range(i+1, len(vertexes)):
+            debug("process vertex %s" % i)
+            vertex_indexes = vertex_dict[get_vertex_key(i)]
+            for j in vertex_indexes:
+                if j <= i:
+                    continue
                 if tagged_vertexes[j] is True: # avoid processing more than one time a vertex
                     continue
-                different = self.equalVertices(i, j, vertexes, normals, colors, uvs)
-                if not different:
-                    if DEBUG: debug("   vertex %s is the same" % j)
-                    merged_vertexes[j] = index
-                    tagged_vertexes[j] = True
-                    mapping_vertexes[index].append(j)
-
+                debug("   vertex %s is the same" % j)
+                merged_vertexes[j] = index
+                tagged_vertexes[j] = True
+                mapping_vertexes[index].append(j)
 
         if DEBUG:
             for i in range(0, len(mapping_vertexes)):
