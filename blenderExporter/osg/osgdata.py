@@ -757,10 +757,10 @@ class BlenderObjectToGeometry(object):
 
         def get_vertex_key(index):
             return (
-                (vertexes[i].co[0], vertexes[i].co[1], vertexes[i].co[2]),
-                (normals[i][0], normals[i][1], normals[i][2]),
-                tuple([x[i] for x in uvs.keys()]),
-                tuple([x[i] for x in colors.keys()])
+                (vertexes[index].co[0], vertexes[index].co[1], vertexes[index].co[2]),
+                (normals[index][0], normals[index][1], normals[index][2]),
+                tuple([tuple(uvs[x][index]) for x in uvs.keys()]),
+                tuple([tuple(colors[x][index]) for x in colors.keys()])
                 )
 
         # Build a dictionary of indexes to all the vertexes that
