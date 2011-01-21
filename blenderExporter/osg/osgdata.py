@@ -393,8 +393,13 @@ class Export(object):
         self.setArmatureInRestMode()
         if self.config.object_selected != None:
             o = bpy.data.objects[self.config.object_selected]
-            bpy.data.scenes.active.objects.active = o
-            bpy.data.scenes.active.objects.selected = [o]
+            try:
+                bpy.data.scenes.active.objects.active = o
+                bpy.data.scenes.active.objects.selected = [o]
+            except ValueError:
+                log("Error, problem happens when assigning object %s to scene %s" % (o.name, bpy.data.scenes.active.name))
+                raise
+                
         for obj in bpy.data.scenes.active.objects:
             if self.config.selected == "SELECTED_ONLY_WITH_CHILDREN":
                 if obj.isSelected():
@@ -779,14 +784,14 @@ class BlenderObjectToGeometry(object):
             index = len(mapping_vertexes)
             merged_vertexes[i] = index
             mapping_vertexes.append([i])
-            debug("process vertex %s" % i)
+            if DEBUG: debug("process vertex %s" % i)
             vertex_indexes = vertex_dict[get_vertex_key(i)]
             for j in vertex_indexes:
                 if j <= i:
                     continue
                 if tagged_vertexes[j] is True: # avoid processing more than one time a vertex
                     continue
-                debug("   vertex %s is the same" % j)
+                if DEBUG: debug("   vertex %s is the same" % j)
                 merged_vertexes[j] = index
                 tagged_vertexes[j] = True
                 mapping_vertexes[index].append(j)
