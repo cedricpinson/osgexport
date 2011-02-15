@@ -33,7 +33,9 @@ import os
 import Blender
 
 sys.path.insert(0, "./")
-sys.path.append(os.path.join(Blender.Get("scriptsdir"),"blenderExporter"))
+BlenderExporterDir = os.getenv("BlenderExporter", os.path.join(Blender.Get("scriptsdir"),"blenderExporter"))
+print "BlenderExporter directory ", BlenderExporterDir
+sys.path.append(BlenderExporterDir)
 
 import bpy
 import osg
