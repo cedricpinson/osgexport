@@ -98,7 +98,7 @@ class OSGGUI(object):
             hint
             )
 
-    def addToggle(self, val, label, hint="", initial=False, stayHoriz=False, w=200, h=24):
+    def addToggle(self, val, label, hint="Toogle", initial=False, stayHoriz=False, w=200, h=24):
         c = self.getNextCoords(w, h, stayHoriz)
         o = self.addGUIObject(val, initial)
 
@@ -214,8 +214,10 @@ class OSGGUI(object):
 
     def Write(self):
         def CallCallback(path):
+                selected = "ALL"
                 if self.objects["SELECTED"].val:
-                        self.objects["SELECTED"].val = "SELECTED_ONLY_WITH_CHILDREN"
+                        selected = "SELECTED_ONLY_WITH_CHILDREN"
+
                 config = osg.parseArgs(["""--osg=
                         AUTHOR     = %s;
                         LOG        = %s;
@@ -227,7 +229,7 @@ class OSGGUI(object):
                 """ % (
                         self.objects["AUTHOR"].val,
                         True, #self.objects["LOG"].val,
-                        self.objects["SELECTED"].val,
+                        selected,
                         self.objects["INDENT"].val,
                         self.objects["FLOATPRE"].val,
                         self.objects["ANIMFPS"].val,
