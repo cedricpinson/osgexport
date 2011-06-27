@@ -500,7 +500,6 @@ class Export(object):
         geometries = []
         converter = BlenderObjectToGeometry(object = mesh, config = self.config, uniq_stateset = self.uniq_stateset)
         sources_geometries = converter.convert()
-
         if exportInfluence is True and hasVertexGroup is True:
             for geom in sources_geometries:
                 rig_geom = RigGeometry()
@@ -516,6 +515,7 @@ class Export(object):
                 geode.drawables.append(geom)
             for name in converter.material_animations.iterkeys():
                 self.animations[name] = converter.material_animations[name]
+
         return geode
 
     def createLight(self, obj):
@@ -680,12 +680,46 @@ class BlenderObjectToGeometry(object):
                 if DEBUG: debug("state set %s" % str(s))
         return s
 
+    def createModelWithoutFaces(self, mesh, geom):
+        try:
+            if len(mesh.verts) == 0:
+                log("object %s has no vertexes either, do nothing" % self.object.getName())        
+                return None
+            title = "mesh %s without material and as %d vertexes" % (self.object.getName(), len(mesh.verts))
+            log(title);
+
+            osg_vertexes = VertexArray()
+            for i in mesh.verts:
+                osg_vertexes.array.append(i.co)
+
+            geom.vertexes = osg_vertexes
+            primitives = []
+            drawarrays = DrawArrays()
+            drawarrays.type = "POINTS"
+            drawarrays.first = 0
+            drawarrays.count = len(mesh.verts)
+            primitives.append(drawarrays)
+            geom.primitives = primitives
+            geom.setName(self.object.getName())
+            geom.stateset = self.createStateSet(0, mesh, geom)
+
+        except:
+            log("cant export vertexes for model %s" % self.object.getName())
+            return None
+
+        end_title = '-' * len(title)
+        log(end_title)
+        return geom
+
     def createGeomForMaterialIndex(self, material_index, mesh):
         geom = Geometry()
         geom.groups = {}
         if (len(mesh.faces) == 0):
-            log("object %s has no faces, so no materials" % self.object.getName())
-            return None
+            #log("object %s has no faces, so no materials" % self.object.getName())
+            log("object %s has no faces, so no materials, checking for vertexes" % self.object.getName())
+            result = self.createModelWithoutFaces(mesh, geom)
+            return result
+            
         if len(mesh.materials):
             title = "mesh %s with material %s" % (self.object.getName(), mesh.materials[material_index])
         else:
@@ -963,6 +997,7 @@ class BlenderObjectToGeometry(object):
                 if geom is not None:
                     geometry_list.append(geom)
                 material_index += 1
+
         return geometry_list
 
     def convert(self):

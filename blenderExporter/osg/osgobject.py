@@ -775,6 +775,21 @@ class DrawElements(Object):
 
     def className(self):
         return "DrawElements"
+
+
+class DrawArrays(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+        self.type = None
+        self.shadow_object = None
+
+    def ascii(self):
+        element = "DrawArrays"
+        text = "$#%s %s %s %s\n" % (element, self.type, str(self.first), str(self.count))
+        return text
+
+    def className(self):
+        return "DrawArrays"
     
 class Geometry(Object):
     def __init__(self, *args, **kwargs):
