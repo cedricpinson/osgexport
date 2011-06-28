@@ -1,7 +1,8 @@
-to get this exporter, get mercurial http://mercurial.selenic.com/wiki/
-then 
+Follow instruction from github to get the repository
 
-hg clone http://hg.plopbyte.net/osgexport/
+https://github.com/cedricpinson/osgexport
+
+
 cd osgexport
 mkdir build
 cd build
@@ -18,6 +19,6 @@ How to send a patch:
 When you submit a patch you should run the test to be sure it does not break the current fonctionnality.
 You can run with ctest -V in the build directory.
 
-you can send bug or patch to cedric.pinson@plopbyte.net
+you can send bug or patch to cedric.pinson@plopbyte.com
 
 Cedric
