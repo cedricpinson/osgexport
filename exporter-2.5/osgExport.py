@@ -17,16 +17,8 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 #
-
-"""
-Name: 'OpenSceneGraph (.osg)'
-Blender: 248
-Group: 'Export'
-Tip: 'Export armature/bone/action/mesh data to osg formats.'
-"""
-
 
 import sys
 import os
@@ -94,8 +86,9 @@ def menu_export_osg_model(self, context):
 
 def register():
         
-        bpy.utils.register_module(__name__)
-        bpy.types.INFO_MT_file_export.append(menu_export_osg_model)
+    bpy.utils.register_module(__name__)
+    bpy.types.INFO_MT_file_export.append(menu_export_osg_model)
+
 
 def unregister():
         bpy.utils.unregister_module(__name__)
