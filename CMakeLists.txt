@@ -16,7 +16,7 @@
 #
 # Authors:
 #  Jeremy Moles <cubicool@gmail.com>
-#  Cedric Pinson <mornifle@plopbyte.net
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 
 PROJECT(osgexporter)
 
@@ -45,6 +45,8 @@ SET(CPACK_SOURCE_IGNORE_FILES
 SET(OSGEXPORTER_VERSION "0.0.1")
 SET(CPACK_SOURCE_PACKAGE_FILE_NAME "osgexporter-${OSGEXPORTER_VERSION}")
 
+OPTION(BLENDER "blender")
+OPTION(EXPORTER "export-2.5") 
 OPTION(TEST "Enable test" OFF)
 OPTION(BUILD_DATA "Build data" ON)
 

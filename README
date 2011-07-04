@@ -2,23 +2,23 @@ Follow instruction from github to get the repository
 
 https://github.com/cedricpinson/osgexport
 
-
-cd osgexport
-mkdir build
-cd build
-cmake ../ -DTEST=ON
-make
-ctest -V
-
 To install this export follow instructions in file INSTALL
 
 How to report a bug:
 send a minimal blender file that produce the problem, and the result osg file.
 
-How to send a patch:
-When you submit a patch you should run the test to be sure it does not break the current fonctionnality.
-You can run with ctest -V in the build directory.
 
-you can send bug or patch to cedric.pinson@plopbyte.com
+Test blender 2.49
+mkdir build-2.49
+cd build-2.49
+cmake ../ -DTEST=ON -DBLENDER="blender2.49" -DEXPORTER="exporter-2.49"
+ctest -V
+
+Test blender 2.5
+mkdir build-2.5
+cd build-2.5
+cmake ../ -DTEST=ON -DBLENDER="blender2.5" -DEXPORTER="exporter-2.5"
+ctest -V
+
 
 Cedric

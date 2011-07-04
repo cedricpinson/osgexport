@@ -15,26 +15,8 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 
-
-SET ( DATA_SOURCE
-  ${PROJECT_SOURCE_DIR}/data/robot/robot.blend 
-  )
-
-SET ( DATA_NAME robot)
-
-IF (BUILD_DATA)
-
-  SET (DATA_BUILD ${DATA_NAME}.osg)
-  ADD_CUSTOM_COMMAND (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${DATA_BUILD}
-    COMMAND blender
-    ARGS  -b ${DATA_SOURCE} -P osgExport.py 
-    --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_NAME}\;RELATIVE_PATH=True"
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/blenderExporter
-    DEPENDS ${DATA_SOURCE}
-    COMMENT "build data from " ${DATA_SOURCE}
-    )
-  ADD_CUSTOM_TARGET (${DATA_NAME} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${DATA_BUILD})
-
-ENDIF (BUILD_DATA)
+SET ( DATA_SOURCE ${PROJECT_SOURCE_DIR}/data/robot/robot.blend )
+SET ( DATA_TARGET robot )
+BUILD_DATA()

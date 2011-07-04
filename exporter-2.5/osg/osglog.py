@@ -12,12 +12,13 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.com>
+#  Cedric Pinson <mornifle@plopbyte.net>
 
-
-SET ( DATA_SOURCE ${PROJECT_SOURCE_DIR}/data/avatar/avatar.blend )
-SET ( DATA_TARGET avatar )
-BUILD_DATA()
+LOGFILE = None
+def log(message):
+        print("osg:", message)
+        if LOGFILE:
+                LOGFILE.write(message + "\n")
