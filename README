@@ -11,13 +11,13 @@ send a minimal blender file that produce the problem, and the result osg file.
 Test blender 2.49
 mkdir build-2.49
 cd build-2.49
-cmake ../ -DTEST=ON -DBLENDER="blender2.49" -DEXPORTER="exporter-2.49"
+cmake ../blender-2.49 -DTEST=ON -DBLENDER="blender2.49"
 ctest -V
 
 Test blender 2.5
 mkdir build-2.5
 cd build-2.5
-cmake ../ -DTEST=ON -DBLENDER="blender2.5" -DEXPORTER="exporter-2.5"
+cmake ../blender-2.5 -DTEST=ON -DBLENDER="blender2.5"
 ctest -V
 
 
