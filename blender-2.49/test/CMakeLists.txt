@@ -15,7 +15,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 
 
 CONFIGURE_FILE(
@@ -23,35 +23,35 @@ CONFIGURE_FILE(
   ${CMAKE_CURRENT_BINARY_DIR}/test-armature.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-armature" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-armature.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+ADD_TEST("test-armature" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-armature.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-bug_multimaterial.py.in 
   ${CMAKE_CURRENT_BINARY_DIR}/test-bug_multimaterial.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-bug_multimaterial" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-bug_multimaterial.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+ADD_TEST("test-bug_multimaterial" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-bug_multimaterial.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-geometry_and_material.py.in 
   ${CMAKE_CURRENT_BINARY_DIR}/test-geometry_and_material.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-geometry_and_material" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-geometry_and_material.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+ADD_TEST("test-geometry_and_material" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-geometry_and_material.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-exporter.py.in 
   ${CMAKE_CURRENT_BINARY_DIR}/test-exporter.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-exporter" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-exporter.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+ADD_TEST("test-exporter" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-exporter.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-baked_ipo.py.in
   ${CMAKE_CURRENT_BINARY_DIR}/test-baked_ipo.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-bake_ipo" blender -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-baked_ipo.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+ADD_TEST("test-bake_ipo" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-baked_ipo.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
 
 # copy php file to test it in the build environnement"

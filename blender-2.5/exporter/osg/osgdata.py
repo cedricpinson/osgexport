@@ -746,7 +746,7 @@ class BlenderObjectToGeometry(object):
             log("object %s has no faces, so no materials" % self.object.name)
             return None
         if len(mesh.materials):
-            title = "mesh %s with material %s" % (self.object.name, mesh.materials[material_index])
+            title = "mesh %s with material %s" % (self.object.name, mesh.materials[material_index].name)
         else:
             title = "mesh %s without material" % (self.object.name)
         log(title)
