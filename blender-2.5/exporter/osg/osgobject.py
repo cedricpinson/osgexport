@@ -895,6 +895,9 @@ class Bone(MatrixTransform):
             self.children.append(b)
             b.buildBoneChildren()
 
+    def getMatrixInArmatureSpace(self):
+        return self.bone_matrix['ARMATURESPACE']
+
     def collect(self, list):
         list.append(self)
         for boneChild in self.children:
@@ -951,6 +954,9 @@ class Skeleton(MatrixTransform):
         self.boneList = []
         for bone in self.children:
             bone.collect(self.boneList)
+
+    def getMatrixInArmatureSpace(self):
+        return self.matrix
 
     def className(self):
         return "Skeleton"

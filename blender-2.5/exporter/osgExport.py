@@ -33,7 +33,6 @@ import bpy
 import osg
 from osg import osgdata
 from osg import osgconf
-#from osg import osggui
 
 __version__ = osg.VERSION
 __author__  = osg.AUTHOR
@@ -47,20 +46,40 @@ def OpenSceneGraphExport(config=None):
     export.process()
     export.write()
 
-if __name__ == "__main__":
-    # If the user wants to run in "batch" mode, assume that ParseArgs
-    # will correctly set atkconf data and go.
-    print(sys.argv)
-    config = osg.parseArgs(sys.argv)
-    
-    if config:
-        OpenSceneGraphExport(config)
-        bpy.ops.wm.quit_blender()
+def main():
+    import sys       # to get command line args
+    import argparse  # to parse options for us and print a nice help message
 
-	# Otherwise, let the atkcgui module take over.
+    # get the args passed to blender after "--", all of which are ignored by
+    # blender so scripts may receive their own arguments
+    argv = sys.argv
+
+    if "--" not in argv:
+        argv = []  # as if no args are passed
     else:
-        gui = OSGGUI(OpenSceneGraphExport)
-        gui.Register()
+        argv = argv[argv.index("--") + 1:]  # get all args after "--"
+
+    # When --help or no args are given, print this help
+    usage_text = \
+    "Run blender in background mode with this script:"
+    "  blender --background --python " + __file__ + " -- [options]"
+
+    parser = argparse.ArgumentParser(description=usage_text)
+
+    # Example utility, add some text and renders or saves it (with options)
+    # Possible types are: string, int, long, choice, float and complex.
+    parser.add_argument("-s", "--save", dest="save_path", metavar='FILE|PATH',
+            help="Save the generated file to the specified path")
+
+    args = parser.parse_args(argv)  # In this example we wont use the args
+
+    config = osgconf.Config({'FILENAME': args.save_path 
+                     })
+    OpenSceneGraphExport(config)
+    
+
+if __name__ == "__main__":
+    main()
 
 bl_info = {
     "name": "Export OSG format (.osg)",
@@ -80,19 +99,17 @@ bl_info = {
 
 def menu_export_osg_model(self, context):
     import os
-    default_path = os.path.splitext(bpy.data.filepath)[0] + ".osg"
+    default_path = os.path.splitext(bpy.data.filepath)[0]
     self.layout.operator(OSGGUI.bl_idname, text="OSG Model(.osg)").filepath = default_path
 
 
 def register():
-        
     bpy.utils.register_module(__name__)
     bpy.types.INFO_MT_file_export.append(menu_export_osg_model)
 
-
 def unregister():
-        bpy.utils.unregister_module(__name__)
-        bpy.types.INFO_MT_file_export.remove(menu_export_osg_model)
+    bpy.utils.unregister_module(__name__)
+    bpy.types.INFO_MT_file_export.remove(menu_export_osg_model)
 
 
 from bpy.props import *
@@ -102,6 +119,7 @@ try:
 except:
     from bpy_extras.io_utils import ExportHelper
     print("Use new import path")
+
 
 class OSGGUI(bpy.types.Operator, ExportHelper):
     '''Export model data to an OpenSceneGraph file'''
@@ -127,23 +145,15 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         if self.SELECTED:
                 selected = "SELECTED_ONLY_WITH_CHILDREN"
 
-        config = osg.parseArgs(["""--osg=
-                AUTHOR     = %s;
-                LOG        = %s;
-                SELECTED   = %s;
-                INDENT  = %s;
-                FLOATPRE   = %g;
-                ANIMFPS    = %s;
-                FILENAME   = %s;
-        """ % (
-                self.AUTHOR,
-                True, #self.objects["LOG"].val,
-                selected,
-                self.INDENT,
-                self.FLOATPRE,
-                self.ANIMFPS,
-                self.filepath
-        )])
+        config = osgconf.Config( {
+                "FILENAME": self.filepath,
+                "AUTHOR": self.AUTHOR,
+                "LOG": True,
+                "SELECTED": selected,
+                "INDENT": self.INDENT,
+                "FLOATPRE": self.FLOATPRE,
+                "ANIMFPS": self.ANIMFPS
+                })
 
         print("FILENAME:" + repr(config.filename))
         OpenSceneGraphExport(config)

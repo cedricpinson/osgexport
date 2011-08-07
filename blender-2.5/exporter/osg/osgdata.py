@@ -54,9 +54,6 @@ Quaternion = mathutils.Quaternion
 Matrix     = mathutils.Matrix
 Euler      = mathutils.Euler
 
-def printloud(s):
-    print("[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[", s, "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]")
-
 def getImageFilesFromStateSet(stateset):
     list = []
     if DEBUG: debug("stateset %s" % str(stateset))
@@ -68,7 +65,10 @@ def getImageFilesFromStateSet(stateset):
     return list
 
 def getRootBonesList(armature):
-    bones = [bone for bone in armature.bones.values() if not bone.parent]
+    bones = []
+    for bone in armature.bones:
+        if bone.parent == None:
+            bones.append(bone)
     return bones
 
 def getTransform(matrix):
@@ -361,6 +361,7 @@ class Export(object):
             rootItem = item
 
 
+        # need to refactore skeleton part, too much changed in blender 2.5
         if obj.parent and obj.parent.name is not None:
             bone = findBoneInHierarchy(rootItem, obj.parent.name)
             if bone is None:
@@ -372,7 +373,8 @@ class Export(object):
                 # parent bone to object bone
                 armature = obj.parent
                 matrixArmatureInWorldSpace = armature.matrix_world
-                matrixBoneinArmatureSpace = bone.bone_matrix['ARMATURESPACE']
+                matrixBoneinArmatureSpace = bone.getMatrixInArmatureSpace()
+
                 boneInWorldSpace = matrixBoneinArmatureSpace * matrixArmatureInWorldSpace
                 matrix = getDeltaMatrixFromMatrix(boneInWorldSpace, obj.matrix_world)
                 item.matrix = matrix
@@ -399,7 +401,6 @@ class Export(object):
             posbones[pbone.name] = pbone
 
         roots = getRootBonesList(obj.data)
-
         matrix = getDeltaMatrixFrom(obj.parent, obj)
         skeleton = Skeleton(obj.name, matrix)
         for bone in roots:
@@ -423,6 +424,7 @@ class Export(object):
     def process(self):
 #        Object.resetWriter()
         self.scene_name = bpy.context.scene.name
+        log("current scene %s" % self.scene_name)
         if self.config.validFilename() is False:
             self.config.filename += self.scene_name
         self.config.createLogfile()
@@ -745,8 +747,9 @@ class BlenderObjectToGeometry(object):
         if (len(mesh.faces) == 0):
             log("object %s has no faces, so no materials" % self.object.name)
             return None
-        if len(mesh.materials):
-            title = "mesh %s with material %s" % (self.object.name, mesh.materials[material_index].name)
+        if len(mesh.materials) and mesh.materials[material_index] != None:
+            material_name = mesh.materials[material_index].name
+            title = "mesh %s with material %s" % (self.object.name, material_name)
         else:
             title = "mesh %s without material" % (self.object.name)
         log(title)

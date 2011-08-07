@@ -17,26 +17,21 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 #
 
 """
 Name: 'osgexporter (.osg)'
-Blender: 248
+Blender: 258
 Group: 'Export'
-Tip: 'Export armature/bone/action data to osg formats.'
 """
 
-from twisted.trial import unittest, runner, reporter
-from twisted.internet import reactor, defer
-from twisted.python import failure
-import twisted
+import unittest
 import math
-
+import os
 import sys
-sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/exporter/")
 
-import Blender
 import bpy
 import osg
 from osg.osgobject import *
@@ -57,26 +52,23 @@ class Exporter(unittest.TestCase):
     def tearDown(self):
         pass
 
+    def checkFile(self, name):
+        return os.path.isfile(name)
                 
-    def testBlenderObjectBugMultiMaterial(self):
-        sc = bpy.data.scenes["BugMultiMaterial"]
-        bpy.data.scenes.active = sc
+    def test_BlenderObjectBugMultiMaterial(self):
+        #sc = bpy.data.scenes["BugMultiMaterial"]
+        #bpy.data.screens[0].scene = sc
+        filename = "./BugMultiMaterial.osg"
+        try:
+            os.remove(filename)
+        except:
+            pass
         exporter = Export()
         exporter.process()
         exporter.write()
-
-def Run():
-        loader = runner.TestLoader()
-        loader.methodPrefix = "test"
-        suite = loader.suiteFactory()
-        suite.addTest(loader.loadClass(Exporter))
-        return runner.TrialRunner(
-                reporter.VerboseTextReporter,
-                tracebackFormat='default',
-                ).run(suite)
+        if self.checkFile(filename) == False:
+            sys.exit(1)
 
 if __name__ == '__main__':
-        if Run().wasSuccessful():
-                sys.exit(0)
-        else:
-                sys.exit(1)
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    sys.exit(unittest.TextTestRunner(verbosity=2).run(suite))

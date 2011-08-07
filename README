@@ -8,6 +8,8 @@ How to report a bug:
 send a minimal blender file that produce the problem, and the result osg file.
 
 
+To execute test you will need to install twisted
+
 Test blender 2.49
 mkdir build-2.49
 cd build-2.49

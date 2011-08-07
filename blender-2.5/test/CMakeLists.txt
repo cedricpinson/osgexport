@@ -17,20 +17,25 @@
 # Authors:
 #  Cedric Pinson <cedric.pinson@plopbyte.com>
 
+ADD_CUSTOM_TARGET( copy_blender_testfile ALL
+  cmake -E copy_if_different ${PROJECT_SOURCE_DIR}/test/test.blend ${CMAKE_CURRENT_BINARY_DIR}
+  )
+
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-armature.py.in 
   ${CMAKE_CURRENT_BINARY_DIR}/test-armature.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-armature" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-armature.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+#animation is not yet implemented on 2.5
+#ADD_TEST("test-armature" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-armature.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-bug_multimaterial.py.in 
   ${CMAKE_CURRENT_BINARY_DIR}/test-bug_multimaterial.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-bug_multimaterial" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-bug_multimaterial.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+ADD_TEST("test-bug_multimaterial" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-bug_multimaterial.py -S "BugMultiMaterial" )
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-geometry_and_material.py.in 
@@ -53,9 +58,4 @@ CONFIGURE_FILE(
   )
 ADD_TEST("test-bake_ipo" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-baked_ipo.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
-
-# copy php file to test it in the build environnement"
-ADD_CUSTOM_TARGET( copy_blender_testfile ALL
-  cmake -E copy_if_different ${PROJECT_SOURCE_DIR}/test/test.blend ${CMAKE_CURRENT_BINARY_DIR}
-  )
 
