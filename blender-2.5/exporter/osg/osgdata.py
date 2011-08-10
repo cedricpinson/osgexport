@@ -1,6 +1,6 @@
 # -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
 #
-# Copyright (C) 2008 Cedric Pinson
+# Copyright (C) 2008-2011 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,17 +17,8 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.net>
-#
-# Copyright (C) 2002-2006 Ruben Lopez <ryu@gpul.org>
-#
-# This script is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-# You can read the GNU General Public License at http://www.gnu.org
-#
-#######################################################################
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
+#  Jeremy Moles <jeremy@emperorlinux.com>
 
 import bpy
 import mathutils
@@ -38,9 +29,10 @@ import math
 from sys import exit
 
 import osg
+from . import osglog
 from . import osgconf
-from .osglog import log
 from .osgconf import DEBUG
+from .osgconf import debug
 #from . import osgbake
 # from osgbake import BakeIpoForMaterial, BakeIpoForObject, BakeAction
 # from osglog import log
@@ -53,6 +45,27 @@ Vector     = mathutils.Vector
 Quaternion = mathutils.Quaternion
 Matrix     = mathutils.Matrix
 Euler      = mathutils.Euler
+
+def createImageFilename(texturePath, image):
+    ext = os.path.basename(image.filepath).split(".")
+    name = ext[0]
+    # [BMP, IRIS, PNG, JPEG, TARGA, TARGA_RAW, AVI_JPEG, AVI_RAW, FRAMESERVER]
+    #print("format " + image.file_format)
+    if image.file_format == 'PNG':
+        ext = "png"
+    elif image.file_format == 'JPEG':
+        ext = "jpg"
+    elif image.file_format == 'TARGA' or image.file_format == 'TARGA_RAW':
+        ext = "tga"
+    elif image.file_format == 'BMP':
+        ext = "bmp"
+    elif image.file_format == 'AVI_JPEG' or image.file_format == 'AVI_RAW':
+        ext = "avi"
+    else:
+        ext = "unknown"
+    name = name + "." +ext
+    print("create Image Filename " + name)
+    return texturePath + name
 
 def getImageFilesFromStateSet(stateset):
     list = []
@@ -282,7 +295,7 @@ class Export(object):
         item = None
         if list(self.uniq_objects.keys()).count(obj) > 0:
             
-            log(str("use referenced item for " + obj.name + " " + obj.type))
+            osglog.log(str("use referenced item for " + obj.name + " " + obj.type))
             item = self.uniq_objects[obj] #ShadowObject(self.uniq_objects[obj])
         else:
             if obj.type.lower() == "Armature".lower():
@@ -352,7 +365,7 @@ class Export(object):
                         self.animations[anim.name] = anim
                 self.evaluateGroup(obj, item, rootItem)
             else:
-                log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
+                osglog.log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
                 return None
             self.uniq_objects[obj] = item
 
@@ -367,7 +380,7 @@ class Export(object):
             if bone is None:
                 #if parent:
                 #    parent.children.append(item)
-                log(str("WARNING PARENT BONE " + obj.parent.name + " not found"))
+                osglog.log(str("WARNING PARENT BONE " + obj.parent.name + " not found"))
             else:
                 # if parent is a bone we need to compute correctly the matrix from
                 # parent bone to object bone
@@ -424,7 +437,7 @@ class Export(object):
     def process(self):
 #        Object.resetWriter()
         self.scene_name = bpy.context.scene.name
-        log("current scene %s" % self.scene_name)
+        osglog.log("current scene %s" % self.scene_name)
         if self.config.validFilename() is False:
             self.config.filename += self.scene_name
         self.config.createLogfile()
@@ -435,7 +448,7 @@ class Export(object):
                 bpy.context.scene.objects.active = o
                 bpy.context.scene.objects.selected = [o]
             except ValueError:
-                log("Error, problem happens when assigning object %s to scene %s" % (o.name, bpy.context.scene.name))
+                osglog.log("Error, problem happens when assigning object %s to scene %s" % (o.name, bpy.context.scene.name))
                 raise
                 
         for obj in bpy.context.scene.objects:
@@ -503,22 +516,46 @@ class Export(object):
             return
 
         filename = self.config.getFullName("osg")
-        log("write file to " + filename)
+        osglog.log("write file to " + filename)
         sfile = open(filename, "wb")
         sfile.write(str(self.root).encode('utf-8'))
 
+        nativePath = os.path.abspath(self.config.getFullPath())+ "/textures/"
+        blenderPath = bpy.path.relpath(nativePath)
+        if len(self.images) > 0:
+            try:
+                if not os.path.exists(nativePath):
+                    os.mkdir(nativePath)
+            except:
+                osglog.log("can't create textures directory %s" % nativePath)
+                raise
+                
         for i in self.images:
             if i is not None:
+                imagename = os.path.basename(i.filepath)
                 try:
-                    if not os.path.exists(self.config.getFullName("textures")):
-                            os.mkdir(self.config.getFullName("textures"))
-                    exportImageFileName = os.path.basename(i.filepath).split(".")[0] + ".png"
-                    log("unpack file to " + self.config.getFullName("textures/") + exportImageFileName)
-                    i.save_render(self.config.getFullName("textures/") + exportImageFileName)
-                    #i.unpack(Blender.UnpackModes.USE_LOCAL)
+                    if i.packed_file:
+                        original_filepath = i.filepath_raw
+                        try:
+                            if len(imagename.split('.')) == 1:
+                                imagename += ".png"
+                            filename = blenderPath + "/"+ imagename
+                            i.filepath_raw = filename
+                            osglog.log("packed file, save it to %s" %(os.path.abspath(bpy.path.abspath(filename))))
+                            i.save()
+                        except:
+                            osglog.log("failed to save file %s to %s" %(imagename, nativePath))
+                        i.filepath_raw = original_filepath
+                    else:
+                        filepath = bpy.path.abspath(i.filepath)
+                        if os.path.exists(filepath):
+                            shutil.copy(filepath, texturePath)
+                            osglog.log("copy file %s to %s" %(filepath, nativePath))
+                        else:
+                            osglog.log("file %s not available" %(filepath))
                 except:
+                    osglog.log("error while trying to copy file %s to %s" %(imagename, nativePath))
 
-                    log("error while trying to unpack file " + i.filepath)
 
         if self.config.log_file is not None:
             self.config.closeLogfile()
@@ -526,7 +563,7 @@ class Export(object):
 
     def createMesh(self, mesh, skeleton = None):
         mesh_object  = mesh.data
-        log("exporting mesh " + mesh.name)
+        osglog.log("exporting mesh " + mesh.name)
 
         geode = Geode()
         geode.setName(mesh.name)
@@ -614,7 +651,9 @@ class BlenderLightToLightSource(object):
 class BlenderObjectToGeometry(object):
     def __init__(self, *args, **kwargs):
         self.object = kwargs["object"]
-        self.config = kwargs.get("config", osgconf.Config())
+        self.config = kwargs.get("config", None)
+        if not self.config:
+            self.config = osgconf.Config()
         self.uniq_stateset = kwargs.get("uniq_stateset", {})
         self.geom_type = Geometry
         self.mesh = self.object.data
@@ -627,13 +666,14 @@ class BlenderObjectToGeometry(object):
         except: 
             image_object = None
         if image_object is None:
-            log("WARNING the texture %s has not Image, skip it" % mtex.texture.name)
+            osglog.log("WARNING the texture %s has no Image, skip it" % mtex.texture.name)
             return None
         texture = Texture2D()
         texture.name = mtex.texture.name
-        filename = "//" + os.path.basename(image_object.filepath.replace(" ","_"))
-        filename = filename.split(".")[0] + ".png"
-        texture.file = filename.replace("//",self.config.getFullName("textures/"))
+
+        # reference texture relative to export path
+        filename = createImageFilename("textures/",image_object)
+        texture.file = filename
         texture.source_image = image_object
         return texture
 
@@ -656,7 +696,7 @@ class BlenderObjectToGeometry(object):
                 uv_layer =  texture_list[i].uv_layer
 
                 if len(uv_layer) > 0 and not uv_layer in uvs.keys():
-                    log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (material.name, texture_list[i], uv_layer, geom.name))
+                    osglog.log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (material.name, texture_list[i], uv_layer, geom.name))
                 if len(uv_layer) > 0 and uv_layer in uvs.keys():
                     if DEBUG: debug("texture %s use uv layer %s" % (i, uv_layer))
                     geom.uvs[i] = TexCoordArray()
@@ -745,14 +785,14 @@ class BlenderObjectToGeometry(object):
         geom = Geometry()
         geom.groups = {}
         if (len(mesh.faces) == 0):
-            log("object %s has no faces, so no materials" % self.object.name)
+            osglog.log("object %s has no faces, so no materials" % self.object.name)
             return None
         if len(mesh.materials) and mesh.materials[material_index] != None:
             material_name = mesh.materials[material_index].name
             title = "mesh %s with material %s" % (self.object.name, material_name)
         else:
             title = "mesh %s without material" % (self.object.name)
-        log(title)
+        osglog.log(title)
 
         vertexes = []
         collected_faces = []
@@ -765,15 +805,15 @@ class BlenderObjectToGeometry(object):
                 index = len(vertexes)
                 vertexes.append(mesh.vertices[vertex])
                 f.append(index)
-                if DEBUG: fdebug.append(vertex.index)
+                if DEBUG: fdebug.append(vertex)
             if DEBUG: debug("true face %s" % str(fdebug))
             if DEBUG: debug("face %s" % str(f))
             collected_faces.append((face,f))
 
         if (len(collected_faces) == 0):
-            log("object %s has no faces for sub material slot %s" % (self.object.name, str(material_index)))
+            osglog.log("object %s has no faces for sub material slot %s" % (self.object.name, str(material_index)))
             end_title = '-' * len(title)
-            log(end_title)
+            osglog.log(end_title)
             return None
 
         # colors = {}
@@ -867,19 +907,29 @@ class BlenderObjectToGeometry(object):
             merged_vertexes.append(i)
             tagged_vertexes.append(False)
 
+        def truncateFloat(value, digit = 5):
+            return round(value, digit)
+
+        def truncateVector(vector, digit = 5):
+            for i in range(0,len(vector)):
+                vector[i] = truncateFloat(vector[i], digit)
+            return vector
+
         def get_vertex_key(index):
             return (
-                (vertexes[index].co[0], vertexes[index].co[1], vertexes[index].co[2]),
-                (normals[index][0], normals[index][1], normals[index][2]),
-                tuple([tuple(uvs[x][index]) for x in uvs.keys()]),
-                tuple([tuple(colors[x][index]) for x in colors.keys()])
-                )
+                (truncateFloat(vertexes[index].co[0]), truncateFloat(vertexes[index].co[1]), truncateFloat(vertexes[index].co[2])),
+
+                (truncateFloat(normals[index][0]), truncateFloat(normals[index][1]), truncateFloat(normals[index][2])),
+                tuple([tuple(truncateVector(uvs[x][index])) for x in uvs.keys()]))
+                # vertex color not supported
+                #tuple([tuple(truncateVector(colors[x][index])) for x in colors.keys()]))
 
         # Build a dictionary of indexes to all the vertexes that
         # are equal.
         vertex_dict = {}
         for i in range(0, len(vertexes)):
             key = get_vertex_key(i)
+            if DEBUG: debug("key %s" % str(key))
             if key in vertex_dict.keys():
                 vertex_dict[key].append(i)
             else:
@@ -908,9 +958,9 @@ class BlenderObjectToGeometry(object):
                 debug("vertex %s contains %s" % (str(i), str(mapping_vertexes[i])))
 
         if len(mapping_vertexes) != len(vertexes):
-            log("vertexes reduced from %s to %s" % (str(len(vertexes)),len(mapping_vertexes)))
+            osglog.log("vertexes reduced from %s to %s" % (str(len(vertexes)),len(mapping_vertexes)))
         else:
-            log("vertexes %s" % str(len(vertexes)))
+            osglog.log("vertexes %s" % str(len(vertexes)))
 
         faces = []
         for (original, face) in collected_faces:
@@ -923,7 +973,7 @@ class BlenderObjectToGeometry(object):
             if DEBUG: debug("new face %s" % str(f))
             if DEBUG: debug("true face %s" % str(fdebug))
             
-        log("faces %s" % str(len(faces)))
+        osglog.log("faces %s" % str(len(faces)))
 
         vgroups = {}
         original_vertexes2optimized = {}
@@ -961,7 +1011,7 @@ class BlenderObjectToGeometry(object):
 
         if blenObject:
             for vertex_group in blenObject.vertex_groups:
-                log("Look at vertex group:" + repr(vertex_group))
+                osglog.log("Look at vertex group:" + repr(vertex_group))
                 verts = {}
                 for idx in range(0, len(mesh.vertices)):
                     weight = 0
@@ -976,7 +1026,7 @@ class BlenderObjectToGeometry(object):
                                     verts[v] = weight
                         
                 if len(verts) == 0:
-                    log( "WARNING group has no vertexes, skip it, if really unsued you should clean it")
+                    osglog.log( "WARNING group has no vertexes, skip it, if really unsued you should clean it")
                 else:
                     vertex_weight_list = [ list(e) for e in verts.items() ]
                     vg = VertexGroup()
@@ -985,13 +1035,13 @@ class BlenderObjectToGeometry(object):
                     vgroups[vertex_group.name] = vg
 
         if (len(vgroups)):
-            log("vertex groups %s" % str(len(vgroups)))
+            osglog.log("vertex groups %s" % str(len(vgroups)))
         geom.groups = vgroups
         
         osg_vertexes = VertexArray()
         osg_normals = NormalArray()
         osg_uvs = {}
-        osg_colors = {}
+        #osg_colors = {}
         for vertex in mapping_vertexes:
             vindex = vertex[0]
             coord = vertexes[vindex].co
@@ -1006,7 +1056,7 @@ class BlenderObjectToGeometry(object):
                 osg_uvs[name].array.append(uvs[name][vindex])
 
         if (len(osg_uvs)):
-            log("uvs channels %s - %s" % (len(osg_uvs), str(osg_uvs.keys())))
+            osglog.log("uvs channels %s - %s" % (len(osg_uvs), str(osg_uvs.keys())))
 
         nlin = 0
         ntri = 0
@@ -1021,7 +1071,7 @@ class BlenderObjectToGeometry(object):
             elif nv == 4:
                 nquad = nquad + 1
             else:
-                log("WARNING can't manage faces with %s vertices" % nv)
+                osglog.log("WARNING can't manage faces with %s vertices" % nv)
 
         # counting number of primitives (one for lines, one for triangles and one for quads)
         numprims = 0
@@ -1074,6 +1124,7 @@ class BlenderObjectToGeometry(object):
             primitives.append(quads)
 
         geom.uvs = osg_uvs
+        #geom.colors = osg_colors
         geom.vertexes = osg_vertexes
         geom.normals = osg_normals
         geom.primitives = primitives
@@ -1084,7 +1135,7 @@ class BlenderObjectToGeometry(object):
             self.adjustUVLayerFromMaterial(geom, mesh.materials[material_index])
 
         end_title = '-' * len(title)
-        log(end_title)
+        osglog.log(end_title)
         return geom
 
     def process(self, mesh):
@@ -1105,7 +1156,7 @@ class BlenderObjectToGeometry(object):
     def convert(self):
         # looks like this was dropped
         # if self.mesh.vertexUV:
-        #     log("WARNING mesh %s use sticky UV and it's not supported" % self.object.name)
+        #     osglog.log("WARNING mesh %s use sticky UV and it's not supported" % self.object.name)
 
         list = self.process(self.mesh)
         return list

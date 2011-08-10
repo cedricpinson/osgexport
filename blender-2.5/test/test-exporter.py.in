@@ -1,6 +1,5 @@
-#!BPY
 # -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
-# Copyright (C) 2008 Cedric Pinson
+# Copyright (C) 2008-2011 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,26 +16,15 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 #
 
-"""
-Name: 'osgexporter (.osg)'
-Blender: 248
-Group: 'Export'
-Tip: 'Export armature/bone/action data to osg formats.'
-"""
-
-from twisted.trial import unittest, runner, reporter
-from twisted.internet import reactor, defer
-from twisted.python import failure
-import twisted
+import unittest
 import math
 
 import sys
-sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/exporter/")
 
-import Blender
 import bpy
 import osg
 from osg.osgobject import *
@@ -49,13 +37,36 @@ def close(a, b, threshold):
             return False
     return True
 
+def makeSceneActive(scene):
+    import ctypes
+    import bpy
+
+    blend_cdll = ctypes.CDLL("")
+
+    bmain = ctypes.POINTER(ctypes.c_void_p).from_address(ctypes.addressof(blend_cdll.G)).contents.value
+    
+    sce = bpy.data.scenes[scene]
+    ctr = blend_cdll.BPy_GetContext()
+
+    blend_cdll.ED_screen_set_scene(ctr, sce.as_pointer())
+    print(bpy.context.scene)
+
 class Exporter(unittest.TestCase):
     # ------------------------------------------------------
     def setUp(self):
         osg.osgobject.Object.resetWriter()
 
     def tearDown(self):
-        pass
+        self.removeFile("./textures/One.png")
+        self.removeFile("./textures/Two.png")
+        self.removeFile("./textures/bbb.png")
+        self.removeFile("./textures/sol_trauma_periph.png")
+
+    def removeFile(self, name):
+        try:
+            os.remove(name)
+        except:
+            pass
 
     def testConfig(self):
         conf = osg.osgconf.Config()
@@ -135,8 +146,7 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
                 
 
     def testBroken(self):
-        sc = bpy.data.scenes["Broken"]
-        bpy.data.scenes.active = sc
+        makeSceneActive("Broken")
         exporter = Export()
         exporter.process()
         exporter.write()
@@ -144,16 +154,14 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         self.assertEquals("DrawElementsUByte", exporter.items[0].children[0].drawables[0].primitives[0].getSizeArray() )
 
     def testLight(self):
-        sc = bpy.data.scenes["Light"]
-        bpy.data.scenes.active = sc
+        makeSceneActive("Light")
         exporter = Export()
         exporter.process()
         exporter.write()
         self.assertEquals(4, len(exporter.items))
                 
     def testIpos(self):
-        sc = bpy.data.scenes["Ipos"]
-        bpy.data.scenes.active = sc
+        makeSceneActive("Ipos")
         exporter = Export()
         exporter.config.anim_bake = "force"
         exporter.config.filename = "ipos"
@@ -162,30 +170,27 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         exporter.write()
 
     def testInstance(self):
-        scene = bpy.data.scenes["Instance"]
-        bpy.data.scenes.active = scene
+        makeSceneActive("Instance")
         exporter = Export()
         exporter.process()
         exporter.write()
 
     def testBadTextureExport(self):
-        scene = bpy.data.scenes["Bug"]
-        bpy.data.scenes.active = scene
+        makeSceneActive("Bug")
         exporter = Export()
         exporter.process()
         exporter.write()
         search = "sol_trauma_periph.png"
         found = False
-        print exporter.images
+        print(exporter.images)
         for i in exporter.images:
-            print "check with ",i.getName()
+            print("check with ",i.getName())
             if i.getName() == search:
                 found = True
         self.assertEquals(True, found)
 
     def testConfigNoAnimations(self):
-        sc = bpy.data.scenes["Ipos"]
-        bpy.data.scenes.active = sc
+        makeSceneActive("Ipos")
         exporter = Export()
         exporter.config.anim_bake = "force"
         exporter.config.export_anim = False
@@ -195,8 +200,7 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         self.assertEquals(0, len(exporter.animations))
 
     def testPostProcessAnimations(self):
-        sc = bpy.data.scenes["Armature"]
-        bpy.data.scenes.active = sc
+        makeSceneActive("Armature")
         exporter = Export()
         exporter.config.anim_bake = "force"
         exporter.config.export_anim = False
@@ -210,8 +214,7 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
 
 
     def testPostProcessAnimationsNathan(self):
-        sc = bpy.data.scenes["Ipos"]
-        bpy.data.scenes.active = sc
+        makeSceneActive("Ipos")
         exporter = Export()
         exporter.config.anim_bake = "force"
         exporter.config.export_anim = False
@@ -227,18 +230,6 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         exporter.postProcess()
         exporter.write()
 
-def Run():
-        loader = runner.TestLoader()
-        loader.methodPrefix = "test"
-        suite = loader.suiteFactory()
-        suite.addTest(loader.loadClass(Exporter))
-        return runner.TrialRunner(
-                reporter.VerboseTextReporter,
-                tracebackFormat='default',
-                ).run(suite)
-
 if __name__ == '__main__':
-        if Run().wasSuccessful():
-                sys.exit(0)
-        else:
-                sys.exit(1)
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).failures) + len(unittest.TextTestRunner(verbosity=2).run(suite).errors))

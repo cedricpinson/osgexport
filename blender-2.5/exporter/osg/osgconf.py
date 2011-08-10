@@ -28,7 +28,7 @@ from . import osgobject
 DEBUG = False
 def debug(str):
     if DEBUG:
-        log(str)
+        osglog.log(str)
 
 class Config(object):
     def __init__(self, map = None):
@@ -52,6 +52,10 @@ class Config(object):
         self.exclude_objects = []
         osglog.LOGFILE = None
         self.initFilePaths()
+        status = " without log"
+        if self.log:
+            status = " with log"
+        print("save path %s %s" %(self.fullpath, status))
 
     def createLogfile(self):
         logfilename = self.getFullName( "log")
@@ -59,6 +63,8 @@ class Config(object):
         if self.log:
             self.log_file = open(logfilename, "w")
             osglog.LOGFILE = self.log_file
+            #print("log %s %s" % (logfilename, osglog.LOGFILE))
+            
         
     def closeLogfile(self):
         filename = self.log_file.name
@@ -91,9 +97,9 @@ class Config(object):
             return os.path.basename(name)
         return name
 
-    # This lets us ignore the leading underscore if we don't specify an actual filename.
-    # It also stores the formatted name for our use later, which is handy if we want to
-    # create a "master" viewer file or to inform the user which files were actually created.
+    def getFullPath(self):
+        return self.fullpath
+
     def getFullName(self, extension):
         if self.filename[-(len(extension)+1):] == "." + extension:
             f = "%s%s" % (self.fullpath, self.filename)

@@ -1,4 +1,4 @@
-# Copyright (C) 2008 Cedric Pinson
+# Copyright (C) 2008-2011 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +15,11 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #
 # Authors:
-#  Cedric Pinson <mornifle@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 
 LOGFILE = None
 def log(message):
         print("osg:", message)
+        global LOGFILE
         if LOGFILE:
                 LOGFILE.write(message + "\n")

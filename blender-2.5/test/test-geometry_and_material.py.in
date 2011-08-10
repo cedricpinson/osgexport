@@ -1,6 +1,5 @@
-#!BPY
 # -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
-# Copyright (C) 2008 Cedric Pinson
+# Copyright (C) 2008-2011 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,26 +16,16 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 #
 
-"""
-Name: 'osgexporter (.osg)'
-Blender: 248
-Group: 'Export'
-Tip: 'Export armature/bone/action data to osg formats.'
-"""
 
-from twisted.trial import unittest, runner, reporter
-from twisted.internet import reactor, defer
-from twisted.python import failure
-import twisted
+import unittest
 import math
 
 import sys
-sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/exporter/")
 
-import Blender
 import bpy
 import osg
 from osg.osgobject import *
@@ -49,14 +38,40 @@ def close(a, b, threshold):
             return False
     return True
 
+
+def makeSceneActive(scene):
+    import ctypes
+    import bpy
+
+    blend_cdll = ctypes.CDLL("")
+
+    bmain = ctypes.POINTER(ctypes.c_void_p).from_address(ctypes.addressof(blend_cdll.G)).contents.value
+    
+    sce = bpy.data.scenes[scene]
+    ctr = blend_cdll.BPy_GetContext()
+
+    blend_cdll.ED_screen_set_scene(ctr, sce.as_pointer())
+    print(bpy.context.scene)
+
 class Exporter(unittest.TestCase):
     # ------------------------------------------------------
     def setUp(self):
         osg.osgobject.Object.resetWriter()
 
     def tearDown(self):
-        pass
+        self.removeFile("./textures/One.png")
+        self.removeFile("./textures/Two.png")
+        self.removeFile("./textures/bbb.png")
+        self.removeFile("./textures/sol_trauma_periph.png")
 
+    def removeFile(self, name):
+        try:
+            os.remove(name)
+        except:
+            pass
+
+    def checkFile(self, name):
+        return os.path.isfile(name)
                 
     def testBlenderObjectToGeometry(self):
         geomquad = BlenderObjectToGeometry(object = bpy.data.objects["CubeQuads"])
@@ -75,11 +90,11 @@ class Exporter(unittest.TestCase):
 
         geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangle"])
         geom = geomtriangle.convert()[0]
-        #print geom
+        print(geom)
         self.assertEquals(True, geom.vertexes != None)
-        self.assertEquals(32, len(geom.vertexes.array))
+        self.assertEquals(24, len(geom.vertexes.array))
         self.assertEquals(True, geom.normals != None)
-        self.assertEquals(32, len(geom.normals.array))
+        self.assertEquals(24, len(geom.normals.array))
         self.assertEquals(1, len(geom.primitives))
         self.assertEquals("TRIANGLES", geom.primitives[0].type)
         self.assertEquals(36, len(geom.primitives[0].indexes))
@@ -87,7 +102,7 @@ class Exporter(unittest.TestCase):
 
         geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangleSmooth"])
         geom = geomtriangle.convert()[0]
-        #print geom
+        print( geom)
         self.assertEquals(True, geom.vertexes != None)
         self.assertEquals(8, len(geom.vertexes.array))
         self.assertEquals(True, geom.normals != None)
@@ -99,16 +114,16 @@ class Exporter(unittest.TestCase):
 
         geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangleTextured"])
         geom = geomtriangle.convert()[0]
-        #print geom
+        print( geom)
         self.assertEquals(True, geom.vertexes != None)
-        self.assertEquals(4*6, len(geom.vertexes.array))
+        self.assertEquals(20, len(geom.vertexes.array))
         self.assertEquals(True, geom.uvs != None)
-        print geom.uvs.keys()
-        self.assertEquals(4*6, len(geom.uvs[0].array))
+        print(geom.uvs.keys())
+        self.assertEquals(20, len(geom.uvs[0].array))
         self.assertEquals(True, geom.normals != None)
-        self.assertEquals(4*6, len(geom.normals.array))
+        self.assertEquals(20, len(geom.normals.array))
         self.assertEquals(True, geom.stateset != None)
-        print geom.stateset.texture_attributes
+        print(geom.stateset.texture_attributes)
         self.assertEquals(1, len(geom.stateset.texture_attributes[0]))
         self.assertEquals("textures/bbb.png", geom.stateset.texture_attributes[0][0].file )
         self.assertEquals(1, len(geom.primitives))
@@ -116,18 +131,20 @@ class Exporter(unittest.TestCase):
         self.assertEquals(36, len(geom.primitives[0].indexes))
 
     def testMultiUVS(self):
-        sc = bpy.data.scenes["MultiUVS"]
-        bpy.data.scenes.active = sc
+        makeSceneActive("MultiUVS")
         exporter = Export()
         exporter.process()
         exporter.write()
 
+
     def testGeometry(self):
-        scene = bpy.data.scenes["Geometry"]
-        bpy.data.scenes.active = scene
+        makeSceneActive("Geometry")
         exporter = Export()
         exporter.process()
         exporter.write()
+        self.assertTrue(self.checkFile("./textures/bbb.png"))
+        self.assertTrue(self.checkFile("./textures/Two.png"))
+        self.assertTrue(self.checkFile("./textures/sol_trauma_periph.png"))
 
     def testBlenderMaterial(self):
         geomquad = BlenderObjectToGeometry(object = bpy.data.objects["CubeMaterial"])
@@ -140,8 +157,7 @@ class Exporter(unittest.TestCase):
         self.assertEquals(12.5 ,geom.stateset.attributes[0].shininess)
 
     def testExportBlenderMaterial(self):
-        sc = bpy.data.scenes["Materials"]
-        bpy.data.scenes.active = sc
+        makeSceneActive("Materials")
         exporter = Export()
         exporter.config.anim_bake = ""
         exporter.config.export_anim = False
@@ -150,19 +166,8 @@ class Exporter(unittest.TestCase):
         exporter.write()
         self.assertEquals(True, len(exporter.items) != 0)
 
-
-def Run():
-        loader = runner.TestLoader()
-        loader.methodPrefix = "test"
-        suite = loader.suiteFactory()
-        suite.addTest(loader.loadClass(Exporter))
-        return runner.TrialRunner(
-                reporter.VerboseTextReporter,
-                tracebackFormat='default',
-                ).run(suite)
-
 if __name__ == '__main__':
-        if Run().wasSuccessful():
-                sys.exit(0)
-        else:
-                sys.exit(1)
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).failures))
+    #print(unittest.TextTestRunner(verbosity=2).run(suite))
+    #sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).errors))

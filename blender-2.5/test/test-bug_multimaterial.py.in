@@ -1,6 +1,5 @@
-#!BPY
 # -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
-# Copyright (C) 2008 Cedric Pinson
+# Copyright (C) 2008-2011 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,12 +19,6 @@
 #  Cedric Pinson <cedric.pinson@plopbyte.com>
 #
 
-"""
-Name: 'osgexporter (.osg)'
-Blender: 258
-Group: 'Export'
-"""
-
 import unittest
 import math
 import os
@@ -44,31 +37,42 @@ def close(a, b, threshold):
             return False
     return True
 
+def makeSceneActive(scene):
+    import ctypes
+    import bpy
+
+    blend_cdll = ctypes.CDLL("")
+
+    bmain = ctypes.POINTER(ctypes.c_void_p).from_address(ctypes.addressof(blend_cdll.G)).contents.value
+    
+    sce = bpy.data.scenes[scene]
+    ctr = blend_cdll.BPy_GetContext()
+
+    blend_cdll.ED_screen_set_scene(ctr, sce.as_pointer())
+    print(bpy.context.scene)
+
+filename = "./BugMultiMaterial.osg"
 class Exporter(unittest.TestCase):
     # ------------------------------------------------------
     def setUp(self):
         osg.osgobject.Object.resetWriter()
 
     def tearDown(self):
-        pass
-
-    def checkFile(self, name):
-        return os.path.isfile(name)
-                
-    def test_BlenderObjectBugMultiMaterial(self):
-        #sc = bpy.data.scenes["BugMultiMaterial"]
-        #bpy.data.screens[0].scene = sc
-        filename = "./BugMultiMaterial.osg"
         try:
             os.remove(filename)
         except:
             pass
+
+    def checkFile(self, name):
+        return os.path.isfile(name)
+
+    def test_BlenderObjectBugMultiMaterial(self):
+        makeSceneActive("BugMultiMaterial")
         exporter = Export()
         exporter.process()
         exporter.write()
-        if self.checkFile(filename) == False:
-            sys.exit(1)
+        self.assertTrue(self.checkFile(filename))
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
-    sys.exit(unittest.TextTestRunner(verbosity=2).run(suite))
+    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).errors))
