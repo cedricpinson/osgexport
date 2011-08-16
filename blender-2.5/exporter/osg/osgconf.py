@@ -25,7 +25,7 @@ import os
 from . import osglog
 from . import osgobject
 
-DEBUG = False
+DEBUG = True
 def debug(str):
     if DEBUG:
         osglog.log(str)
@@ -56,7 +56,7 @@ class Config(object):
         if self.log:
             status = " with log"
         print("save path %s %s" %(self.fullpath, status))
-
+        
     def createLogfile(self):
         logfilename = self.getFullName( "log")
         osglog.LOGFILE = None
@@ -64,7 +64,8 @@ class Config(object):
             self.log_file = open(logfilename, "w")
             osglog.LOGFILE = self.log_file
             #print("log %s %s" % (logfilename, osglog.LOGFILE))
-            
+        if self.export_anim is False:
+            osglog.log("Animations will not be exported")
         
     def closeLogfile(self):
         filename = self.log_file.name

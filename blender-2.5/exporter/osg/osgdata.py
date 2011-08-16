@@ -181,24 +181,13 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
     if config.export_anim is not True:
         return None
 
-    # An IPO is now just an nlatrack which is a collection of actions with a collection of fcurves
-    nla_tracks = []
-    #try:
-    #raise Exception(blender_object)
-    if hasattr(blender_object, "animation_data") and hasattr(blender_object.animation_data, "nla_tracks"):
-        nla_tracks = blender_object.animation_data.nla_tracks
-        
-    
-    #except:
-    #    action = None
     anims = []
     armature = None
-    if len(nla_tracks) > 0:
-        for nla_track in nla_tracks:
-            action2animation = BlenderNLATrackToAnimation(track = nla_track, config = config)
-            anim = action2animation.createAnimationFromTrack(blender_object.name)
+    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config)
+    anims = action2animation.createAnimation()
+    debug("animations created for object %s - %d" % ( blender_object.name, len(anims)))
 
-            anims.append(anim)
+    if len(anims) > 0:
         update_callback.setName(osg_object.name)
         osg_object.update_callbacks.append(update_callback)
 
@@ -214,6 +203,9 @@ def createUpdateMatrixTransform():
     return callback
 
 def createAnimationsObjectAndSetCallback(osg_node, obj, config):
+    bpy.ops.object.select_name(name=obj.name)
+    if config.anim_bake == "FORCE":
+        bpy.ops.nla.bake(bake_types="OBJECT")
     return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform())
 
 def createAnimationMaterialAndSetCallback(osg_node, obj, config):
@@ -259,22 +251,6 @@ class Export(object):
         item = self.exportChildrenRecursively(obj, None, None)
         if item is not None:
             self.items.append(item)
-
-    def createAnimationObject(self, osg_node, obj):
-        if self.config.export_anim is not True:
-            return
-
-        if hasattr(obj, "animation_data") and hasattr(obj.animation_data, "nla_tracks") and len(obj.animation_data.nla_tracks) > 0:
-            for nla_track in obj.animation_data.nla_tracks:
-                anim = None
-                action2animation = BlenderNLATrackToAnimation(track = nla_track, config = self.config)
-                anim = action2animation.createAnimationFromTrack(obj.name)
-                if anim != None:
-                    self.animations[anim.name] = anim
-
-            update_callback = UpdateMatrixTransform()
-            update_callback.setName(osg_node.name)
-            osg_node.update_callbacks.append(update_callback)
 
     def evaluateGroup(self, obj, item, rootItem):
         if obj.dupli_group is None or len(obj.dupli_group.objects) == 0:
@@ -485,7 +461,7 @@ class Export(object):
             st = StateSet()
             self.root.stateset = st
             if len(self.lights) > 8:
-                log("WARNING more than 8 lights")
+                osglog.log("WARNING more than 8 lights")
 
             # retrieve world to global ambient
             lm = LightModel()
@@ -733,6 +709,7 @@ class BlenderObjectToGeometry(object):
                 m.setName(mat_source.name)
                 s.setName(mat_source.name)
 
+                bpy.ops.object.select_name(name=self.object.name)
                 anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config)
                 if anim :
                     self.material_animations[anim.name] = anim
@@ -1167,130 +1144,158 @@ class BlenderObjectToRigGeometry(BlenderObjectToGeometry):
         self.geom_type = RigGeometry
 
 
-class BlenderNLATrackToAnimation(object):
-
+class BlenderAnimationToAnimation(object):
     def __init__(self, *args, **kwargs):
-        self.track = kwargs.get("track", None)
         self.config = kwargs["config"]
         self.object = kwargs.get("object", None)
-        self.animation = None
+        self.animations = None
 
-    def createAnimationFromTrack(self, track_name=""):
-        track = self.track
-        # check if it's already a baked action (if yes we skip it)
-        #if action.name.find("_baked",-len("_baked")) is not -1:
-        #    return None
+    def createAnimation(self):
+        nla_tracks = []
+        action = None
 
-        if track_name == "":
-            track_name = track.name
+        if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "nla_tracks"):
+            nla_tracks = self.object.animation_data.nla_tracks
+            if len(nla_tracks) == 0:
+                action = self.object.animation_data.action
+
+        debug("create animation for %s" % self.object.name)
+        anims = []
+        if len(nla_tracks) > 0:
+            debug("found tracks %d" % (len(nla_tracks)))
+            for nla_track in nla_tracks:
+                debug("found track %s" % str(nla_track))
+                anim = self.createAnimationFromTrack(self.object.name, nla_track)
+                anims.append(anim)
+        elif action:
+            debug("found action %s" % action.name)
+            anim = self.createAnimationFromAction(self.object.name, action)
+            anims.append(anim)
+            
+        return anims
+
+    def createAnimationFromTrack(self, name, track):
+        if name == "":
+            name = track.name
         armature = findArmatureObjectForTrack(track)
         #if armature is not None and self.config.anim_bake.lower() == "force":
         #    baker = BakeAction(armature = armature, action = action, config = self.config)
         #    action = baker.getBakedAction()
 
         animation = Animation()
-        animation.setName(track_name)
-        self.convertTrackToAnimation(track_name, animation, track)
+        animation.setName(name)
+
+        actions = []
+        if track:
+            for strip in track.strips:
+                actions.append(strip.action)
+
+        self.convertActionsToAnimation(animation, actions)
         self.animation = animation
 
         return animation
 
-    def convertTrackToAnimation(self, name, anim, track):
+    def createAnimationFromAction(self, name, action):
+        if name == "":
+            name = action.name
+
+        animation = Animation()
+        animation.setName(name)
+        actions = [ action ]
+        self.convertActionsToAnimation(animation, actions)
+        self.animation = animation
+        return animation
+
+    def convertActionsToAnimation(self, anim, actions):
         # Or we could call the other "type" here.
-        channels = self.exportKeyframeSplitRotationTranslationScale(track, self.config.anim_fps)
+        channels = exportActionsToKeyframeSplitRotationTranslationScale(actions, self.config.anim_fps)
         for i in channels:
-            # i.target = name
             anim.channels.append(i)
 
-    def exportKeyframeSplitRotationTranslationScale(self, track, fps):
-        times = {'Translation':[], 'Rotation':[],'Scale':[],'Color':[]}
-        channel_samplers = {'Translation':None, 'Rotation':None,'Scale':None,'Color':None}
-        duration = 0
-        channels = []
-        actions = []
-        target = ""
 
-        if track:
-            for strip in track.strips:
-                actions.append(strip.action)
-        
+def exportActionsToKeyframeSplitRotationTranslationScale(actions, fps):
+    times = {'Translation':[], 'Rotation':[],'Scale':[],'Color':[]}
+    channel_samplers = {'Translation':None, 'Rotation':None,'Scale':None,'Color':None}
+    duration = 0
+    channels = []
+    target = ""
 
-        for action in actions:
-            for fcurve in action.fcurves:
-                l = fcurve.data_path.split("\"")
-                if len(l) > 1:
-                    target = l[1]
-                for keyframe in fcurve.keyframe_points:
-                
-                    if fcurve.data_path.endswith("diffuse_color"):
-                        if times['Color'].count(keyframe.co[0]) == 0:
-                            times['Color'].append(keyframe.co[0])
-                    elif fcurve.data_path.endswith("position"):
-                        if times['Translation'].count(keyframe.co[0]) == 0:
-                            times['Translation'].append(keyframe.co[0])
-                    elif fcurve.data_path.endswith("scale"):
-                        if times['Scale'].count(keyframe.co[0]) == 0:
-                            times['Scale'].append(keyframe.co[0])
-                    elif fcurve.data_path.endswith("rotation_quaternion"):
-                        if times['Rotation'].count(keyframe.co[0]) == 0:
-                            times['Rotation'].append(keyframe.co[0])
+    for action in actions:
+        for fcurve in action.fcurves:
+            l = fcurve.data_path.split("\"")
+            if len(l) > 1:
+                target = l[1]
+            for keyframe in fcurve.keyframe_points:
 
-            for fcurve_type in times.keys():
-                times[fcurve_type].sort()
-                if len(times[fcurve_type]) > 0:
-                    channel_samplers[fcurve_type] = Channel()
-                    channel_samplers[fcurve_type].target = target
-
-            for fcurve_type in times.keys():
-                for time in times[fcurve_type]:
-                    realtime = (time - 1) / fps
-
-                    # realtime = time
-                    if realtime > duration:
-                        duration = realtime
-
-                    trans = Vector()
-                    quat  = Quaternion()
-                    scale = Vector()
-                    rot   = Euler()
-                    color   = [1,1,1,1]
-                    rtype = None
-
-                    for fcurve in action.fcurves:
-                        for keyframe in fcurve.keyframe_points:
-                            if time == keyframe.co[0]:
-                                if fcurve.data_path.endswith("diffuse_color"):
-                                    color[fcurve.array_index] = keyframe.co[1]
-                                elif fcurve.data_path.endswith("position"):
-                                    trans[fcurve.array_index] = keyframe.co[1] 
-                                elif fcurve.data_path.endswith("scale"):
-                                    scale[fcurve.array_index] = keyframe.co[1] 
-                                elif fcurve.data_path.endswith("rotation_quaternion"):
-                                    quat[fcurve.array_index] = keyframe.co[1] 
-
-                    if fcurve_type == 'Scale':
-                        channel_samplers[fcurve_type].keys.append((realtime, scale[0], scale[1], scale[2]))
-                        channel_samplers[fcurve_type].type = "Vec3LinearChannel"
-                        channel_samplers[fcurve_type].setName("scale")
-                            
-                    elif fcurve_type == 'Rotation':
-                        quat.normalize()
-                        channel_samplers[fcurve_type].keys.append((realtime, quat.x, quat.y, quat.z, quat.w))
-                        channel_samplers[fcurve_type].type = "QuatSphericalLinearChannel"
-                        channel_samplers[fcurve_type].setName("quaternion")
-                    
-                    elif fcurve_type == 'Translation':
-                        channel_samplers[fcurve_type].keys.append((realtime, trans[0], trans[1], trans[2]))
-                        channel_samplers[fcurve_type].type = "Vec3LinearChannel"
-                        channel_samplers[fcurve_type].setName("translate")
-
-                    elif fcurve_type == 'Color':
-                        channel_samplers[fcurve_type].keys.append((realtime, color[0], color[1], color[2], color[3]))
-                        channel_samplers[fcurve_type].type = "Vec4LinearChannel"
-                        channel_samplers[fcurve_type].setName("diffuse")
+                if fcurve.data_path.endswith("diffuse_color"):
+                    if times['Color'].count(keyframe.co[0]) == 0:
+                        times['Color'].append(keyframe.co[0])
+                elif fcurve.data_path.endswith("position") or fcurve.data_path.endswith("location"):
+                    if times['Translation'].count(keyframe.co[0]) == 0:
+                        times['Translation'].append(keyframe.co[0])
+                elif fcurve.data_path.endswith("scale"):
+                    if times['Scale'].count(keyframe.co[0]) == 0:
+                        times['Scale'].append(keyframe.co[0])
+                elif fcurve.data_path.endswith("rotation_quaternion") or fcurve.data_path.endswith("rotation_euler"):
+                    if times['Rotation'].count(keyframe.co[0]) == 0:
+                        times['Rotation'].append(keyframe.co[0])
 
         for fcurve_type in times.keys():
-            if channel_samplers[fcurve_type] != None:
-                channels.append(channel_samplers[fcurve_type])
+            times[fcurve_type].sort()
+            if len(times[fcurve_type]) > 0:
+                channel_samplers[fcurve_type] = Channel()
+                channel_samplers[fcurve_type].target = target
 
-        return channels
+        for fcurve_type in times.keys():
+            for time in times[fcurve_type]:
+                realtime = (time - 1) / fps
+
+                # realtime = time
+                if realtime > duration:
+                    duration = realtime
+
+                trans = Vector()
+                quat  = Quaternion()
+                scale = Vector()
+                rot   = Euler()
+                color   = [1,1,1,1]
+                rtype = None
+
+                for fcurve in action.fcurves:
+                    for keyframe in fcurve.keyframe_points:
+                        if time == keyframe.co[0]:
+                            if fcurve.data_path.endswith("diffuse_color"):
+                                color[fcurve.array_index] = keyframe.co[1]
+                            elif fcurve.data_path.endswith("position"):
+                                trans[fcurve.array_index] = keyframe.co[1] 
+                            elif fcurve.data_path.endswith("scale"):
+                                scale[fcurve.array_index] = keyframe.co[1] 
+                            elif fcurve.data_path.endswith("rotation_quaternion"):
+                                quat[fcurve.array_index] = keyframe.co[1] 
+
+                if fcurve_type == 'Scale':
+                    channel_samplers[fcurve_type].keys.append((realtime, scale[0], scale[1], scale[2]))
+                    channel_samplers[fcurve_type].type = "Vec3LinearChannel"
+                    channel_samplers[fcurve_type].setName("scale")
+
+                elif fcurve_type == 'Rotation':
+                    quat.normalize()
+                    channel_samplers[fcurve_type].keys.append((realtime, quat.x, quat.y, quat.z, quat.w))
+                    channel_samplers[fcurve_type].type = "QuatSphericalLinearChannel"
+                    channel_samplers[fcurve_type].setName("quaternion")
+
+                elif fcurve_type == 'Translation':
+                    channel_samplers[fcurve_type].keys.append((realtime, trans[0], trans[1], trans[2]))
+                    channel_samplers[fcurve_type].type = "Vec3LinearChannel"
+                    channel_samplers[fcurve_type].setName("translate")
+
+                elif fcurve_type == 'Color':
+                    channel_samplers[fcurve_type].keys.append((realtime, color[0], color[1], color[2], color[3]))
+                    channel_samplers[fcurve_type].type = "Vec4LinearChannel"
+                    channel_samplers[fcurve_type].setName("diffuse")
+
+    for fcurve_type in times.keys():
+        if channel_samplers[fcurve_type] != None:
+            channels.append(channel_samplers[fcurve_type])
+
+    return channels
