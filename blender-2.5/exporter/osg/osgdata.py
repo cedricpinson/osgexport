@@ -254,7 +254,9 @@ class Export(object):
     def evaluateGroup(self, obj, item, rootItem):
         if obj.dupli_group is None or len(obj.dupli_group.objects) == 0:
             return
+        osglog.log(str("resolving " + obj.dupli_group.name + " for " + obj.name))
         for o in obj.dupli_group.objects:
+            osglog.log(str("object " + str(o)))
             self.exportChildrenRecursively( o, item, rootItem)
 
     def getName(self, obj):
@@ -266,12 +268,11 @@ class Export(object):
         if obj.name in self.config.exclude_objects:
             return None
 
-        parentSkeleton = None
         item = None
         if list(self.uniq_objects.keys()).count(obj) > 0:
             
             osglog.log(str("use referenced item for " + obj.name + " " + obj.type))
-            item = self.uniq_objects[obj] #ShadowObject(self.uniq_objects[obj])
+            item = self.uniq_objects[obj]
         else:
             if obj.type.lower() == "Armature".lower():
                 item = self.createSkeletonAndAnimations(obj)
@@ -295,20 +296,8 @@ class Export(object):
                     self.animations[anim.name] = anim
 
                 item.children.append(objectItem)
-
-                # TODO set parent to be the skeleton above
-                for modifier in obj.modifiers:
-                    if modifier.type.lower() == "Armature".lower():
-                        arm = modifier.object
-                        if arm != None:
-                            parentSkeleton = arm
-
-                # we require all armatures to be already added before we look at meshes
-
-                if parentSkeleton != None:
-                    matrix = getDeltaMatrixFromMatrix(parentSkeleton.matrix_world, obj.matrix_world)
-                    item.matrix = matrix
-                    self.uniq_objects[parentSkeleton].children.append(item)
+                
+                # skeleton need to be refactored
 
             elif obj.type.lower() == "Lamp".lower():
                 # because it blender can insert inverse matrix, we have to recompute the parent child
@@ -333,10 +322,9 @@ class Export(object):
                 item = MatrixTransform()
                 item.setName(obj.name)
                 item.matrix = matrix
-                anims = createAnimationsObjectAndSetCallback(item, obj, self.config)
-                if anims != None:
-                    for anim in anims: 
-                        self.animations[anim.name] = anim
+                anim = createAnimationsObjectAndSetCallback(item, obj, self.config)
+                if anim:
+                    self.animations[anim.name] = anim
                 self.evaluateGroup(obj, item, rootItem)
             else:
                 osglog.log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
@@ -347,36 +335,26 @@ class Export(object):
         if rootItem is None:
             rootItem = item
 
-
-        # need to refactore skeleton part, too much changed in blender 2.5
-        if obj.parent and obj.parent.name is not None:
-            bone = findBoneInHierarchy(rootItem, obj.parent.name)
+        if obj.parent_bone != "":
+            bone = findBoneInHierarchy(rootItem, obj.parent_bone)
             if bone is None:
-                #if parent:
-                #    parent.children.append(item)
-                osglog.log(str("WARNING PARENT BONE " + obj.parent.name + " not found"))
+                osglog.log(str("WARNING " + obj.parent_bone + " not found"))
             else:
                 # if parent is a bone we need to compute correctly the matrix from
                 # parent bone to object bone
                 armature = obj.parent
                 matrixArmatureInWorldSpace = armature.matrix_world
                 matrixBoneinArmatureSpace = bone.getMatrixInArmatureSpace()
-
                 boneInWorldSpace = matrixBoneinArmatureSpace * matrixArmatureInWorldSpace
                 matrix = getDeltaMatrixFromMatrix(boneInWorldSpace, obj.matrix_world)
                 item.matrix = matrix
                 bone.children.append(item)
+        elif parent:
+            parent.children.append(item)
 
         children = getChildrenOf(obj)
         for child in children:
             self.exportChildrenRecursively(child, item, rootItem)
-
-        # if item was a mesh with a parent skeleton, 
-        # return none to avoid the mesh being duplicated
-        if parentSkeleton:
-            # this is because the item will have been added to the 
-            # parent and we dont want another copy at the root
-            return None
         return item
 
 
