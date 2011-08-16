@@ -136,6 +136,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     INDENT = IntProperty(name="Number of Indent Spaces", description="Number of Spaces to use for indentation in the model file", default=3, min=1, max=8)
     FLOATPRE = IntProperty(name="Floating Point Precision", description="The Floating Point Precision to use in exported model file", min=1, max=8, default=4)
     ANIMFPS = IntProperty(name="Frames Per Second", description="Number of Frames Per Second to use for exported animations", min=1, max=60, default=25)
+    EXPORTANIM = BoolProperty(name="Export animations", description="Export animation yes/no", default=False)
 
     def execute(self, context):
         if not self.filepath:
@@ -152,7 +153,8 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
                 "SELECTED": selected,
                 "INDENT": self.INDENT,
                 "FLOATPRE": self.FLOATPRE,
-                "ANIMFPS": self.ANIMFPS
+                "ANIMFPS": self.ANIMFPS,
+                "EXPORTANIM": self.EXPORTANIM
                 })
 
         print("FILENAME:" + repr(config.filename))

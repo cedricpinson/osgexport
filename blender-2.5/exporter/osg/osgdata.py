@@ -181,17 +181,16 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
     if config.export_anim is not True:
         return None
 
-    anims = []
-    armature = None
     action2animation = BlenderAnimationToAnimation(object = blender_object, config = config)
-    anims = action2animation.createAnimation()
-    debug("animations created for object %s - %d" % ( blender_object.name, len(anims)))
-
-    if len(anims) > 0:
+    anim = action2animation.createAnimation()
+    debug("animations created for object %s" % ( blender_object.name))
+    if anim:
         update_callback.setName(osg_object.name)
         osg_object.update_callbacks.append(update_callback)
+        osglog.log("processed animation %s" % anim.name)
+        return anim
 
-    return anims
+    return None
 
 def createUpdateMatrixTransform():
     callback = UpdateMatrixTransform()
@@ -203,9 +202,9 @@ def createUpdateMatrixTransform():
     return callback
 
 def createAnimationsObjectAndSetCallback(osg_node, obj, config):
-    bpy.ops.object.select_name(name=obj.name)
-    if config.anim_bake == "FORCE":
-        bpy.ops.nla.bake(bake_types="OBJECT")
+    #bpy.ops.object.select_name(name=obj.name)
+    #if config.anim_bake == "FORCE":
+    #    bpy.ops.nla.bake(bake_types="OBJECT")
     return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform())
 
 def createAnimationMaterialAndSetCallback(osg_node, obj, config):
@@ -291,10 +290,9 @@ class Export(object):
                 item.matrix = matrix
                 objectItem = self.createMesh(obj)
 
-                anims = createAnimationsObjectAndSetCallback(item, obj, self.config)
-                if anims != None:
-                    for anim in anims: 
-                        self.animations[anim.name] = anim
+                anim = createAnimationsObjectAndSetCallback(item, obj, self.config)
+                if anim != None:
+                    self.animations[anim.name] = anim
 
                 item.children.append(objectItem)
 
@@ -398,7 +396,8 @@ class Export(object):
             skeleton.children.append(b)
         skeleton.collectBones()
 
-        if self.config.export_anim is True:
+        # code need to be rewritten - does not work anymore
+        if False and self.config.export_anim is True:
             if hasattr(obj, "animation_data") and hasattr(obj.animation_data, "nla_tracks") and len(obj.animation_data.nla_tracks) > 0:
                 for nla_track in obj.animation_data.nla_tracks:
                     # check if it's already a baked action (if yes we skip it)
@@ -709,7 +708,7 @@ class BlenderObjectToGeometry(object):
                 m.setName(mat_source.name)
                 s.setName(mat_source.name)
 
-                bpy.ops.object.select_name(name=self.object.name)
+                #bpy.ops.object.select_name(name=self.object.name)
                 anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config)
                 if anim :
                     self.material_animations[anim.name] = anim
@@ -1151,37 +1150,43 @@ class BlenderAnimationToAnimation(object):
         self.animations = None
 
     def createAnimation(self):
-        nla_tracks = []
         action = None
 
-        if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "nla_tracks"):
-            nla_tracks = self.object.animation_data.nla_tracks
-            if len(nla_tracks) == 0:
-                action = self.object.animation_data.action
+        # track could be interesting, to export multi animation but we would need to be able to associate different track to an animation. Why ?
+        # because track are used to compose an animation base on different action
+        # so it makes more sense to compose your animation with different track
+        # and then bake it into one Action
 
-        debug("create animation for %s" % self.object.name)
-        anims = []
-        if len(nla_tracks) > 0:
-            debug("found tracks %d" % (len(nla_tracks)))
-            for nla_track in nla_tracks:
-                debug("found track %s" % str(nla_track))
-                anim = self.createAnimationFromTrack(self.object.name, nla_track)
-                anims.append(anim)
-        elif action:
+        # for game export or more complex exporter. It's better to adjust the osgExport
+        # in python and merge your actions as you want. I did it for the game pokme,
+        # the osgExporter is able to be used by other scripts
+
+
+        # nla_tracks = []
+        # if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "nla_tracks"):
+        #     nla_tracks = self.object.animation_data.nla_tracks
+        #     if len(nla_tracks) == 0:
+        #         action = self.object.animation_data.action
+
+        # debug("create animation for %s" % self.object.name)
+        # anims = []
+        # if len(nla_tracks) > 0:
+        #     debug("found tracks %d" % (len(nla_tracks)))
+        #     for nla_track in nla_tracks:
+        #         debug("found track %s" % str(nla_track))
+        #         anim = self.createAnimationFromTrack(self.object.name, nla_track)
+        #         anims.append(anim)
+
+        if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
+            action = self.object.animation_data.action
+
+        if action:
             debug("found action %s" % action.name)
             anim = self.createAnimationFromAction(self.object.name, action)
-            anims.append(anim)
-            
-        return anims
+            return anim
+        return None
 
     def createAnimationFromTrack(self, name, track):
-        if name == "":
-            name = track.name
-        armature = findArmatureObjectForTrack(track)
-        #if armature is not None and self.config.anim_bake.lower() == "force":
-        #    baker = BakeAction(armature = armature, action = action, config = self.config)
-        #    action = baker.getBakedAction()
-
         animation = Animation()
         animation.setName(name)
 
@@ -1192,110 +1197,259 @@ class BlenderAnimationToAnimation(object):
 
         self.convertActionsToAnimation(animation, actions)
         self.animation = animation
-
         return animation
 
     def createAnimationFromAction(self, name, action):
-        if name == "":
-            name = action.name
-
         animation = Animation()
         animation.setName(name)
-        actions = [ action ]
-        self.convertActionsToAnimation(animation, actions)
+        self.convertActionsToAnimation(animation, action)
         self.animation = animation
         return animation
 
-    def convertActionsToAnimation(self, anim, actions):
+    def convertActionsToAnimation(self, anim, action):
         # Or we could call the other "type" here.
-        channels = exportActionsToKeyframeSplitRotationTranslationScale(actions, self.config.anim_fps)
+        channels = exportActionsToKeyframeSplitRotationTranslationScale(self.object.name, action, self.config.anim_fps)
         for i in channels:
             anim.channels.append(i)
 
 
-def exportActionsToKeyframeSplitRotationTranslationScale(actions, fps):
-    times = {'Translation':[], 'Rotation':[],'Scale':[],'Color':[]}
-    channel_samplers = {'Translation':None, 'Rotation':None,'Scale':None,'Color':None}
+# x,y,z should be baked
+# return a channel that contains a vector x,y,z
+def getTranslateChannel(target, action, fps):
+    times = []
+    sampler = None
     duration = 0
-    channels = []
-    target = ""
+    for fcurve in action.fcurves:
+        l = fcurve.data_path.split("\"")
+        if len(l) > 1:
+            target = l[1]
+            
+        for keyframe in fcurve.keyframe_points:
+            if fcurve.data_path.endswith("location"):
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
+    if len(times) == 0:
+        return None
 
-    for action in actions:
+    channel = Channel()
+    channel.target = target
+    channel.type = "Vec3LinearChannel"
+    
+    times.sort()
+    for time in times:
+        realtime = (time - 1) / fps
+
+        # realtime = time
+        if realtime > duration:
+            duration = realtime
+
+        trans = Vector()
         for fcurve in action.fcurves:
-            l = fcurve.data_path.split("\"")
-            if len(l) > 1:
-                target = l[1]
-            for keyframe in fcurve.keyframe_points:
+            if fcurve.data_path.endswith("location"):
+               trans[fcurve.array_index] = fcurve.evaluate(time)
+        channel.keys.append((realtime, trans[0], trans[1], trans[2]))
+        
+    return channel
 
-                if fcurve.data_path.endswith("diffuse_color"):
-                    if times['Color'].count(keyframe.co[0]) == 0:
-                        times['Color'].append(keyframe.co[0])
-                elif fcurve.data_path.endswith("position") or fcurve.data_path.endswith("location"):
-                    if times['Translation'].count(keyframe.co[0]) == 0:
-                        times['Translation'].append(keyframe.co[0])
-                elif fcurve.data_path.endswith("scale"):
-                    if times['Scale'].count(keyframe.co[0]) == 0:
-                        times['Scale'].append(keyframe.co[0])
-                elif fcurve.data_path.endswith("rotation_quaternion") or fcurve.data_path.endswith("rotation_euler"):
-                    if times['Rotation'].count(keyframe.co[0]) == 0:
-                        times['Rotation'].append(keyframe.co[0])
+def getTranslateAxisChannel(target, action, fps, axis):
+    times = []
+    sampler = None
+    duration = 0
+    for fcurve in action.fcurves:
+        l = fcurve.data_path.split("\"")
+        if len(l) > 1:
+            target = l[1]
+            
+        for keyframe in fcurve.keyframe_points:
+            if fcurve.data_path.endswith("location") and fcurve.array_index == axis:
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
+    if len(times) == 0:
+        return None
 
-        for fcurve_type in times.keys():
-            times[fcurve_type].sort()
-            if len(times[fcurve_type]) > 0:
-                channel_samplers[fcurve_type] = Channel()
-                channel_samplers[fcurve_type].target = target
+    channel = Channel()
+    channel.target = target
+    channel.type = "FloatLinearChannel"
+    
+    times.sort()
+    for time in times:
+        realtime = (time - 1) / fps
 
-        for fcurve_type in times.keys():
-            for time in times[fcurve_type]:
-                realtime = (time - 1) / fps
+        # realtime = time
+        if realtime > duration:
+            duration = realtime
 
-                # realtime = time
-                if realtime > duration:
-                    duration = realtime
+        value = 0.0
+        for fcurve in action.fcurves:
+            if fcurve.data_path.endswith("location") and fcurve.array_index == axis:
+               value = fcurve.evaluate(time)
+        channel.keys.append((realtime, value))
+        
+    return channel
 
-                trans = Vector()
-                quat  = Quaternion()
-                scale = Vector()
-                rot   = Euler()
-                color   = [1,1,1,1]
-                rtype = None
+def getScaleChannel(target, action, fps):
+    times = []
+    sampler = None
+    duration = 0
+    for fcurve in action.fcurves:
+        l = fcurve.data_path.split("\"")
+        if len(l) > 1:
+            target = l[1]
+            
+        for keyframe in fcurve.keyframe_points:
+            if fcurve.data_path.endswith("scale"):
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
+    if len(times) == 0:
+        return None
 
-                for fcurve in action.fcurves:
-                    for keyframe in fcurve.keyframe_points:
-                        if time == keyframe.co[0]:
-                            if fcurve.data_path.endswith("diffuse_color"):
-                                color[fcurve.array_index] = keyframe.co[1]
-                            elif fcurve.data_path.endswith("position"):
-                                trans[fcurve.array_index] = keyframe.co[1] 
-                            elif fcurve.data_path.endswith("scale"):
-                                scale[fcurve.array_index] = keyframe.co[1] 
-                            elif fcurve.data_path.endswith("rotation_quaternion"):
-                                quat[fcurve.array_index] = keyframe.co[1] 
+    channel = Channel()
+    channel.target = target
+    channel.type = "Vec3LinearChannel"
+    
+    times.sort()
+    for time in times:
+        realtime = (time - 1) / fps
 
-                if fcurve_type == 'Scale':
-                    channel_samplers[fcurve_type].keys.append((realtime, scale[0], scale[1], scale[2]))
-                    channel_samplers[fcurve_type].type = "Vec3LinearChannel"
-                    channel_samplers[fcurve_type].setName("scale")
+        # realtime = time
+        if realtime > duration:
+            duration = realtime
 
-                elif fcurve_type == 'Rotation':
-                    quat.normalize()
-                    channel_samplers[fcurve_type].keys.append((realtime, quat.x, quat.y, quat.z, quat.w))
-                    channel_samplers[fcurve_type].type = "QuatSphericalLinearChannel"
-                    channel_samplers[fcurve_type].setName("quaternion")
+        value = Vector((1,1,1))
+        for fcurve in action.fcurves:
+            if fcurve.data_path.endswith("scale"):
+               value[fcurve.array_index] = fcurve.evaluate(time)
+        channel.keys.append((realtime, value[0], value[1], value[2]))
+    return channel
 
-                elif fcurve_type == 'Translation':
-                    channel_samplers[fcurve_type].keys.append((realtime, trans[0], trans[1], trans[2]))
-                    channel_samplers[fcurve_type].type = "Vec3LinearChannel"
-                    channel_samplers[fcurve_type].setName("translate")
 
-                elif fcurve_type == 'Color':
-                    channel_samplers[fcurve_type].keys.append((realtime, color[0], color[1], color[2], color[3]))
-                    channel_samplers[fcurve_type].type = "Vec4LinearChannel"
-                    channel_samplers[fcurve_type].setName("diffuse")
+def getScaleAxisChannel(target, action, fps, axis):
+    times = []
+    sampler = None
+    duration = 0
+    for fcurve in action.fcurves:
+        l = fcurve.data_path.split("\"")
+        if len(l) > 1:
+            target = l[1]
+            
+        for keyframe in fcurve.keyframe_points:
+            if fcurve.data_path.endswith("scale") and fcurve.array_index == axis:
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
+    if len(times) == 0:
+        return None
 
-    for fcurve_type in times.keys():
-        if channel_samplers[fcurve_type] != None:
-            channels.append(channel_samplers[fcurve_type])
+    channel = Channel()
+    channel.target = target
+    channel.type = "FloatLinearChannel"
+    
+    times.sort()
+    for time in times:
+        realtime = (time - 1) / fps
+
+        # realtime = time
+        if realtime > duration:
+            duration = realtime
+
+        value = 1.0
+        for fcurve in action.fcurves:
+            if fcurve.data_path.endswith("scale") and fcurve.array_index == axis:
+               value = fcurve.evaluate(time)
+        channel.keys.append((realtime, value[0]))
+    return channel
+
+def getEulerChannel(target, action, fps):
+    times = []
+    sampler = None
+    duration = 0
+    for fcurve in action.fcurves:
+        l = fcurve.data_path.split("\"")
+        if len(l) > 1:
+            target = l[1]
+            
+        for keyframe in fcurve.keyframe_points:
+            if fcurve.data_path.endswith("rotation_euler"):
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
+    if len(times) == 0:
+        return None
+
+    channel = Channel()
+    channel.target = target
+    channel.type = "Vec3LinearChannel"
+    
+    times.sort()
+    for time in times:
+        realtime = (time - 1) / fps
+
+        # realtime = time
+        if realtime > duration:
+            duration = realtime
+
+        euler = Euler()
+        for fcurve in action.fcurves:
+            if fcurve.data_path.endswith("rotation_euler"):
+               euler[fcurve.array_index] = fcurve.evaluate(time)
+        channel.keys.append((realtime, euler[0], euler[1], euler[2]))
+    return channel
+
+
+def getEulerAxisChannel(target, action, fps, axis):
+    times = []
+    sampler = None
+    duration = 0
+    for fcurve in action.fcurves:
+        l = fcurve.data_path.split("\"")
+        if len(l) > 1:
+            target = l[1]
+            
+        for keyframe in fcurve.keyframe_points:
+            if fcurve.data_path.endswith("rotation_euler") and fcurve.array_index == axis:
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
+    if len(times) == 0:
+        return None
+
+    channel = Channel()
+    channel.target = target
+    channel.type = "FloatLinearChannel"
+    
+    times.sort()
+    for time in times:
+        realtime = (time - 1) / fps
+
+        # realtime = time
+        if realtime > duration:
+            duration = realtime
+
+        value = 0
+        for fcurve in action.fcurves:
+            if fcurve.data_path.endswith("rotation_euler")  and fcurve.array_index == axis:
+               value = fcurve.evaluate(time)
+        channel.keys.append((realtime, value))
+    return channel
+
+
+# as for blender 2.49
+def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps):
+    channels = []
+
+    translate = getTranslateChannel(target, action, fps)
+    if translate:
+        translate.setName("translate")
+        channels.append(translate);
+
+    euler = []
+    eulerName = [ "euler_x", "euler_y", "euler_z"]
+    for i in range(0,3):
+        c = getEulerAxisChannel(target, action, fps, i)
+        if c:
+            c.setName(eulerName[i])
+            channels.append(c)
+
+    scale = getScaleChannel(target, action, fps)
+    if scale:
+        scale.setName("scale")
+        channels.append(scale);
 
     return channels

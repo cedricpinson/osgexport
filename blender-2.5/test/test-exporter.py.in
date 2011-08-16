@@ -51,6 +51,15 @@ def makeSceneActive(scene):
     blend_cdll.ED_screen_set_scene(ctr, sce.as_pointer())
     print(bpy.context.scene)
 
+class Exporter2(unittest.TestCase):
+    # ------------------------------------------------------
+    def setUp(self):
+        osg.osgobject.Object.resetWriter()
+
+    def tearDown(self):
+        pass
+
+
 class Exporter(unittest.TestCase):
     # ------------------------------------------------------
     def setUp(self):
@@ -160,6 +169,7 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         exporter.write()
         self.assertEquals(4, len(exporter.items))
                 
+
     def testIpos(self):
         makeSceneActive("Ipos")
         exporter = Export()
@@ -168,6 +178,60 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         exporter.process()
         self.assertEquals(5, len(exporter.animations))
         exporter.write()
+
+    def testIposFunction(self):
+        makeSceneActive("Ipos")
+        action = bpy.data.objects['Suzanne.001'].animation_data.action
+        # test X
+        print("ChannelX")
+        channelx = getTranslateAxisChannel("test", action, 25, 0)
+        self.assertEquals(2, len(channelx.keys))
+        self.assertEquals(3.532521963119507, channelx.keys[0][1])
+        self.assertEquals(3.532521963119507, channelx.keys[1][1])
+        print(channelx)
+
+        print("ChannelY")
+        channely = getTranslateAxisChannel("test", action, 25, 1)
+        print(channely)
+        self.assertEquals(2, len(channely.keys))
+        self.assertEquals(-4.854602336883545, channely.keys[0][1])
+        self.assertEquals(1.0031919479370117, channely.keys[1][1])
+
+        print("ChannelXYZ")
+        channelxyz = getTranslateChannel("test", action, 25)
+        print(channelxyz)
+        self.assertEquals(2, len(channelxyz.keys))
+
+        print("ChannelEulerX")
+        eulerx = getEulerAxisChannel("test", action, 25, 0)
+        self.assertEquals(2, len(eulerx.keys))
+        print(eulerx)
+
+        print("ChannelEuler")
+        euler = getEulerChannel("test", action, 25)
+        self.assertEquals(2, len(euler.keys))
+        print(euler)
+
+        print("ChannelScaleX")
+        scalex = getScaleAxisChannel("test", action, 25, 0)
+        self.assertEquals(scalex, None)
+        print(scalex)
+
+        print("ChannelScale")
+        scale = getScaleChannel("test", action, 25)
+        self.assertEquals(1, len(scale.keys))
+        self.assertEquals((0.0, 1.0, 1.9897353649139404, 1.0), scale.keys[0])
+        print(scale)
+
+        print("Bake")
+        #bpy.context.active_object = bpy.data.objects['Suzanne.002']
+        bpy.context.scene.objects.active = bpy.data.objects['Suzanne.002']
+        #bpy.ops.object.select_name(name='Suzanne.002')
+        bpy.ops.nla.bake(bake_types="OBJECT")
+        action = bpy.data.objects['Suzanne.002'].animation_data.action
+        channelxyz = getTranslateChannel("test", action, 25)
+        self.assertEquals(51, len(channelxyz.keys))
+        print(channelxyz)
 
     def testInstance(self):
         makeSceneActive("Instance")
@@ -184,8 +248,8 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         found = False
         print(exporter.images)
         for i in exporter.images:
-            print("check with ",i.getName())
-            if i.getName() == search:
+            print("check with ",i.name)
+            if i.name == search:
                 found = True
         self.assertEquals(True, found)
 

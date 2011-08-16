@@ -25,7 +25,7 @@ import os
 from . import osglog
 from . import osgobject
 
-DEBUG = True
+DEBUG = False
 def debug(str):
     if DEBUG:
         osglog.log(str)
@@ -46,7 +46,7 @@ class Config(object):
         self.selected = map.get("SELECTED", "ALL")
         self.relative_path = map.get("RELATIVE_PATH", False)
         self.anim_bake = map.get("BAKE", "FORCE")
-        self.export_anim = map.get("EXORTANIM", True)
+        self.export_anim = map.get("EXPORTANIM", True)
         self.object_selected = map.get("OBJECT_SELECTED", None)
         self.fullpath = ""
         self.exclude_objects = []
