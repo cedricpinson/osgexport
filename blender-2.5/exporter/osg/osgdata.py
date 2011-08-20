@@ -26,6 +26,8 @@ from   mathutils import *
 import bpy
 import sys
 import math
+import os
+import shutil
 from sys import exit
 
 import osg
@@ -500,10 +502,11 @@ class Export(object):
                             osglog.log("failed to save file %s to %s" %(imagename, nativePath))
                         i.filepath_raw = original_filepath
                     else:
-                        filepath = bpy.path.abspath(i.filepath)
+                        filepath = os.path.abspath(bpy.path.abspath(i.filepath))
+                        texturePath = nativePath + imagename
                         if os.path.exists(filepath):
                             shutil.copy(filepath, texturePath)
-                            osglog.log("copy file %s to %s" %(filepath, nativePath))
+                            osglog.log("copy file %s to %s" %(filepath, texturePath))
                         else:
                             osglog.log("file %s not available" %(filepath))
                 except:
