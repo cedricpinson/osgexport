@@ -176,7 +176,7 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         exporter.config.anim_bake = "force"
         exporter.config.filename = "ipos"
         exporter.process()
-        self.assertEquals(5, len(exporter.animations))
+        self.assertEquals(6, len(exporter.animations))
         exporter.write()
 
     def testIposFunction(self):
@@ -220,18 +220,27 @@ NormalArray UniqueID NormalArray_0 Vec3Array 1
         print("ChannelScale")
         scale = getScaleChannel("test", action, 25)
         self.assertEquals(1, len(scale.keys))
-        self.assertEquals((0.0, 1.0, 1.9897353649139404, 1.0), scale.keys[0])
+        self.assertEquals((0.04, 1.0, 1.9897353649139404, 1.0), scale.keys[0])
         print(scale)
 
         print("Bake")
         #bpy.context.active_object = bpy.data.objects['Suzanne.002']
         bpy.context.scene.objects.active = bpy.data.objects['Suzanne.002']
         #bpy.ops.object.select_name(name='Suzanne.002')
-        bpy.ops.nla.bake(bake_types="OBJECT")
+        bpy.ops.nla.bake(bake_types={"OBJECT"})
         action = bpy.data.objects['Suzanne.002'].animation_data.action
         channelxyz = getTranslateChannel("test", action, 25)
         self.assertEquals(51, len(channelxyz.keys))
         print(channelxyz)
+
+
+        action = bpy.data.objects['Cube.003'].animation_data.action
+        print("Quaternion")
+        quat = getQuaternionChannel("Quaternion", action, 25)
+        self.assertEquals(2, len(quat.keys))
+        self.assertEquals(( 0.0, 0.0, 0.0, 0.0, 1.0), quat.keys[0])
+        self.assertEquals(( 2.0, 0.3826834559440613, 0.0, 0.0, 0.9238795042037964), quat.keys[1])
+        print(quat)
 
     def testInstance(self):
         makeSceneActive("Instance")

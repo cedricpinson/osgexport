@@ -194,20 +194,40 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
 
     return None
 
-def createUpdateMatrixTransform():
+def createUpdateMatrixTransform(obj):
     callback = UpdateMatrixTransform()
-    callback.stacked_transforms.append(StackedTranslateElement())
-    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_z', axis = Vector((0,0,1)) ))
-    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_y', axis = Vector((0,1,0)) ))
-    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_x', axis = Vector((1,0,0)) ))
-    callback.stacked_transforms.append(StackedScaleElement())
+    if obj.animation_data:
+        action = obj.animation_data.action
+        if action:
+            for curve in action.fcurves:
+                if curve.data_path.endswith("location"):
+                    callback.stacked_transforms.append(StackedTranslateElement())
+                    break
+
+            for curve in action.fcurves:
+                if curve.data_path.endswith("rotation_quaternion"):
+                    callback.stacked_transforms.append(StackedQuaternionElement())
+                    break
+
+            for curve in action.fcurves:
+                if curve.data_path.endswith("rotation_euler"):
+                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_z', axis = Vector((0,0,1)) ))
+                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_y', axis = Vector((0,1,0)) ))
+                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_x', axis = Vector((1,0,0)) ))
+                    break
+
+            for curve in action.fcurves:
+                if curve.data_path.endswith("scale"):
+                    callback.stacked_transforms.append(StackedScaleElement())
+                    break
+
     return callback
 
 def createAnimationsObjectAndSetCallback(osg_node, obj, config):
     #bpy.ops.object.select_name(name=obj.name)
     #if config.anim_bake == "FORCE":
     #    bpy.ops.nla.bake(bake_types="OBJECT")
-    return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform())
+    return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform(obj))
 
 def createAnimationMaterialAndSetCallback(osg_node, obj, config):
     return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial())
@@ -1218,7 +1238,7 @@ def getTranslateChannel(target, action, fps):
     
     times.sort()
     for time in times:
-        realtime = (time - 1) / fps
+        realtime = (time) / fps
 
         # realtime = time
         if realtime > duration:
@@ -1229,6 +1249,43 @@ def getTranslateChannel(target, action, fps):
             if fcurve.data_path.endswith("location"):
                trans[fcurve.array_index] = fcurve.evaluate(time)
         channel.keys.append((realtime, trans[0], trans[1], trans[2]))
+        
+    return channel
+
+
+def getQuaternionChannel(target, action, fps):
+    times = []
+    sampler = None
+    duration = 0
+    for fcurve in action.fcurves:
+        l = fcurve.data_path.split("\"")
+        if len(l) > 1:
+            target = l[1]
+            
+        for keyframe in fcurve.keyframe_points:
+            if fcurve.data_path.endswith("rotation_quaternion"):
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
+    if len(times) == 0:
+        return None
+
+    channel = Channel()
+    channel.target = target
+    channel.type = "QuatSphericalLinearChannel"
+    
+    times.sort()
+    for time in times:
+        realtime = (time) / fps
+
+        # realtime = time
+        if realtime > duration:
+            duration = realtime
+
+        data = Quaternion()
+        for fcurve in action.fcurves:
+            if fcurve.data_path.endswith("rotation_quaternion"):
+               data[fcurve.array_index] = fcurve.evaluate(time)
+        channel.keys.append((realtime, data[1], data[2], data[3], data[0]))
         
     return channel
 
@@ -1254,7 +1311,7 @@ def getTranslateAxisChannel(target, action, fps, axis):
     
     times.sort()
     for time in times:
-        realtime = (time - 1) / fps
+        realtime = (time) / fps
 
         # realtime = time
         if realtime > duration:
@@ -1290,7 +1347,7 @@ def getScaleChannel(target, action, fps):
     
     times.sort()
     for time in times:
-        realtime = (time - 1) / fps
+        realtime = (time) / fps
 
         # realtime = time
         if realtime > duration:
@@ -1326,7 +1383,7 @@ def getScaleAxisChannel(target, action, fps, axis):
     
     times.sort()
     for time in times:
-        realtime = (time - 1) / fps
+        realtime = (time) / fps
 
         # realtime = time
         if realtime > duration:
@@ -1361,7 +1418,7 @@ def getEulerChannel(target, action, fps):
     
     times.sort()
     for time in times:
-        realtime = (time - 1) / fps
+        realtime = (time) / fps
 
         # realtime = time
         if realtime > duration:
@@ -1373,6 +1430,7 @@ def getEulerChannel(target, action, fps):
                euler[fcurve.array_index] = fcurve.evaluate(time)
         channel.keys.append((realtime, euler[0], euler[1], euler[2]))
     return channel
+
 
 
 def getEulerAxisChannel(target, action, fps, axis):
@@ -1397,7 +1455,7 @@ def getEulerAxisChannel(target, action, fps, axis):
     
     times.sort()
     for time in times:
-        realtime = (time - 1) / fps
+        realtime = (time) / fps
 
         # realtime = time
         if realtime > duration:
@@ -1427,6 +1485,11 @@ def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps):
         if c:
             c.setName(eulerName[i])
             channels.append(c)
+
+    quaternion = getQuaternionChannel(target, action, fps)
+    if quaternion:
+        quaternion.setName("quaternion")
+        channels.append(quaternion);
 
     scale = getScaleChannel(target, action, fps)
     if scale:
