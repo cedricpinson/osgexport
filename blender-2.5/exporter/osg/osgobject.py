@@ -16,7 +16,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 #  Jeremy Moles <jeremy@emperorlinux.com>
 
 
@@ -862,8 +862,8 @@ class Bone(MatrixTransform):
         if self.parent:
             parent_quat_inv = self.parent.matrix.to_quaternion().copy()
             parent_quat_inv.invert()
-            parent_tail = self.parent.bone.tail * parent_quat_inv
-            parent_head = self.parent.bone.head * parent_quat_inv
+            parent_tail = parent_quat_inv * self.parent.bone.tail
+            parent_head = parent_quat_inv * self.parent.bone.head
 
             pos = parent_tail - parent_head + self.bone.head
 
