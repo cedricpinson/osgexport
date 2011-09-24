@@ -538,7 +538,11 @@ class Export(object):
 
 
     def createMesh(self, mesh, skeleton = None):
-        mesh_object  = mesh.data
+        if self.config.apply_modifiers is False:
+          mesh_object  = mesh.data
+        else:
+          mesh_object = mesh.to_mesh(bpy.context.scene, True, 'PREVIEW')
+
         osglog.log("exporting mesh " + mesh.name)
 
         geode = Geode()
@@ -632,7 +636,10 @@ class BlenderObjectToGeometry(object):
             self.config = osgconf.Config()
         self.uniq_stateset = kwargs.get("uniq_stateset", {})
         self.geom_type = Geometry
-        self.mesh = self.object.data
+        if self.config.apply_modifiers is False:
+          self.mesh = self.object.data
+        else:
+          self.mesh = self.object.to_mesh(bpy.context.scene, True, 'PREVIEW')
         self.material_animations = {}
 
     def createTexture2D(self, mtex):

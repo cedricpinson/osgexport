@@ -84,8 +84,8 @@ if __name__ == "__main__":
 bl_info = {
     "name": "Export OSG format (.osg)",
     "author": "Jeremy Moles, Cedric Pinson",
-    "version": (2, 5, 7),
-    "blender": (2, 5, 7),
+    "version": (2, 5, 9),
+    "blender": (2, 5, 9),
     "api": 36339,
     "location": "File > Export > OSG Model (*.osg)",
     "description": "Export models and animations for use in OpenSceneGraph",
@@ -123,7 +123,7 @@ except:
 
 class OSGGUI(bpy.types.Operator, ExportHelper):
     '''Export model data to an OpenSceneGraph file'''
-    bl_idname = "osg_model.osg"
+    bl_idname = "osg.export"
     bl_label = "OSG Model"
 
     filename_ext = ".osg"
@@ -135,8 +135,9 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     SELECTED = BoolProperty(name="Only Export Selected", description="Only export the selected model", default=False)
     INDENT = IntProperty(name="Number of Indent Spaces", description="Number of Spaces to use for indentation in the model file", default=3, min=1, max=8)
     FLOATPRE = IntProperty(name="Floating Point Precision", description="The Floating Point Precision to use in exported model file", min=1, max=8, default=4)
-    ANIMFPS = IntProperty(name="Frames Per Second", description="Number of Frames Per Second to use for exported animations", min=1, max=60, default=25)
+    ANIMFPS = IntProperty(name="Frames Per Second", description="Number of Frames Per Second to use for exported animations", min=1, max=25, default=25)
     EXPORTANIM = BoolProperty(name="Export animations", description="Export animation yes/no", default=False)
+    APPLYMODIFIERS = BoolProperty(name="Apply Modifiers", description="Apply modifiers before exporting yes/no", default=False)
 
     def execute(self, context):
         if not self.filepath:
@@ -154,7 +155,8 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
                 "INDENT": self.INDENT,
                 "FLOATPRE": self.FLOATPRE,
                 "ANIMFPS": self.ANIMFPS,
-                "EXPORTANIM": self.EXPORTANIM
+                "EXPORTANIM": self.EXPORTANIM,
+                "APPLY_MODIFIERS": self.APPLYMODIFIERS
                 })
 
         print("FILENAME:" + repr(config.filename))

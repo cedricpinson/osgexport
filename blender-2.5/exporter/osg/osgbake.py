@@ -1,410 +1,285 @@
-# -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
+# ##### BEGIN GPL LICENSE BLOCK #####
 #
-# Copyright (C) 2008 Cedric Pinson
+#  This program is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either version 2
+#  of the License, or (at your option) any later version.
 #
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software Foundation,
+#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
-#
-# Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.net>
+# ##### END GPL LICENSE BLOCK #####
 
+# <pep8-80 compliant>
 
-#import bpy
-#from   Blender import Ipo
-#from   Blender import BezTriple
 import bpy
-import mathutils
-from . import osglog
-from . import osgconf
-from . import osglog
-#from osgconf import debug
-#from osgconf import DEBUG
-
-Vector     = mathutils.Vector
-Quaternion = mathutils.Quaternion
-Matrix     = mathutils.Matrix
-Euler      = mathutils.Euler
+from bpy.types import Operator
 
 
-COORDINATE_SYSTEMS = ['local','real']
-COORD_LOCAL = 0
-COORD_REAL = 1
-usrCoord = COORD_LOCAL # what the user wants
-usrDelta = [0,0,0,0,0,0,0,0,0] #order specific - Loc xyz Rot xyz
-R2D = 18/3.1415  # radian to grad
+def pose_frame_info(obj):
+    from mathutils import Matrix
+
+    info = {}
+
+    pose = obj.pose
+
+    pose_items = pose.bones.items()
+
+    for name, pbone in pose_items:
+        binfo = {}
+        bone = pbone.bone
+
+        binfo["parent"] = getattr(bone.parent, "name", None)
+        binfo["bone"] = bone
+        binfo["pbone"] = pbone
+        binfo["matrix_local"] = bone.matrix_local.copy()
+        try:
+            binfo["matrix_local_inv"] = binfo["matrix_local"].inverted()
+        except:
+            binfo["matrix_local_inv"] = Matrix()
+
+        binfo["matrix"] = bone.matrix.copy()
+        binfo["matrix_pose"] = pbone.matrix.copy()
+        try:
+            binfo["matrix_pose_inv"] = binfo["matrix_pose"].inverted()
+        except:
+            binfo["matrix_pose_inv"] = Matrix()
+
+        info[name] = binfo
+
+    for name, pbone in pose_items:
+        binfo = info[name]
+        binfo_parent = binfo.get("parent", None)
+        if binfo_parent:
+            binfo_parent = info[binfo_parent]
+
+        matrix = binfo["matrix_pose"]
+        rest_matrix = binfo["matrix_local"]
+
+        if binfo_parent:
+            matrix = binfo_parent["matrix_pose_inv"] * matrix
+            rest_matrix = binfo_parent["matrix_local_inv"] * rest_matrix
+
+        binfo["matrix_key"] = rest_matrix.inverted() * matrix
+
+    return info
 
 
-def addPoint(time, key, ipos):
-    for i in range(len(ipos)):
-        if ipos[i] is None:
+def obj_frame_info(obj):
+    info = {}
+    # parent = obj.parent
+    info["matrix_key"] = obj.matrix_local.copy()
+    return info
+
+
+def bake(frame_start,
+         frame_end, step=1,
+         only_selected=False,
+         do_pose=True,
+         do_object=True,
+         do_constraint_clear=False,
+         action=None,
+         to_quat=False):
+
+    scene = bpy.context.scene
+    obj = bpy.context.object
+    pose = obj.pose
+    frame_back = scene.frame_current
+
+    if pose is None:
+        do_pose = False
+
+    if do_pose is None and do_object is None:
+        return None
+
+    pose_info = []
+    obj_info = []
+
+    frame_range = range(frame_start, frame_end + 1, step)
+
+    # -------------------------------------------------------------------------
+    # Collect transformations
+
+    # could speed this up by applying steps here too...
+    for f in frame_range:
+        scene.frame_set(f)
+
+        if do_pose:
+            pose_info.append(pose_frame_info(obj))
+        if do_object:
+            obj_info.append(obj_frame_info(obj))
+
+        f += 1
+
+    # -------------------------------------------------------------------------
+    # Create action
+
+    # incase animation data hassnt been created
+    atd = obj.animation_data_create()
+    if action is None:
+        action = bpy.data.actions.new("Action")
+    atd.action = action
+
+    if do_pose:
+        pose_items = pose.bones.items()
+    else:
+        pose_items = []  # skip
+
+    # -------------------------------------------------------------------------
+    # Apply transformations to action
+
+    # pose
+    for name, pbone in (pose_items if do_pose else ()):
+        if only_selected and not pbone.bone.select:
             continue
-        point = BezTriple.New() #this was new with Blender 2.45 API
-        point.pt = (time, key[i])
-        point.handleTypes = [1,1]
-        ipos[i].append(point)
-    return ipos
 
-def getRangeFromIpo(ipo):
-    first_frame = 1
-    last_frame = 1
-    for channel in ipo:
-        for key in channel.bezierPoints:
-            if key.vec[1][0] > last_frame:
-                last_frame = int(key.vec[1][0])
-    debug("range of ipo %s : %s %s " % (ipo.name, first_frame,last_frame))
-    return (first_frame, last_frame, first_frame)
+        if do_constraint_clear:
+            while pbone.constraints:
+                pbone.constraints.remove(pbone.constraints[0])
 
+        for f in frame_range:
+            matrix = pose_info[(f - frame_start) // step][name]["matrix_key"]
 
-class BakeIpoForObject(object):
-    def __init__(self, *args, **kwargs):
-        self.ipos = kwargs["ipo"]
-        self.object = kwargs["object"]
-        self.config = kwargs.get("config", None)
-        self.result_ipos = None
+            # pbone.location = matrix.to_translation()
+            # pbone.rotation_quaternion = matrix.to_quaternion()
+            pbone.matrix_basis = matrix
 
+            pbone.keyframe_insert("location", -1, f, name)
 
-    def getCurves(self, ipo):
-        ipos = [
-            ipo[Ipo.OB_LOCX],
-            ipo[Ipo.OB_LOCY],
-            ipo[Ipo.OB_LOCZ],
-            ipo[Ipo.OB_ROTX], #get the curves in this order
-            ipo[Ipo.OB_ROTY],
-            ipo[Ipo.OB_ROTZ],
-            ipo[Ipo.OB_SCALEX], #get the curves in this order
-            ipo[Ipo.OB_SCALEY],
-            ipo[Ipo.OB_SCALEZ]
-            ]
-        return ipos
+            rotation_mode = pbone.rotation_mode
 
-    def getLocLocal(self, ob):
-        key = [
-            ob.LocX, 
-            ob.LocY, 
-            ob.LocZ,
-            ob.RotX*R2D, #get the curves in this order
-            ob.RotY*R2D, 
-            ob.RotZ*R2D,
-            ob.SizeX, 
-            ob.SizeY, 
-            ob.SizeZ,
-            ]
-        return key
+            if rotation_mode == 'QUATERNION':
+                pbone.keyframe_insert("rotation_quaternion", -1, f, name)
+            elif rotation_mode == 'AXIS_ANGLE':
+                pbone.keyframe_insert("rotation_axis_angle", -1, f, name)
+            else:  # euler, XYZ, ZXY etc
+                pbone.keyframe_insert("rotation_euler", -1, f, name)
 
-    def getLocReal(self, ob):
-        obMatrix = ob.matrixWorld #Thank you IdeasMan42
-        loc = obMatrix.translationPart()
-        rot = obMatrix.toEuler()
-        scale = obMatrix.scalePart()
-        key = [
-            loc.x,
-            loc.y,
-            loc.z,
-            rot.x/10,
-            rot.y/10,
-            rot.z/10,
-            scale.x,
-            scale.y,
-            scale.z,
-            ]
-        return key
+            pbone.keyframe_insert("scale", -1, f, name)
 
-    def getLocRot(self, ob, space):
-        if space in xrange(len(COORDINATE_SYSTEMS)):
-            if space == COORD_LOCAL:
-                key = self.getLocLocal(ob)
-                return key
-            elif space == COORD_REAL:
-                key = self.getLocReal(ob)
-                return key
-            else: #hey, programmers make mistakes too.
-                debug('Fatal Error: getLoc called with %i' % space)
-        return
+    # object. TODO. multiple objects
+    if do_object:
+        if do_constraint_clear:
+            while obj.constraints:
+                obj.constraints.remove(obj.constraints[0])
 
-    def bakeFrames(self, myipo): #bakes an object in a scene, returning the IPO containing the curves
-        myipoName = myipo.getName()
-        debug('Baking frames for scene %s object %s to ipo %s' % (bpy.data.scenes.active.getName(),self.object.getName(),myipoName))
-        ipos = self.getCurves(myipo)
-            #TODO: Gui setup idea: myOffset
-            # reset action to start at frame 1 or at location
-        myOffset=0 #=1-staframe
-            #loop through frames in the animation. Often, there is rollup and the mocap starts late
-        staframe,endframe,curframe = getRangeFromIpo(self.object.getIpo())
-        for frame in range(staframe, endframe+1):
-                    #tell Blender to advace to frame
-            Blender.Set('curframe',frame) # computes the constrained location of the 'real' objects
+        if to_quat == True:
+            print("Change rotation to QUATERNION")
+            obj.rotation_mode = 'QUATERNION'
+            print("rotation " + obj.rotation_mode )
 
-                    #using the constrained Loc Rot of the object, set the location of the unconstrained clone. Yea! Clones are FreeMen
-            key = self.getLocRot(self.object,usrCoord) #a key is a set of specifed exact channel values (LocRotScale) for a certain frame
-            key = [a+b for a,b in zip(key, usrDelta)] #offset to the new location
-            myframe= frame+myOffset
-            Blender.Set('curframe',myframe)
+        for f in frame_range:
+            matrix = obj_info[(f - frame_start) // step]["matrix_key"]
+            obj.matrix_local = matrix
 
-            time = Blender.Get('curtime') #for BezTriple
-            ipos = addPoint(time,key,ipos) #add this data at this time to the ipos
-            debug('%s %i %.3f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f' % (myipoName, myframe, time, key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7], key[8]))
-        Blender.Set('curframe',staframe)
-        return myipo
+            obj.keyframe_insert("location", -1, f)
 
-    def getBakedIpos(self):
+            rotation_mode = obj.rotation_mode
 
-        # Get the dummy action if it has no users
-        dummy_ipos_name = self.ipos.getName() + "_bake"
-        try:
-            baked = bpy.data.ipos[dummy_ipos_name]
-        except:
-            baked = None
+            if rotation_mode == 'QUATERNION':
+                obj.keyframe_insert("rotation_quaternion", -1, f)
+            elif rotation_mode == 'AXIS_ANGLE':
+                obj.keyframe_insert("rotation_axis_angle", -1, f)
+            else:  # euler, XYZ, ZXY etc
+                obj.keyframe_insert("rotation_euler", -1, f)
 
-        if not baked:
-            baked = bpy.data.ipos.new(dummy_ipos_name,'Object')
-            baked.fakeUser = False
-        else:
-            baked[Ipo.OB_LOCX] = None
-            baked[Ipo.OB_LOCY] = None
-            baked[Ipo.OB_LOCZ] = None
-            baked[Ipo.OB_ROTX] = None
-            baked[Ipo.OB_ROTY] = None
-            baked[Ipo.OB_ROTZ] = None
-            baked[Ipo.OB_SCALEX] = None
-            baked[Ipo.OB_SCALEY] = None
-            baked[Ipo.OB_SCALEZ] = None
+            obj.keyframe_insert("scale", -1, f)
 
-        baked.addCurve('LocX')
-        baked.addCurve('LocY')
-        baked.addCurve('LocZ')
-        baked.addCurve('RotX')
-        baked.addCurve('RotY')
-        baked.addCurve('RotZ')
-        baked.addCurve('ScaleX')
-        baked.addCurve('ScaleY')
-        baked.addCurve('ScaleZ')
+    scene.frame_set(frame_back)
 
-        dummy_object = None
-        if self.object is None:
-            log('WARNING Bake ipo %s without object, it means that it will not be possible to bake constraint, use an name ipo that contains the object associated to him, like myipo-MyObject' % self.ipos.name)
-            self.object = bpy.data.scenes.active.objects.new('Empty')
-            dummy_object = self.object
-
-        previous_ipo = self.object.getIpo()
-        self.object.setIpo(self.ipos)
-        self.bakeFrames( baked)
-        self.object.setIpo(previous_ipo)
-
-        if dummy_object:
-            bpy.data.scenes.active.objects.unlink(dummy_object)
-
-        self.result_ipos = baked
-        return self.result_ipos
-
-class BakeAction(object):
-    def __init__(self, *args, **kwargs):
-        self.armature = kwargs["armature"]
-        self.action = kwargs["action"]
-        self.config = kwargs["config"]
-        self.result_action = None
+    return action
 
 
-    def getBakedAction(self, sample_rate = 25):
-        """
-            Bakes supplied action for supplied armature.
-            Returns baked action.
-        """
-        pose = self.armature.getPose()
-        armature_data = self.armature.getData();
-        pose_bones = pose.bones.values()
-        rest_bones = armature_data.bones
-
-        POSE_XFORM = [Blender.Object.Pose.LOC, Blender.Object.Pose.ROT, Blender.Object.Pose.SIZE ]
-        #POSE_XFORM= [Object.Pose.LOC,Object.Pose.ROT,Object.Pose.SIZE]
-
-        blender_fps = 25
-        if sample_rate > blender_fps:
-            sample_rate = blender_fps
-        step = blender_fps / sample_rate
-
-        startFrame= min(self.action.getFrameNumbers());
-        endFrame= max(self.action.getFrameNumbers());
+from bpy.props import IntProperty, BoolProperty, EnumProperty
 
 
-        dummy_action_name = "_" + self.action.name
-        # Get the dummy action if it has no users
-        try:
-            baked_action = bpy.data.actions[dummy_action_name]
-        except:
-            baked_action = None
+class BakeAction(Operator):
+    '''Bake animation to an Action'''
+    bl_idname = "osg.bake"
+    bl_label = "Bake Action"
+    bl_options = {'REGISTER', 'UNDO'}
 
-        if not baked_action:
-            baked_action          = bpy.data.actions.new(dummy_action_name)
-            baked_action.fakeUser = False
-        for channel in baked_action.getChannelNames():
-            baked_action.removeChannel(channel)
+    frame_start = IntProperty(
+            name="Start Frame",
+            description="Start frame for baking",
+            min=0, max=300000,
+            default=1,
+            )
+    frame_end = IntProperty(
+            name="End Frame",
+            description="End frame for baking",
+            min=1, max=300000,
+            default=250,
+            )
+    step = IntProperty(
+            name="Frame Step",
+            description="Frame Step",
+            min=1, max=120,
+            default=1,
+            )
+    only_selected = BoolProperty(
+            name="Only Selected",
+            default=True,
+            )
+    clear_consraints = BoolProperty(
+            name="Clear Constraints",
+            default=False,
+            )
+    bake_types = EnumProperty(
+            name="Bake Data",
+            options={'ENUM_FLAG'},
+            items=(('POSE', "Pose", ""),
+                   ('OBJECT', "Object", ""),
+                   ),
+            default={'POSE'},
+            )
+    to_quat = BoolProperty(
+            name="To Quaternion",
+            default=False,
+            )
 
-        old_quats={}
-        old_locs={}
-        old_sizes={}
+    def execute(self, context):
 
-        baked_locs={}
-        baked_quats={}
-        baked_sizes={}
+        action = bake(self.frame_start,
+                      self.frame_end,
+                      self.step,
+                      self.only_selected,
+                      'POSE' in self.bake_types,
+                      'OBJECT' in self.bake_types,
+                      self.clear_consraints,
+                      None,
+                      self.to_quat
+                      )
 
-        self.action.setActive(self.armature)
-        frames = range(startFrame, endFrame+1, int(step))
-        if frames[-1:] != endFrame :
-            frames.append(endFrame)
+        if action is None:
+            self.report({'INFO'}, "Nothing to bake")
+            return {'CANCELLED'}
 
-        for current_frame in frames:
+        # basic cleanup, could move elsewhere
+        for fcu in action.fcurves:
+            keyframe_points = fcu.keyframe_points
+            i = 1
+            while i < len(fcu.keyframe_points) - 1:
+                val_prev = keyframe_points[i - 1].co[1]
+                val_next = keyframe_points[i + 1].co[1]
+                val = keyframe_points[i].co[1]
 
-            Blender.Set('curframe', current_frame)
-            time = Blender.Get('curtime') #for BezTriple
-            debug('%s %i %.3f' % (self.action.name, current_frame, time))
+                if abs(val - val_prev) + abs(val - val_next) < 0.0001:
+                    keyframe_points.remove(keyframe_points[i])
+                else:
+                    i += 1
 
-            for i in range(len(pose_bones)):
+        return {'FINISHED'}
 
-                bone_name=pose_bones[i].name
-
-                rest_bone=rest_bones[bone_name]
-                matrix = Matrix(pose_bones[i].poseMatrix)
-                rest_matrix= Matrix(rest_bone.matrix['ARMATURESPACE'])
-
-                parent_bone=rest_bone.parent
-
-                if parent_bone:
-                    parent_pose_bone=pose.bones[parent_bone.name]
-                    matrix=matrix * Matrix(parent_pose_bone.poseMatrix).invert()
-                    rest_matrix=rest_matrix * Matrix(parent_bone.matrix['ARMATURESPACE']).invert()
-
-                #print "before\n", matrix
-                #print "before quat\n", pose_bones[i].quat;
-
-                #print "localised pose matrix\n", matrix
-                #print "localised rest matrix\n", rest_matrix
-                matrix=matrix * Matrix(rest_matrix).invert()
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
 
 
-                old_quats[bone_name] = Quaternion(pose_bones[i].quat);
-                old_locs[bone_name] = Vector(pose_bones[i].loc);
-                old_sizes[bone_name] = Vector(pose_bones[i].size);
-
-                baked_locs[bone_name] = Vector(matrix.translationPart())
-                baked_quats[bone_name] = Quaternion(matrix.toQuat())
-                baked_sizes[bone_name] = Vector(matrix.scalePart())
-
-            baked_action.setActive(self.armature)
-            Blender.Set('curframe', current_frame)
-            for i in range(len(pose_bones)):
-                pose_bones[i].quat = baked_quats[pose_bones[i].name]
-                pose_bones[i].loc = baked_locs[pose_bones[i].name]
-                pose_bones[i].size = baked_sizes[pose_bones[i].name]
-                pose_bones[i].insertKey(self.armature, current_frame, POSE_XFORM)
-
-            self.action.setActive(self.armature)
-            Blender.Set('curframe', current_frame)
-
-            for name, quat in old_quats.iteritems():
-                pose.bones[name].quat=quat
-
-            for name, loc in old_locs.iteritems():
-                pose.bones[name].loc=loc
-
-        pose.update()
-        self.result_action = baked_action
-        return baked_action
-
-class BakeIpoForMaterial(object):
-    def __init__(self, *args, **kwargs):
-        self.ipos = kwargs["ipo"]
-        self.material = kwargs["material"]
-        self.config = kwargs.get("config", None)
-        self.result_ipos = None
-
-    def getCurves(self, ipo):
-        ipos = [
-            ipo[Ipo.MA_R],
-            ipo[Ipo.MA_G],
-            ipo[Ipo.MA_B],
-            ipo[Ipo.MA_ALPHA]
-            ]
-        return ipos
-
-    def getColor(self, mat):
-        key = [
-            mat.R, 
-            mat.G, 
-            mat.B, 
-            mat.alpha
-            ]
-        return key
-
-    def bakeFrames(self, tobake):
-        myipoName = tobake.getName()
-        debug('Baking frames for scene %s material %s to ipo %s' % (bpy.data.scenes.active.getName(),self.material.getName(),myipoName))
-        ipos = self.getCurves(tobake)
-        #TODO: Gui setup idea: myOffset
-        # reset action to start at frame 1 or at location
-        myOffset=0 #=1-staframe
-        #loop through frames in the animation. Often, there is rollup and the mocap starts late
-        staframe,endframe,curframe = getRangeFromIpo(self.material.getIpo())
-        for frame in range(staframe, endframe+1):
-            #tell Blender to advace to frame
-            Blender.Set('curframe',frame) # computes the constrained location of the 'real' objects
-                    
-            #using the constrained Loc Rot of the object, set the location of the unconstrained clone. Yea! Clones are FreeMen
-            key = self.getColor(self.material) #a key is a set of specifed exact channel values (LocRotScale) for a certain frame
-            myframe= frame+myOffset
-            Blender.Set('curframe',myframe)
-            
-            time = Blender.Get('curtime') #for BezTriple
-            ipos = addPoint(time, key, ipos) #add this data at this time to the ipos
-            debug('%s %i %.3f %.2f %.2f %.2f %.2f' % (myipoName, myframe, time, key[0], key[1], key[2], key[3]))
-        Blender.Set('curframe',staframe)
-        return tobake
-
-    def getBakedIpos(self):
-        # Get the dummy action if it has no users
-        dummy_ipos_name = self.ipos.getName() + "_bake"
-        try:
-            baked = bpy.data.ipos[dummy_ipos_name]
-        except:
-            baked = None
-
-        if not baked:
-            baked = bpy.data.ipos.new(dummy_ipos_name,'Material')
-            baked.fakeUser = False
-        else:
-            baked[Ipo.MA_R] = None
-            baked[Ipo.MA_G] = None
-            baked[Ipo.MA_B] = None
-            baked[Ipo.MA_ALPHA] = None
-
-        baked.addCurve('R')
-        baked.addCurve('G')
-        baked.addCurve('B')
-        baked.addCurve('Alpha')
-
-        dummy_mat = None
-        if self.material is None:
-            log('WARNING Bake ipo %s without material, it means that it will not be possible to bake constraint, use an name ipo that contains the material associated to him, like myipo-MyMaterial' % self.ipos.name)
-            self.material = bpy.data.materials.new('Material')
-            dummy_mat = self.material
-
-        previous_ipo = self.material.getIpo()
-        self.material.setIpo(self.ipos)
-        self.bakeFrames(baked)
-        self.material.setIpo(previous_ipo)
-
-#        if dummy_mat:
-#            bpy.data.materials.unlink(dummy_mat)
-
-        self.result_ipo = baked
-        return self.result_ipo
+bpy.utils.register_class(BakeAction)
