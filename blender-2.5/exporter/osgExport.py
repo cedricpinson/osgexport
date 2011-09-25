@@ -81,19 +81,19 @@ def main():
 if __name__ == "__main__":
     main()
 
+print(osg.PLUGINVERSION)
+
 bl_info = {
     "name": "Export OSG format (.osg)",
     "author": "Jeremy Moles, Cedric Pinson",
-    "version": (2, 5, 9),
+    "version": (0,9,0),
     "blender": (2, 5, 9),
     "api": 36339,
     "location": "File > Export > OSG Model (*.osg)",
     "description": "Export models and animations for use in OpenSceneGraph",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
-        "Scripts/Import-Export/Blender-toOSG",
-    "tracker_url": "https://projects.blender.org/tracker/index.php?"\
-        "func=detail&atid=281",
+    "wiki_url": "https://github.com/cedricpinson/osgexport/wiki",
+    "tracker_url": "http://github.com/cedricpinson/osgexport",
     "category": "Import-Export"}
 
 
