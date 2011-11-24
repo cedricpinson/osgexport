@@ -493,7 +493,8 @@ class Export(object):
         filename = self.config.getFullName("osg")
         osglog.log("write file to " + filename)
         sfile = open(filename, "wb")
-        sfile.write(str(self.root).encode('utf-8'))
+        #sfile.write(str(self.root).encode('utf-8'))
+        self.root.write(sfile)
 
         nativePath = os.path.abspath(self.config.getFullPath())+ "/textures/"
         blenderPath = bpy.path.relpath(nativePath)

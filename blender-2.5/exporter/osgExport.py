@@ -81,8 +81,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-print(osg.PLUGINVERSION)
-
 bl_info = {
     "name": "Export OSG format (.osg)",
     "author": "Jeremy Moles, Cedric Pinson",

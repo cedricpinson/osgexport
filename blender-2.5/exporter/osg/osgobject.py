@@ -66,6 +66,7 @@ def findMaterial(name, root):
 class Writer(object):
     instances = {}
     wrote_elements = {}
+    file_object = None
 
     def __init__(self, comment = None):
         object.__init__(self)
@@ -76,17 +77,24 @@ class Writer(object):
 
     def __repr__(self):
         ret = ""
-#        text = self.ascii().replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
         text = Writer.writeInstanceOrUseIt(self).replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
         return ret + text
 
     def __str__(self):
         return self.__repr__()
 
+    def write(self, output):
+        Writer.serializeInstanceOrUseIt(self, output)
+        
+    def encode(self, string):
+        text = string.replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
+        return text.encode('utf-8')
+
     @staticmethod
     def resetWriter():
         Writer.instances = {}
         wrote_elements = {}
+        file_object = None
 
     @staticmethod
     def writeInstanceOrUseIt(obj):
@@ -94,6 +102,13 @@ class Writer(object):
             return obj.shadow_object.ascii()
         Writer.wrote_elements[obj] = True
         return obj.ascii()
+
+    @staticmethod
+    def serializeInstanceOrUseIt(obj, output):
+        if obj in Writer.wrote_elements and obj.shadow_object is not None:
+            return obj.shadow_object.serialize(output)
+        Writer.wrote_elements[obj] = True
+        return obj.serialize(output)
 
 class ShadowObject(Writer):
     def __init__(self, *args, **kwargs):
@@ -104,7 +119,9 @@ class ShadowObject(Writer):
         text = "$Use " + self.target.generateID() + "\n"
         return text
 
-
+    def serialize(self, output):
+        output.write(self.encode("$Use " + self.target.generateID() + "\n"))
+    
 class Object(Writer):
     
     def __init__(self, *args, **kwargs):
@@ -137,6 +154,16 @@ class Object(Writer):
             text += "$#name \"%s\"\n" % self.name
         return text
 
+    def serializeContent(self, output):
+        id = self.generateID()
+        if id is not None:
+            output.write(self.encode("$#UniqueID " + self.generateID() + "\n"))
+        if self.dataVariance is not "UNKNOWN":
+            output.write(self.encode("$#DataVariance " + self.dataVariance + "\n"))
+        if self.name is not "None":
+            output.write(self.encode("$#name \"%s\"\n" % self.name))
+
+
 class UpdateMatrixTransform(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -159,6 +186,17 @@ class UpdateMatrixTransform(Object):
             text += str(s)
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        for s in self.stacked_transforms:
+            s.indent_level = self.indent_level + 1
+            s.write(output)
+
 class UpdateMaterial(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -171,6 +209,11 @@ class UpdateMaterial(Object):
         text += Object.printContent(self)
         text += "$}\n"
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        output.write(self.encode("$}\n"))
 
 class StackedMatrixElement(Object):
     def __init__(self, *args, **kwargs):
@@ -201,6 +244,20 @@ class StackedMatrixElement(Object):
         text += "$#}\n"
         return text
 
+
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#Matrix {\n"))
+        for i in range(0,4):
+            output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(self.matrix[i][0]), STRFLT(self.matrix[i][1]),STRFLT(self.matrix[i][2]), STRFLT(self.matrix[i][3]))))
+        output.write(self.encode("$#}\n"))
+
+
 class StackedTranslateElement(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -223,6 +280,16 @@ class StackedTranslateElement(Object):
     def printContent(self):
         text = "$#translate %s %s %s\n" % (STRFLT(self.translate[0]), STRFLT(self.translate[1]),STRFLT(self.translate[2]))
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#translate %s %s %s\n" % (STRFLT(self.translate[0]), STRFLT(self.translate[1]),STRFLT(self.translate[2])) ) )
+
 
 class StackedScaleElement(Object):
     def __init__(self, *args, **kwargs):
@@ -256,6 +323,9 @@ class StackedRotateAxisElement(Object):
     def className(self):
         return "StackedRotateAxisElement"
 
+    def generateID(self):
+        return None
+
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
@@ -263,13 +333,20 @@ class StackedRotateAxisElement(Object):
         text += "$}\n"
         return text
 
-    def generateID(self):
-        return None
-
     def printContent(self):
         text = "$#axis %s %s %s\n" % (STRFLT(self.axis[0]), STRFLT(self.axis[1]),STRFLT(self.axis[2]))
         text += "$#angle %s\n" % (STRFLT(self.angle))
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#axis %s %s %s\n" % (STRFLT(self.axis[0]), STRFLT(self.axis[1]),STRFLT(self.axis[2]))))
+        output.write(self.encode("$#angle %s\n" % (STRFLT(self.angle))))
 
 class StackedQuaternionElement(Object):
     def __init__(self, *args, **kwargs):
@@ -282,6 +359,9 @@ class StackedQuaternionElement(Object):
     def className(self):
         return "StackedQuaternionElement"
 
+    def generateID(self):
+        return None
+
     def ascii(self):
         text = "$osgAnimation::%s {\n" % self.className()
         text += Object.printContent(self)
@@ -289,12 +369,18 @@ class StackedQuaternionElement(Object):
         text += "$}\n"
         return text
 
-    def generateID(self):
-        return None
-
     def printContent(self):
         text = "$#quaternion %s %s %s %s\n" % (STRFLT(self.quaternion.x), STRFLT(self.quaternion.y),STRFLT(self.quaternion.z),STRFLT(self.quaternion.w) )
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#quaternion %s %s %s %s\n" % (STRFLT(self.quaternion.x), STRFLT(self.quaternion.y),STRFLT(self.quaternion.z),STRFLT(self.quaternion.w) ) ))
 
 class UpdateBone(UpdateMatrixTransform):
     def __init__(self, *args, **kwargs):
@@ -310,6 +396,11 @@ class UpdateBone(UpdateMatrixTransform):
         text += "$}\n"
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        UpdateMatrixTransform.serializeContent(self, output)
+        output.write(self.encode("$}\n"))
 
 class UpdateSkeleton(Object):
     def __init__(self, *args, **kwargs):
@@ -323,6 +414,11 @@ class UpdateSkeleton(Object):
         text += Object.printContent(self)
         text += "$}\n"
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        output.write(self.encode("$}\n"))
 
 class Node(Object):
     def __init__(self, *args, **kwargs):
@@ -347,7 +443,7 @@ class Node(Object):
         text += self.printContent()
         text += "$}\n"
         return text
-
+        
     def printContent(self):
         text = "$#cullingActive " + self.cullingActive  + "\n"
         if self.stateset is not None:
@@ -360,6 +456,27 @@ class Node(Object):
                 text += str(i)
             text += "$#}\n"
         return text
+
+
+    def serialize(self, output):
+        output.write(self.encode("$Node {\n"))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#cullingActive " + self.cullingActive  + "\n"))
+        if self.stateset is not None:
+            self.stateset.indent_level = self.indent_level + 1
+            self.stateset.write(output)
+
+        if len(self.update_callbacks) > 0:
+            output.write(self.encode("$#UpdateCallbacks {\n"))
+            for i in self.update_callbacks:
+                i.indent_level = self.indent_level + 2
+                i.write(output)
+            output.write(self.inden("$#}\n"))
+            
 
 class Geode(Node):
     def __init__(self, *args, **kwargs):
@@ -376,17 +493,41 @@ class Geode(Node):
         text = "$Geode {\n"
         text += Object.printContent(self)
         text += Node.printContent(self)
-        text += self.printContent()
+        content = self.printContent()
+        print( "geode " + str(len(text)) + " content to append " + str(len(content)))
+        text += content
         text += "$}\n"
         return text
 
     def printContent(self):
-        text = "$#num_drawables %d" % (len(self.drawables))  + "\n"
+        lines = []
+        lines.append("$#num_drawables %d" % (len(self.drawables))  + "\n")
+        totalSize = 0
         for i in self.drawables:
             if i is not None:
                 i.indent_level = self.indent_level + 1
-                text += str(i)
-        return text
+                text = str(i)
+                lines.append(text)
+                size = len(text)
+                totalSize += size
+                print( "drawable " + str(size) )
+        print( "total " + str(totalSize) )
+        return ''.join(lines)
+
+
+    def serialize(self, output):
+        output.write(self.encode("$Geode {\n"))
+        Object.serializeContent(self, output)
+        Node.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#num_drawables %d" % (len(self.drawables))  + "\n"))
+        for i in self.drawables:
+            if i is not None:
+                i.indent_level = self.indent_level + 1
+                i.write(output)
 
 class Group(Node):
     def __init__(self, *args, **kwargs):
@@ -410,6 +551,19 @@ class Group(Node):
             i.indent_level = self.indent_level + 1
             text += str(i)
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$Group {\n"))
+        Object.serializeContent(self, output)
+        Node.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#num_children %d" % (len(self.children)) + "\n"))
+        for i in self.children:
+            i.indent_level = self.indent_level + 1
+            i.write(output)
 
 class MatrixTransform(Group):
     def __init__(self, *args, **kwargs):
@@ -436,6 +590,19 @@ class MatrixTransform(Group):
         text += "$#}\n"
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$MatrixTransform {\n"))
+        Object.serializeContent(self, output)
+        Node.serializeContent(self, output)
+        self.serializeContent(output)
+        Group.serializeContent(self, output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#Matrix {\n"))
+        for i in range(0,4):
+            output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(self.matrix[i][0]), STRFLT(self.matrix[i][1]),STRFLT(self.matrix[i][2]), STRFLT(self.matrix[i][3]))))
+        output.write(self.encode("$#}\n"))
 
 class StateAttribute(Object):
     def __init__(self, *args, **kwargs):
@@ -455,6 +622,15 @@ class StateAttribute(Object):
             text += "$#}\n"
         return text
 
+    def serializeContent(self, output):
+        Object.serializeContent(self, output)
+        if len(self.update_callbacks) > 0:
+            output.write(self.encode("$#UpdateCallback {\n"))
+            for i in self.update_callbacks:
+                i.indent_level = self.indent_level + 2
+                i.write(output)
+            output.write(self.encode("$#}\n"))
+
 class StateTextureAttribute(StateAttribute):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -466,6 +642,9 @@ class StateTextureAttribute(StateAttribute):
     def printContent(self):
         text = Object.printContent(self)
         return text
+
+    def serializeContent(self, output):
+        Object.serializeContent(self, output)
 
 class Light(StateAttribute):
     def __init__(self, *args, **kwargs):
@@ -513,6 +692,30 @@ class Light(StateAttribute):
 
         return text
 
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.className()))
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        Object.serializeContent(self, output)
+        output.write(self.encode("$#light_num %s\n" % self.light_num))
+        output.write(self.encode("$#ambient %s %s %s %s\n" % (STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]))))
+        output.write(self.encode("$#diffuse %s %s %s %s\n" % (STRFLT(self.diffuse[0]), STRFLT(self.diffuse[1]), STRFLT(self.diffuse[2]), STRFLT(self.diffuse[3]))))
+        output.write(self.encode("$#specular %s %s %s %s\n" % (STRFLT(self.specular[0]), STRFLT(self.specular[1]), STRFLT(self.specular[2]), STRFLT(self.specular[3]))))
+        output.write(self.encode("$#position %s %s %s %s\n" % (STRFLT(self.position[0]), STRFLT(self.position[1]), STRFLT(self.position[2]), STRFLT(self.position[3]))))
+
+        output.write(self.encode("$#direction %s %s %s\n" % (STRFLT(self.direction[0]), STRFLT(self.direction[1]), STRFLT(self.direction[2]))))
+
+        output.write(self.encode("$#constant_attenuation %s\n" % STRFLT(self.constant_attenuation)))
+        output.write(self.encode("$#linear_attenuation %s\n" % STRFLT(self.linear_attenuation)))
+        output.write(self.encode("$#quadratic_attenuation %s\n" % STRFLT(self.quadratic_attenuation)))
+
+        output.write(self.encode("$#spot_exponent %s\n" % STRFLT(self.spot_exponent)))
+        output.write(self.encode("$#spot_cutoff %s\n" % STRFLT(self.spot_cutoff)))
+
+
 class LightSource(Group):
     def __init__(self, *args, **kwargs):
         Group.__init__(self, *args, **kwargs)
@@ -537,6 +740,18 @@ class LightSource(Group):
         text += Group.printContent(self)
         return text
     
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.className()))
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        Object.serializeContent(self, output)
+        Node.serializeContent(self, output)
+        if self.light is not None:
+            self.light.indent_level = self.indent_level + 1
+            self.light.write(output)
+        Group.serializeContent(self, output)
 
 class Texture2D(StateTextureAttribute):
     def __init__(self, *args, **kwargs):
@@ -572,6 +787,24 @@ class Texture2D(StateTextureAttribute):
         text += "$#subloadMode OFF\n"
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$GL_TEXTURE_2D ON\n"))
+        output.write(self.encode("$%s {\n" % self.className()))
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        StateTextureAttribute.serializeContent(self, output)
+        output.write(self.encode("$#file \"%s\"\n" % self.file))
+        output.write(self.encode("$#wrap_s %s\n" % self.wrap_s))
+        output.write(self.encode("$#wrap_t %s\n" % self.wrap_t))
+        output.write(self.encode("$#wrap_r %s\n" % self.wrap_r))
+        output.write(self.encode("$#min_filter %s\n" % self.min_filter))
+        output.write(self.encode("$#mag_filter %s\n" % self.mag_filter))
+        output.write(self.encode("$#internalFormatMode %s\n" % self.internalFormatMode))
+        output.write(self.encode("$#subloadMode OFF\n"))
+
+
 class Material(StateAttribute):
     def __init__(self, *args, **kwargs):
         StateAttribute.__init__(self, *args, **kwargs)
@@ -601,6 +834,21 @@ class Material(StateAttribute):
         text += "$#shininess %s\n" % STRFLT(self.shininess)
         return text
 
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.className()))
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        StateAttribute.serializeContent(self,output)
+        output.write(self.encode("$#ColorMode %s\n" % self.colormode))
+        output.write(self.encode("$#ambientColor %s %s %s %s\n" % (STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]))))
+        output.write(self.encode("$#diffuseColor %s %s %s %s\n" % (STRFLT(self.diffuse[0]), STRFLT(self.diffuse[1]), STRFLT(self.diffuse[2]), STRFLT(self.diffuse[3]))))
+        output.write(self.encode("$#specularColor %s %s %s %s\n" % (STRFLT(self.specular[0]), STRFLT(self.specular[1]), STRFLT(self.specular[2]), STRFLT(self.specular[3]))))
+        output.write(self.encode("$#emissionColor %s %s %s %s\n" % (STRFLT(self.emission[0]), STRFLT(self.emission[1]), STRFLT(self.emission[2]), STRFLT(self.emission[3]))))
+        output.write(self.encode("$#shininess %s\n" % STRFLT(self.shininess)))
+
 class LightModel(StateAttribute):
     def __init__(self, *args, **kwargs):
         StateAttribute.__init__(self, *args, **kwargs)
@@ -624,6 +872,16 @@ class LightModel(StateAttribute):
         text += "$#localViewer %s\n" % self.local_viewer
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.className()))
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        StateAttribute.serializeContent(self, output)
+        output.write(self.encode("$#ambientIntensity %s %s %s %s\n" % (STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]))))
+        output.write(self.encode("$#colorControl %s\n" % self.color_control))
+        output.write(self.encode("$#localViewer %s\n" % self.local_viewer))
 
 class StateSet(Object):
     def __init__(self, *args, **kwargs):
@@ -660,6 +918,29 @@ class StateSet(Object):
                 text += "$#}\n"
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        for i in self.modes.items():
+            if i is not None:
+                output.write(self.encode("$#%s %s\n" %i))
+        for i in self.attributes:
+            if i is not None:
+                i.indent_level = self.indent_level + 1
+                i.write(output)
+        for (unit, attributes) in self.texture_attributes.items():
+            if attributes is not None and len(attributes) > 0:
+                output.write(self.encode("$#textureUnit %s {\n" % unit))
+                for a in attributes:
+                    if a is not None:
+                        a.indent_level = self.indent_level + 2
+                        a.write(output)
+                output.write(self.encode("$#}\n"))
+
 class ShadowVertexArrayObject(Writer):
     def __init__(self, *args, **kwargs):
         Writer.__init__(self)
@@ -672,6 +953,12 @@ class ShadowVertexArrayObject(Writer):
             text += "$" + self.binding + "\n"
         text += "$" + self.target.className() + " Use " + self.target.generateID() + "\n"
         return text
+
+    def serialize(self, output):
+        if self.binding is not None:
+            output.write(self.encode("$" + self.binding + "\n"))
+        output.write(self.encode("$" + self.target.className() + " Use " + self.target.generateID() + "\n"))
+
 
 class VertexArray(Writer):
     def __init__(self, *args, **kwargs):
@@ -692,6 +979,12 @@ class VertexArray(Writer):
         text += "$}\n"
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$%s UniqueID %s Vec3Array %s\n${\n" % (self.className(), self.generateID(), str(len(self.array)))))
+        for i in self.array:
+            output.write(self.encode("$#%s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]) ) ) )
+        output.write(self.encode("$}\n") )
+
 
 class NormalArray(VertexArray):
     def __init__(self, *args, **kwargs):
@@ -710,6 +1003,13 @@ class NormalArray(VertexArray):
         text += "$}\n"
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$NormalBinding PER_VERTEX\n"))
+        output.write(self.encode("$%s UniqueID %s Vec3Array %s\n${\n" % (self.className(), self.generateID(), len(self.array))) )
+        for i in self.array:
+            output.write(self.encode("$#%s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2])) ) )
+        output.write(self.encode("$}\n") )
+
 class ColorArray(VertexArray):
     def __init__(self, *args, **kwargs):
         VertexArray.__init__(self, *args, **kwargs)
@@ -726,6 +1026,14 @@ class ColorArray(VertexArray):
         text += "$}\n"
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$%s UniqueID %s Vec4Array %s\n${\n" % (self.className(), self.generateID(), len(self.array)) ) )
+
+        for i in self.array:
+            output.write(self.encode("$#%s %s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]), STRFLT(i[3]))) )
+        output.write(self.encode("$}\n") )
+
+
 class TexCoordArray(VertexArray):
     def __init__(self, *args, **kwargs):
         VertexArray.__init__(self, *args, **kwargs)
@@ -741,6 +1049,12 @@ class TexCoordArray(VertexArray):
                 text += "$#%s %s\n" % (STRFLT(i[0]), STRFLT(i[1]))
         text += "$}\n"
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$%s %s UniqueID %s Vec2Array %s\n${\n" % (self.className(), self.index, self.generateID(),  len(self.array)) ) )
+        for i in self.array:
+            output.write(self.encode( "$#%s %s\n" % (STRFLT(i[0]), STRFLT(i[1])) ) )
+        output.write(self.encode("$}\n") )
 
 class DrawElements(Object):
     def __init__(self, *args, **kwargs):
@@ -780,6 +1094,24 @@ class DrawElements(Object):
 
     def className(self):
         return "DrawElements"
+
+    def serialize(self, output):
+        element = self.getSizeArray()
+        output.write(self.encode("$#%s %s %s {\n" % (element, self.type, str(len(self.indexes))) ) )
+        n = 1
+        if self.type == "TRIANGLES":
+            n = 3
+        if self.type == "QUADS":
+            n = 4
+
+        total = int(len(self.indexes) / n)
+        for i in range(0, total):
+            output.write(self.encode("$##"))
+            for a in range(0,n):
+                output.write(self.encode("%s " % self.indexes[i*n+a]))
+            output.write(self.encode("\n") )
+        output.write(self.encode("$#}\n"))
+
     
 class Geometry(Object):
     def __init__(self, *args, **kwargs):
@@ -835,6 +1167,37 @@ class Geometry(Object):
             self.stateset.indent_level = self.indent_level + 1
             text += str(self.stateset)
         return text
+
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.className()) )
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        if len(self.primitives):
+            output.write(self.encode("$#Primitives %s {\n" % (str(len(self.primitives))) ) )
+            for i in self.primitives:
+                i.indent_level = self.indent_level + 1
+                i.write(output)
+            output.write(self.encode("$#}\n"))
+        if self.vertexes:
+            self.vertexes.indent_level = self.indent_level + 1
+            self.vertexes.write(output)
+        if self.normals:
+            self.normals.indent_level = self.indent_level + 1
+            self.normals.write(output)
+        if self.colors:
+            self.colors.indent_level = self.indent_level + 1
+            self.colors.write(output)
+        for i in self.uvs.values():
+            if i:
+                i.indent_level = self.indent_level + 1
+                i.write(output)
+        if self.stateset is not None:
+            self.stateset.indent_level = self.indent_level + 1
+            self.stateset.write(output)
 
 ################################## animation node ######################################
 class Bone(MatrixTransform):
@@ -925,21 +1288,22 @@ class Bone(MatrixTransform):
         text += "$#}\n"
         return text
 
-        matrix = self.matrix['BONESPACE'].copy()
-        text = "$#bindQuaternion %s %s %s %s\n" % (
-            STRFLT(matrix.to_quaternion().x),
-            STRFLT(matrix.to_quaternion().y),
-            STRFLT(matrix.to_quaternion().z),
-            STRFLT(matrix.to_quaternion().w)
-            )
-        text += "$#bindPosition %s %s %s\n" % (
-            STRFLT(matrix.translationPart()[0]),
-            STRFLT(matrix.translationPart()[1]),
-            STRFLT(matrix.translationPart()[2]),
-            )
-        text += "$#bindScale %s %s %s\n" % (STRFLT(1) ,STRFLT(1) ,STRFLT(1))
-        return text
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()) )
+        Object.serializeContent(self, output)
+        Node.serializeContent(self, output)
+        self.serializeContent(output)
+        MatrixTransform.serializeContent(self, output)
+        Group.serializeContent(self, output)
+        output.write(self.encode("$}\n"))
 
+    def serializeContent(self, output):
+        matrix = self.bone_matrix['ARMATURESPACE'].copy()
+        matrix.invert()
+        output.write(self.encode("$#InvBindMatrixInSkeletonSpace {\n"))
+        for i in range(0,4):
+            output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(matrix[i][0]), STRFLT(matrix[i][1]),STRFLT(matrix[i][2]), STRFLT(matrix[i][3])) ) )
+        output.write(self.encode("$#}\n") )
 
 class Skeleton(MatrixTransform):
     def __init__(self, name="", matrix=None):
@@ -969,6 +1333,14 @@ class Skeleton(MatrixTransform):
         text += Group.printContent(self)
         text += "$}\n"
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        Node.serializeContent(self, output)
+        MatrixTransform.serializeContent(self, output)
+        Group.serializeContent(self, output)
+        output.write(self.encode("$}\n"))
 
 class RigGeometry(Geometry):
     def __init__(self, *args, **kwargs):
@@ -1001,6 +1373,25 @@ class RigGeometry(Geometry):
             text += str(self.sourcegeometry)
         return text
 
+
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        Geometry.serializeContent(self, output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#num_influences %s\n" % len(self.groups)))
+        if len(self.groups) > 0:
+            for name, grp in self.groups.items():
+                grp.indent_level = self.indent_level + 1
+                grp.write(output)
+
+        if self.sourcegeometry is not None:
+            self.sourcegeometry.indent_level = self.indent_level + 1
+            self.sourcegeometry.write(output)
+
 class AnimationManagerBase(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -1023,6 +1414,19 @@ class AnimationManagerBase(Object):
             text += str(i)
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#num_animations %s\n" % len(self.animations) ))
+        for i in self.animations:
+            i.indent_level = self.indent_level + 1
+            i.write(output)
+
+
 class BasicAnimationManager(AnimationManagerBase):
     def __init__(self, *args, **kwargs):
         AnimationManagerBase.__init__(self, *args, **kwargs)
@@ -1035,6 +1439,12 @@ class BasicAnimationManager(AnimationManagerBase):
 
     def printContent(self):
         return AnimationManagerBase.printContent(self)
+
+    def serialize(self, output):
+        AnimationManagerBase.serialize(self, output)
+
+    def serializeContent(self, output):
+        AnimationManagerBase.serializeContent(self, output)
 
 class VertexGroup(Object):
     def __init__(self, *args, **kwargs):
@@ -1062,6 +1472,16 @@ class VertexGroup(Object):
             text += "$#%s %s\n" % (i[0],STRFLT(i[1]))
         return text
 
+    def serialize(self, output):
+        self.setName(self.targetGroupName)
+        write.output(self.encode("$osgAnimation::VertexInfluence \"%s\" %s {\n" % (self.targetGroupName, len(self.vertexes)) ) )
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        for i in self.vertexes:
+            output.write(self.encode("$#%s %s\n" % (i[0],STRFLT(i[1])) ) )
+
 class Animation(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -1084,6 +1504,17 @@ class Animation(Object):
             text += str(i)
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n") )
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#num_channels %s\n" % len(self.channels)))
+        for i in self.channels:
+            i.indent_level = self.indent_level + 1
+            i.write(output)
 
 class Channel(Object):
     def __init__(self, *args, **kwargs):
@@ -1115,3 +1546,19 @@ class Channel(Object):
             text += "\n"
         text += "$#}\n"
         return text
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.type))
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#name \"%s\"\n" % self.name))
+        output.write(self.encode("$#target \"%s\"\n" % self.target))
+        output.write(self.encode("$#Keyframes %s {\n" % (len(self.keys))))
+        for i in self.keys:
+            output.write(self.encode("$##key"))
+            for a in range(0, len(i)):
+                output.write(self.encode(" %s" % (STRFLT(i[a]))))
+            output.write(self.encode("\n"))
+        output.write(self.encode("$#}\n"))
