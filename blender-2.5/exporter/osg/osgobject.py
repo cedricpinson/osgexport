@@ -314,6 +314,15 @@ class StackedScaleElement(Object):
         text = "$#scale %s %s %s\n" % (STRFLT(self.scale[0]), STRFLT(self.scale[1]),STRFLT(self.scale[2]))
         return text
 
+    def serialize(self, output):
+        output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#scale %s %s %s\n" % (STRFLT(self.scale[0]), STRFLT(self.scale[1]),STRFLT(self.scale[2]))))
+
 class StackedRotateAxisElement(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -475,7 +484,7 @@ class Node(Object):
             for i in self.update_callbacks:
                 i.indent_level = self.indent_level + 2
                 i.write(output)
-            output.write(self.inden("$#}\n"))
+            output.write(self.encode("$#}\n"))
             
 
 class Geode(Node):
@@ -1474,7 +1483,7 @@ class VertexGroup(Object):
 
     def serialize(self, output):
         self.setName(self.targetGroupName)
-        write.output(self.encode("$osgAnimation::VertexInfluence \"%s\" %s {\n" % (self.targetGroupName, len(self.vertexes)) ) )
+        output.write(self.encode("$osgAnimation::VertexInfluence \"%s\" %s {\n" % (self.targetGroupName, len(self.vertexes)) ) )
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
 
