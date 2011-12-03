@@ -2,7 +2,9 @@ Follow instruction from github to get the repository
 
 https://github.com/cedricpinson/osgexport
 
-To install this export follow instructions in file INSTALL
+Blender 2.5+
+To install last version of the exporter go in user preference, then 'install addons' with the zip file inside blender-2.5/build/
+
 
 How to report a bug:
 send a minimal blender file that produce the problem, and the result osg file.
