@@ -92,18 +92,17 @@ def getTransform(matrix):
             matrix.toQuat())
 
 def getDeltaMatrixFrom(parent, child):
-        if parent is None:
-                return child.matrix_world
+    if parent is None:
+        return child.matrix_world
 
-        return getDeltaMatrixFromMatrix(parent.matrix_world,
-                                        child.matrix_world)
+    return getDeltaMatrixFromMatrix(parent.matrix_world,
+                                    child.matrix_world)
 
 def getDeltaMatrixFromMatrix(parent, child):
         p = parent
         bi = p.copy()
         bi.invert()
-        return child * bi
-
+        return bi*child
 
 def getChildrenOf(object):
     children = []
@@ -179,6 +178,24 @@ def findArmatureObjectForTrack(track):
 #            return o
 #    return None
 
+
+# TODO
+def createAnimationsSkeletonObject(osg_object, blender_object, config, update_callback):
+    if config.export_anim is not True:
+        return None
+
+    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config)
+    anim = action2animation.createAnimation()
+    debug("animations created for object %s" % ( blender_object.name))
+    if anim:
+        update_callback.setName(osg_object.name)
+        osg_object.update_callbacks.append(update_callback)
+        osglog.log("processed animation %s" % anim.name)
+        return anim
+
+    return None
+
+
 def createAnimationsGenericObject(osg_object, blender_object, config, update_callback):
     if config.export_anim is not True:
         return None
@@ -223,10 +240,40 @@ def createUpdateMatrixTransform(obj):
 
     return callback
 
+def createUpdateBone(obj):
+    callback = UpdateBone()
+    if obj.animation_data:
+        action = obj.animation_data.action
+        if action:
+            for curve in action.fcurves:
+                if curve.data_path.endswith("location"):
+                    callback.stacked_transforms.append(StackedTranslateElement())
+                    break
+
+            for curve in action.fcurves:
+                if curve.data_path.endswith("rotation_quaternion"):
+                    callback.stacked_transforms.append(StackedQuaternionElement())
+                    break
+
+            for curve in action.fcurves:
+                if curve.data_path.endswith("rotation_euler"):
+                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_z', axis = Vector((0,0,1)) ))
+                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_y', axis = Vector((0,1,0)) ))
+                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_x', axis = Vector((1,0,0)) ))
+                    break
+
+            for curve in action.fcurves:
+                if curve.data_path.endswith("scale"):
+                    callback.stacked_transforms.append(StackedScaleElement())
+                    break
+
+    return callback
+
+def createAnimationsSkeletonAndSetCallback(osg_node, obj, config):
+    return None
+    return createAnimationsGenericObject(osg_node, obj, config, createUpdateBone(obj))
+
 def createAnimationsObjectAndSetCallback(osg_node, obj, config):
-    #bpy.ops.object.select_name(name=obj.name)
-    #if config.anim_bake == "FORCE":
-    #    bpy.ops.nla.bake(bake_types="OBJECT")
     return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform(obj))
 
 def createAnimationMaterialAndSetCallback(osg_node, obj, config):
@@ -296,12 +343,12 @@ class Export(object):
             osglog.log(str("use referenced item for " + obj.name + " " + obj.type))
             item = self.uniq_objects[obj]
         else:
-            if obj.type.lower() == "Armature".lower():
+            if obj.type == "ARMATURE":
                 item = self.createSkeletonAndAnimations(obj)
                 # We already do this in the above function - this would give us 2 animations
-                #anims = createAnimationsObjectAndSetCallback(item, obj, self.config)
-                #for anim in anims: 
-                #    self.animations[anim.name] = anim
+                anim = createAnimationsSkeletonAndSetCallback(item, obj, self.config)
+                if anim != None:
+                    self.animations[anim.name] = anim
 
             elif obj.type.lower() == "Mesh".lower():
                 # because it blender can insert inverse matrix, we have to recompute the parent child
@@ -322,9 +369,6 @@ class Export(object):
                 # skeleton need to be refactored
 
             elif obj.type.lower() == "Lamp".lower():
-                # because it blender can insert inverse matrix, we have to recompute the parent child
-                # matrix for our use. Not if an armature we force it to be in rest position to compute
-                # matrix in the good space
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
                 item = MatrixTransform()
                 item.setName(obj.name)
@@ -334,12 +378,9 @@ class Export(object):
                 if anims != None:
                     for anim in anims: 
                         self.animations[anim.name] = anim
-
                 item.children.append(lightItem)
+
             elif obj.type.lower() == "Empty".lower():
-                # because it blender can insert inverse matrix, we have to recompute the parent child
-                # matrix for our use. Not if an armature we force it to be in rest position to compute
-                # matrix in the good space
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
                 item = MatrixTransform()
                 item.setName(obj.name)
@@ -357,20 +398,37 @@ class Export(object):
         if rootItem is None:
             rootItem = item
 
-        if obj.parent_bone != "":
+        if obj.parent_type == "BONE":
             bone = findBoneInHierarchy(rootItem, obj.parent_bone)
             if bone is None:
                 osglog.log(str("WARNING " + obj.parent_bone + " not found"))
             else:
-                # if parent is a bone we need to compute correctly the matrix from
-                # parent bone to object bone
-                armature = obj.parent
-                matrixArmatureInWorldSpace = armature.matrix_world
-                matrixBoneinArmatureSpace = bone.getMatrixInArmatureSpace()
-                boneInWorldSpace = matrixBoneinArmatureSpace * matrixArmatureInWorldSpace
+                # import bpy
+                # import mathutils
+
+                # arm_ob = bpy.data.objects['Armature']
+                # cube_ob = bpy.data.objects['Cube']
+                # bone = arm_ob.data.bones['Bone']
+                # pose_bone = arm_ob.pose.bones['Bone']
+
+                # bone_matrix = mathutils.Matrix.Translation(pose_bone.matrix[1].to_3d()*bone.length) * pose_bone.matrix
+                # cube_matrix_world = arm_ob.matrix_world*bone_matrix*cube_ob.matrix_parent_inverse*cube_ob.matrix_basis
+
+                # print("Compare:")
+                # print(cube_matrix_world)
+                # print(cube_ob.matrix_world)
+
+                armature = obj.parent.data
+                original_pose_position = armature.pose_position
+                armature.pose_position = 'REST'
+
+                boneInWorldSpace = obj.parent.matrix_world * armature.bones[obj.parent_bone].matrix_local
                 matrix = getDeltaMatrixFromMatrix(boneInWorldSpace, obj.matrix_world)
                 item.matrix = matrix
                 bone.children.append(item)
+                
+                armature.pose_position = original_pose_position
+
         elif parent:
             parent.children.append(item)
 
@@ -382,12 +440,12 @@ class Export(object):
 
     def createSkeletonAndAnimations(self, obj):
         osglog.log("processing Armature " + obj.name)
-        posbones = {}
 
-        for pbone in obj.data.bones:
-            posbones[pbone.name] = pbone
+        original_pose_position = obj.data.pose_position
+        obj.data.pose_position = 'REST'
 
         roots = getRootBonesList(obj.data)
+
         matrix = getDeltaMatrixFrom(obj.parent, obj)
         skeleton = Skeleton(obj.name, matrix)
         for bone in roots:
@@ -397,16 +455,16 @@ class Export(object):
         skeleton.collectBones()
 
         # code need to be rewritten - does not work anymore
-        if False and self.config.export_anim is True:
+        if self.config.export_anim is True:
             if hasattr(obj, "animation_data") and hasattr(obj.animation_data, "nla_tracks") and len(obj.animation_data.nla_tracks) > 0:
                 for nla_track in obj.animation_data.nla_tracks:
-                    # check if it's already a baked action (if yes we skip it)
-                    # if action.name.find("_baked",-len("_baked")) is not -1:
-                    #         continue
                     action2animation = BlenderNLATrackToAnimation(track = nla_track, config = self.config)
                     anim = action2animation.createAnimationFromTrack()
                     if anim is not None:
                         self.animations[anim.name] = anim
+
+        obj.data.pose_position = original_pose_position
+
         return skeleton
 
     def process(self):

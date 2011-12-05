@@ -106,6 +106,7 @@ class Writer(object):
     @staticmethod
     def serializeInstanceOrUseIt(obj, output):
         if obj in Writer.wrote_elements and obj.shadow_object is not None:
+            obj.shadow_object.indent_level = obj.indent_level
             return obj.shadow_object.serialize(output)
         Writer.wrote_elements[obj] = True
         return obj.serialize(output)
@@ -1216,9 +1217,7 @@ class Bone(MatrixTransform):
         self.parent = parent
         self.skeleton = skeleton
         self.bone = bone
-        m = Matrix().to_4x4()
-        m.identity()
-        self.bone_matrix = {'BONESPACE': m }
+        self.inverse_bind_matrix = Matrix().to_4x4().identity()
 
     def buildBoneChildren(self):
         if self.skeleton is None or self.bone is None:
@@ -1229,36 +1228,19 @@ class Bone(MatrixTransform):
         update_callback.setName(self.name)
         self.update_callbacks.append(update_callback)
 
-        self.bone_matrix['BONESPACE'] = self.bone.matrix.copy().to_4x4()
+        bone_matrix = self.bone.matrix_local.copy()
 
         if self.parent:
-            parent_quat_inv = self.parent.matrix.to_quaternion().copy()
-            parent_quat_inv.invert()
-            parent_tail = parent_quat_inv * self.parent.bone.tail
-            parent_head = parent_quat_inv * self.parent.bone.head
-
-            pos = parent_tail - parent_head + self.bone.head
-
-            self.bone_matrix['BONESPACE'][3][0] = pos[0]
-            self.bone_matrix['BONESPACE'][3][1] = pos[1]
-            self.bone_matrix['BONESPACE'][3][2] = pos[2]
-            self.bone_matrix['ARMATURESPACE']   = self.matrix * self.parent.bone.matrix_local
-
-        else:
-            pos = self.bone.head
-            self.bone_matrix['BONESPACE'][3][0] = pos[0]
-            self.bone_matrix['BONESPACE'][3][1] = pos[1]
-            self.bone_matrix['BONESPACE'][3][2] = pos[2]
-            self.bone_matrix['ARMATURESPACE']   = self.bone_matrix['BONESPACE'].copy()
+            parent_matrix = self.bone.parent.matrix_local.copy()
+            bone_matrix = parent_matrix.inverted() * bone_matrix
 
         # add bind matrix in localspace callback
-        update_callback.stacked_transforms.append(StackedMatrixElement(name = "bindmatrix", matrix = self.bone_matrix['BONESPACE'].copy()))
+        update_callback.stacked_transforms.append(StackedMatrixElement(name = "bindmatrix", matrix = bone_matrix))
         update_callback.stacked_transforms.append(StackedTranslateElement())
         update_callback.stacked_transforms.append(StackedQuaternionElement())
         update_callback.stacked_transforms.append(StackedScaleElement())
 
-        self.matrix = self.bone_matrix['BONESPACE'].copy()
-
+        self.bone_inv_bind_matrix_skeleton = self.bone.matrix_local.copy().inverted()
         if not self.bone.children:
             return
 
@@ -1268,7 +1250,7 @@ class Bone(MatrixTransform):
             b.buildBoneChildren()
 
     def getMatrixInArmatureSpace(self):
-        return self.bone_matrix['ARMATURESPACE']
+        return self.bone.matrix_local
 
     def collect(self, list):
         list.append(self)
@@ -1289,8 +1271,7 @@ class Bone(MatrixTransform):
         return text
 
     def printContent(self):
-        matrix = self.bone_matrix['ARMATURESPACE'].copy()
-        matrix.invert()
+        matrix = self.bone_inv_bind_matrix_skeleton.copy()
         text = "$#InvBindMatrixInSkeletonSpace {\n"
         for i in range(0,4):
             text += "$##%s %s %s %s\n" % (STRFLT(matrix[i][0]), STRFLT(matrix[i][1]),STRFLT(matrix[i][2]), STRFLT(matrix[i][3]))
@@ -1307,8 +1288,7 @@ class Bone(MatrixTransform):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        matrix = self.bone_matrix['ARMATURESPACE'].copy()
-        matrix.invert()
+        matrix = self.bone_inv_bind_matrix_skeleton.copy()
         output.write(self.encode("$#InvBindMatrixInSkeletonSpace {\n"))
         for i in range(0,4):
             output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(matrix[i][0]), STRFLT(matrix[i][1]),STRFLT(matrix[i][2]), STRFLT(matrix[i][3])) ) )
