@@ -68,14 +68,14 @@ def main():
 
     # Example utility, add some text and renders or saves it (with options)
     # Possible types are: string, int, long, choice, float and complex.
-    parser.add_argument("-s", "--save", dest="save_path", metavar='FILE|PATH',
-            help="Save the generated file to the specified path")
-#    parser.add_argument("-a", "--enable-animation", dest="enable_animation", metavar='BOOL', help="Enable saving of animations")
+    parser.add_argument("-s", "--save", dest="save_path", metavar='FILE|PATH', help="Save the generated file to the specified path")
+    parser.add_argument("-a", "--enable-animation", dest="enable_animation", action="store_const", const=True, default=False, help="Enable saving of animations")
 
     args = parser.parse_args(argv)  # In this example we wont use the args
 
     config = osgconf.Config({'FILENAME': args.save_path,
-                     })
+                             'EXPORTANIM': args.enable_animation,
+                             })
     OpenSceneGraphExport(config)
     
 
