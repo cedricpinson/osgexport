@@ -49,7 +49,7 @@ Matrix     = mathutils.Matrix
 Euler      = mathutils.Euler
 
 def createImageFilename(texturePath, image):
-    ext = os.path.basename(image.filepath).split(".")
+    ext = bpy.path.basename(image.filepath).split(".")
     name = ext[0]
     # [BMP, IRIS, PNG, JPEG, TARGA, TARGA_RAW, AVI_JPEG, AVI_RAW, FRAMESERVER]
     #print("format " + image.file_format)
@@ -566,7 +566,7 @@ class Export(object):
                 
         for i in self.images:
             if i is not None:
-                imagename = os.path.basename(i.filepath)
+                imagename = bpy.path.basename(i.filepath)
                 try:
                     if i.packed_file:
                         original_filepath = i.filepath_raw
