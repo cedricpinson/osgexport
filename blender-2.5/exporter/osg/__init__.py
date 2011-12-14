@@ -17,7 +17,7 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 AUTHOR  = "Jeremy Moles, Cedric Pinson"
 EMAIL   = "jeremy@emperorlinux.com, cedric.pinson@plopbyte.com"
 URL     = "http://github.com/cedricpinson/osgexport"
