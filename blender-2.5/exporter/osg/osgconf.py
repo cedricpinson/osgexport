@@ -48,7 +48,9 @@ class Config(object):
         self.anim_bake = map.get("BAKE", "FORCE")
         self.export_anim = map.get("EXPORTANIM", True)
         self.object_selected = map.get("OBJECT_SELECTED", None)
-        self.apply_modifiers = map.get("APPLY_MODIFIERS", False)
+        self.apply_modifiers = map.get("APPLY_MODIFIERS", True)
+        self.bake_constraints = map.get("BAKE_CONSTRAINTS", True)
+        self.bake_frame_step = map.get("BAKE_FRAME_STEP", 1)
         self.fullpath = ""
         self.exclude_objects = []
         osglog.LOGFILE = None

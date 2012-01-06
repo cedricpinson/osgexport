@@ -78,7 +78,9 @@ def obj_frame_info(obj):
     return info
 
 
-def bake(frame_start,
+def bake(scene,
+         obj,
+         frame_start,
          frame_end, step=1,
          only_selected=False,
          do_pose=True,
@@ -87,8 +89,6 @@ def bake(frame_start,
          action=None,
          to_quat=False):
 
-    scene = bpy.context.scene
-    obj = bpy.context.object
     pose = obj.pose
     frame_back = scene.frame_current
 
@@ -246,7 +246,9 @@ class BakeAction(Operator):
 
     def execute(self, context):
 
-        action = bake(self.frame_start,
+        action = bake(bpy.context.scene,
+                      bpy.context.object,
+                      self.frame_start,
                       self.frame_end,
                       self.step,
                       self.only_selected,

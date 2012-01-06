@@ -35,7 +35,7 @@ from . import osglog
 from . import osgconf
 from .osgconf import DEBUG
 from .osgconf import debug
-#from . import osgbake
+from . import osgbake
 # from osgbake import BakeIpoForMaterial, BakeIpoForObject, BakeAction
 # from osglog import log
 from . import osgobject
@@ -71,7 +71,7 @@ def createImageFilename(texturePath, image):
 
 def getImageFilesFromStateSet(stateset):
     list = []
-    if DEBUG: debug("stateset %s" % str(stateset))
+    if DEBUG: osglog.log("stateset %s" % str(stateset))
     if stateset is not None and len(stateset.texture_attributes) > 0:
         for unit, attributes in stateset.texture_attributes.items():
             for a in attributes:
@@ -184,9 +184,10 @@ def createAnimationsSkeletonObject(osg_object, blender_object, config, update_ca
     if config.export_anim is not True:
         return None
 
-    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config)
+    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config,
+                                                   uniq_anims = self.uniq_anims)
     anim = action2animation.createAnimation()
-    debug("animations created for object %s" % ( blender_object.name))
+    osglog.log("animations created for object %s" % ( blender_object.name))
     if anim:
         update_callback.setName(osg_object.name)
         osg_object.update_callbacks.append(update_callback)
@@ -195,89 +196,81 @@ def createAnimationsSkeletonObject(osg_object, blender_object, config, update_ca
 
     return None
 
-
-def createAnimationsGenericObject(osg_object, blender_object, config, update_callback):
-    if config.export_anim is not True:
-        return None
-
-    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config)
-    anim = action2animation.createAnimation()
-    debug("animations created for object %s" % ( blender_object.name))
-    if anim:
-        update_callback.setName(osg_object.name)
-        osg_object.update_callbacks.append(update_callback)
-        osglog.log("processed animation %s" % anim.name)
-        return anim
-
-    return None
 
 def createUpdateMatrixTransform(obj):
     callback = UpdateMatrixTransform()
+    has_location_keys = False
+    has_scale_keys = False
+    has_rotation_keys = False
+        
     if obj.animation_data:
         action = obj.animation_data.action
+        
         if action:
             for curve in action.fcurves:
-                if curve.data_path.endswith("location"):
-                    callback.stacked_transforms.append(StackedTranslateElement())
-                    break
-
-            for curve in action.fcurves:
-                if curve.data_path.endswith("rotation_quaternion"):
-                    callback.stacked_transforms.append(StackedQuaternionElement())
-                    break
-
-            for curve in action.fcurves:
-                if curve.data_path.endswith("rotation_euler"):
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_z', axis = Vector((0,0,1)) ))
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_y', axis = Vector((0,1,0)) ))
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_x', axis = Vector((1,0,0)) ))
-                    break
-
-            for curve in action.fcurves:
-                if curve.data_path.endswith("scale"):
-                    callback.stacked_transforms.append(StackedScaleElement())
-                    break
+                osglog.log("curve.data_path " + curve.data_path + " " + str(curve.array_index))
+                if curve.data_path == "location":
+                    has_location_keys = True
+                
+                if curve.data_path.startswith("rotation"):
+                    has_rotation_keys = True
+                
+                if curve.data_path == "scale":
+                    has_scale_keys = True
+                    
+    if not (has_location_keys or has_scale_keys or has_rotation_keys) and (len(obj.constraints) == 0):
+        return None
+        
+    tr = StackedTranslateElement()
+    tr.translate = Vector(obj.location)
+    callback.stacked_transforms.append(tr)
+    
+    if obj.rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
+        rotation_keys = [StackedRotateAxisElement(name = "euler_x", axis = Vector((1,0,0)), angle = obj.rotation_euler[0]),
+                         StackedRotateAxisElement(name = "euler_y", axis = Vector((0,1,0)), angle = obj.rotation_euler[1]),
+                         StackedRotateAxisElement(name = "euler_z", axis = Vector((0,0,1)), angle = obj.rotation_euler[2])]
+    
+        callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[2]) - ord('X')])
+        callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[1]) - ord('X')])
+        callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[0]) - ord('X')])
+        
+    if obj.rotation_mode == "QUATERNION":
+        q = StackedQuaternionElement()
+        q.quaternion = obj.rotation_quaternion
+        callback.stacked_transforms.append(q)
+    
+    if obj.rotation_mode == "AXIS_ANGLE":
+        callback.stacked_transforms.append(StackedRotateAxisElement(name = "axis_angle", 
+                                            axis = Vector(obj.rotation_axis_angle[0:2]), 
+                                            angle = obj.rotation_axis_angle[3]))
+    
+    sc = StackedScaleElement()
+    sc.scale = Vector(obj.scale)
+    callback.stacked_transforms.append(sc)
 
     return callback
 
-def createUpdateBone(obj):
-    callback = UpdateBone()
-    if obj.animation_data:
-        action = obj.animation_data.action
-        if action:
-            for curve in action.fcurves:
-                if curve.data_path.endswith("location"):
-                    callback.stacked_transforms.append(StackedTranslateElement())
-                    break
+def createAnimationsGenericObject(osg_object, blender_object, config, update_callback, uniq_anims):
+    if not config.export_anim or not update_callback:
+        return None
 
-            for curve in action.fcurves:
-                if curve.data_path.endswith("rotation_quaternion"):
-                    callback.stacked_transforms.append(StackedQuaternionElement())
-                    break
+    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config, 
+                                                   uniq_anims = uniq_anims)
+    anim = action2animation.createAnimation()
+    osglog.log("animations created for object %s" % ( blender_object.name))
+    if anim:
+        update_callback.setName(anim.name)
+        osg_object.update_callbacks.append(update_callback)
+        osglog.log("processed animation %s" % anim.name)
+        return anim
 
-            for curve in action.fcurves:
-                if curve.data_path.endswith("rotation_euler"):
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_z', axis = Vector((0,0,1)) ))
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_y', axis = Vector((0,1,0)) ))
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_x', axis = Vector((1,0,0)) ))
-                    break
-
-            for curve in action.fcurves:
-                if curve.data_path.endswith("scale"):
-                    callback.stacked_transforms.append(StackedScaleElement())
-                    break
-
-    return callback
-
-def createAnimationsSkeletonAndSetCallback(osg_node, obj, config):
     return None
-    return createAnimationsGenericObject(osg_node, obj, config, createUpdateBone(obj))
 
-def createAnimationsObjectAndSetCallback(osg_node, obj, config):
-    return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform(obj))
+def createAnimationsObjectAndSetCallback(osg_node, obj, config, uniq_anims):
+    return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform(obj), uniq_anims)
 
-def createAnimationMaterialAndSetCallback(osg_node, obj, config):
-    return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial())
+def createAnimationMaterialAndSetCallback(osg_node, obj, config, uniq_anims):
+    return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
 
 
 class Export(object):
@@ -294,6 +287,8 @@ class Export(object):
         self.root = None
         self.uniq_objects = {}
         self.uniq_stateset = {}
+        self.uniq_geodes = {}
+        self.uniq_anims = {}
 
     def setArmatureInRestMode(self):
         for arm in bpy.data.objects:
@@ -336,21 +331,23 @@ class Export(object):
     def exportChildrenRecursively(self, obj, parent, rootItem):
         if obj.name in self.config.exclude_objects:
             return None
+            
+        osglog.log("")
 
         item = None
-        if list(self.uniq_objects.keys()).count(obj) > 0:
-            
+        if obj in self.uniq_objects:
             osglog.log(str("use referenced item for " + obj.name + " " + obj.type))
             item = self.uniq_objects[obj]
         else:
+            osglog.log("Type of " + obj.name + " is " + obj.type)
             if obj.type == "ARMATURE":
                 item = self.createSkeletonAndAnimations(obj)
                 # We already do this in the above function - this would give us 2 animations
-                anim = createAnimationsSkeletonAndSetCallback(item, obj, self.config)
-                if anim != None:
-                    self.animations[anim.name] = anim
+                #anim = createAnimationsSkeletonAndSetCallback(item, obj, self.config, self.uniq_anims)
+                #if anim != None:
+                #    self.animations[anim.name] = anim
 
-            elif obj.type.lower() == "Mesh".lower():
+            elif obj.type == "MESH":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
                 # matrix for our use. Not if an armature we force it to be in rest position to compute
                 # matrix in the good space
@@ -358,9 +355,9 @@ class Export(object):
                 item = MatrixTransform()
                 item.setName(obj.name)
                 item.matrix = matrix
-                objectItem = self.createMesh(obj)
+                objectItem = self.createGeodeFromObject(obj)
 
-                anim = createAnimationsObjectAndSetCallback(item, obj, self.config)
+                anim = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
                 if anim != None:
                     self.animations[anim.name] = anim
 
@@ -368,24 +365,24 @@ class Export(object):
                 
                 # skeleton need to be refactored
 
-            elif obj.type.lower() == "Lamp".lower():
+            elif obj.type == "LAMP":
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
                 item = MatrixTransform()
                 item.setName(obj.name)
                 item.matrix = matrix
                 lightItem = self.createLight(obj)
-                anims = createAnimationsObjectAndSetCallback(item, obj, self.config)
+                anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
                 if anims != None:
                     for anim in anims: 
                         self.animations[anim.name] = anim
                 item.children.append(lightItem)
 
-            elif obj.type.lower() == "Empty".lower():
+            elif obj.type == "EMPTY":
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
                 item = MatrixTransform()
                 item.setName(obj.name)
                 item.matrix = matrix
-                anim = createAnimationsObjectAndSetCallback(item, obj, self.config)
+                anim = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
                 if anim:
                     self.animations[anim.name] = anim
                 self.evaluateGroup(obj, item, rootItem)
@@ -512,7 +509,6 @@ class Export(object):
             animation_manager.animations = self.animations.values()
             self.root.update_callbacks.append(animation_manager)
 
-
         # index light num for opengl use and enable them in a stateset
         if len(self.lights) > 0:
             st = StateSet()
@@ -596,16 +592,8 @@ class Export(object):
             self.config.closeLogfile()
 
 
-    def createMesh(self, mesh, skeleton = None):
-        if self.config.apply_modifiers is False:
-          mesh_object  = mesh.data
-        else:
-          mesh_object = mesh.to_mesh(bpy.context.scene, True, 'PREVIEW')
-
-        osglog.log("exporting mesh " + mesh.name)
-
-        geode = Geode()
-        geode.setName(mesh.name)
+    def createGeodeFromObject(self, mesh, skeleton = None):
+        osglog.log("exporting object " + mesh.name)
 
         # check if the mesh has a armature modifier
         # if no we don't write influence
@@ -618,6 +606,16 @@ class Export(object):
                 if mod.type.lower() == "ARMATURE".lower():
                     exportInfluence = True
                     break
+                    
+        if self.config.apply_modifiers and len(mesh.modifiers) > 0:
+          mesh_object = mesh.to_mesh(bpy.context.scene, True, 'PREVIEW')
+        else:
+          mesh_object = mesh.data
+         
+        osglog.log("mesh_object is " + mesh_object.name)
+        
+        if mesh_object in self.uniq_geodes:
+            return self.uniq_geodes[mesh_object]
 
         hasVertexGroup = False
         
@@ -625,11 +623,10 @@ class Export(object):
             if len(vertex.groups) > 0:
                 hasVertexGroup = True
                 break
-            
-
 
         geometries = []
-        converter = BlenderObjectToGeometry(object = mesh, config = self.config, uniq_stateset = self.uniq_stateset)
+        converter = BlenderObjectToGeometry(object = mesh, config = self.config, 
+                                            uniq_stateset = self.uniq_stateset)
         sources_geometries = converter.convert()
 
         if exportInfluence is True and hasVertexGroup is True:
@@ -641,12 +638,18 @@ class Export(object):
                 geometries.append(rig_geom)
         else:
             geometries = sources_geometries
+            
+        geode = Geode()
+        geode.setName(mesh_object.name)
 
         if len(geometries) > 0:
             for geom in geometries:
                 geode.drawables.append(geom)
             for name in converter.material_animations.keys():
                 self.animations[name] = converter.material_animations[name]
+                
+        self.uniq_geodes[mesh_object] = geode
+                
         return geode
 
     def createLight(self, obj):
@@ -694,6 +697,7 @@ class BlenderObjectToGeometry(object):
         if not self.config:
             self.config = osgconf.Config()
         self.uniq_stateset = kwargs.get("uniq_stateset", {})
+        self.uniq_anims = kwargs.get("uniq_anims", {})
         self.geom_type = Geometry
         if self.config.apply_modifiers is False:
           self.mesh = self.object.data
@@ -721,11 +725,11 @@ class BlenderObjectToGeometry(object):
 
     def adjustUVLayerFromMaterial(self, geom, material):
         uvs = geom.uvs
-        if DEBUG: debug("geometry uvs %s" % (str(uvs)))
+        if DEBUG: osglog.log("geometry uvs %s" % (str(uvs)))
         geom.uvs = {}
 
         texture_list = material.texture_slots
-        if DEBUG: debug("texture list %s" % str(texture_list))
+        if DEBUG: osglog.log("texture list %s" % str(texture_list))
 
         # find a default channel if exist uv
         default_uv = None
@@ -740,19 +744,19 @@ class BlenderObjectToGeometry(object):
                 if len(uv_layer) > 0 and not uv_layer in uvs.keys():
                     osglog.log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (material.name, texture_list[i], uv_layer, geom.name))
                 if len(uv_layer) > 0 and uv_layer in uvs.keys():
-                    if DEBUG: debug("texture %s use uv layer %s" % (i, uv_layer))
+                    if DEBUG: osglog.log("texture %s use uv layer %s" % (i, uv_layer))
                     geom.uvs[i] = TexCoordArray()
                     geom.uvs[i].array = uvs[uv_layer].array
                     geom.uvs[i].index = i
                 elif default_uv:
-                    if DEBUG: debug("texture %s use default uv layer %s" % (i, default_uv_key))
+                    if DEBUG: osglog.log("texture %s use default uv layer %s" % (i, default_uv_key))
                     geom.uvs[i] = TexCoordArray()
                     geom.uvs[i].index = i
                     geom.uvs[i].array = default_uv.array
 
         # adjust uvs channels if no textures assigned
         if len(geom.uvs.keys()) == 0:
-            if DEBUG: debug("no texture set, adjust uvs channels, in arbitrary order")
+            if DEBUG: osglog.log("no texture set, adjust uvs channels, in arbitrary order")
             index = 0
             for k in uvs.keys():
                 uvs[k].index = index
@@ -776,7 +780,7 @@ class BlenderObjectToGeometry(object):
                 s.setName(mat_source.name)
 
                 #bpy.ops.object.select_name(name=self.object.name)
-                anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config)
+                anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config, self.uniq_anims)
                 if anim :
                     self.material_animations[anim.name] = anim
 
@@ -787,7 +791,7 @@ class BlenderObjectToGeometry(object):
                 m.diffuse = (mat_source.diffuse_color[0] * refl, mat_source.diffuse_color[1] * refl, mat_source.diffuse_color[2] * refl, mat_source.alpha)
 
                 # if alpha not 1 then we set the blending mode on
-                if DEBUG: debug("state material alpha %s" % str(mat_source.alpha))
+                if DEBUG: osglog.log("state material alpha %s" % str(mat_source.alpha))
                 if mat_source.alpha != 1.0:
                     s.modes["GL_BLEND"] = "ON"
 
@@ -804,12 +808,12 @@ class BlenderObjectToGeometry(object):
                 s.attributes.append(m)
 
                 texture_list = mat_source.texture_slots
-                if DEBUG: debug("texture list %s" % str(texture_list))
+                if DEBUG: osglog.log("texture list %s" % str(texture_list))
 
                 for i in range(0, len(texture_list)):
                     if texture_list[i] is not None:
                         t = self.createTexture2D(texture_list[i])
-                        if DEBUG: debug("texture %s %s" % (i, texture_list[i]))
+                        if DEBUG: osglog.log("texture %s %s" % (i, texture_list[i]))
                         if t is not None:
                             if not i in s.texture_attributes.keys():
                                 s.texture_attributes[i] = []
@@ -821,7 +825,7 @@ class BlenderObjectToGeometry(object):
                                 pass
                                 # happens for all generated textures
                                 #log("can't read the source image file for texture %s" % t.name)
-                if DEBUG: debug("state set %s" % str(s))
+                if DEBUG: osglog.log("state set %s" % str(s))
         return s
 
     def createGeomForMaterialIndex(self, material_index, mesh):
@@ -849,8 +853,8 @@ class BlenderObjectToGeometry(object):
                 vertexes.append(mesh.vertices[vertex])
                 f.append(index)
                 if DEBUG: fdebug.append(vertex)
-            if DEBUG: debug("true face %s" % str(fdebug))
-            if DEBUG: debug("face %s" % str(f))
+            if DEBUG: osglog.log("true face %s" % str(fdebug))
+            if DEBUG: osglog.log("face %s" % str(f))
             collected_faces.append((face,f))
 
         if (len(collected_faces) == 0):
@@ -972,7 +976,7 @@ class BlenderObjectToGeometry(object):
         vertex_dict = {}
         for i in range(0, len(vertexes)):
             key = get_vertex_key(i)
-            if DEBUG: debug("key %s" % str(key))
+            if DEBUG: osglog.log("key %s" % str(key))
             if key in vertex_dict.keys():
                 vertex_dict[key].append(i)
             else:
@@ -984,21 +988,21 @@ class BlenderObjectToGeometry(object):
             index = len(mapping_vertexes)
             merged_vertexes[i] = index
             mapping_vertexes.append([i])
-            if DEBUG: debug("process vertex %s" % i)
+            if DEBUG: osglog.log("process vertex %s" % i)
             vertex_indexes = vertex_dict[get_vertex_key(i)]
             for j in vertex_indexes:
                 if j <= i:
                     continue
                 if tagged_vertexes[j] is True: # avoid processing more than one time a vertex
                     continue
-                if DEBUG: debug("   vertex %s is the same" % j)
+                if DEBUG: osglog.log("   vertex %s is the same" % j)
                 merged_vertexes[j] = index
                 tagged_vertexes[j] = True
                 mapping_vertexes[index].append(j)
 
         if DEBUG:
             for i in range(0, len(mapping_vertexes)):
-                debug("vertex %s contains %s" % (str(i), str(mapping_vertexes[i])))
+                osglog.log("vertex %s contains %s" % (str(i), str(mapping_vertexes[i])))
 
         if len(mapping_vertexes) != len(vertexes):
             osglog.log("vertexes reduced from %s to %s" % (str(len(vertexes)),len(mapping_vertexes)))
@@ -1013,8 +1017,8 @@ class BlenderObjectToGeometry(object):
                 f.append(merged_vertexes[v])
                 if DEBUG: fdebug.append(vertexes[mapping_vertexes[merged_vertexes[v]][0]].index)
             faces.append(f)
-            if DEBUG: debug("new face %s" % str(f))
-            if DEBUG: debug("true face %s" % str(fdebug))
+            if DEBUG: osglog.log("new face %s" % str(f))
+            if DEBUG: osglog.log("true face %s" % str(fdebug))
             
         osglog.log("faces %s" % str(len(faces)))
 
@@ -1214,6 +1218,7 @@ class BlenderAnimationToAnimation(object):
     def __init__(self, *args, **kwargs):
         self.config = kwargs["config"]
         self.object = kwargs.get("object", None)
+        self.uniq_anims = kwargs.get("uniq_anims", {})
         self.animations = None
 
     def createAnimation(self):
@@ -1235,22 +1240,48 @@ class BlenderAnimationToAnimation(object):
         #     if len(nla_tracks) == 0:
         #         action = self.object.animation_data.action
 
-        # debug("create animation for %s" % self.object.name)
+        # osglog.log("create animation for %s" % self.object.name)
         # anims = []
         # if len(nla_tracks) > 0:
-        #     debug("found tracks %d" % (len(nla_tracks)))
+        #     osglog.log("found tracks %d" % (len(nla_tracks)))
         #     for nla_track in nla_tracks:
-        #         debug("found track %s" % str(nla_track))
+        #         osglog.log("found track %s" % str(nla_track))
         #         anim = self.createAnimationFromTrack(self.object.name, nla_track)
         #         anims.append(anim)
-
-        if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
-            action = self.object.animation_data.action
+        
+        osglog.log("Exporting animation " + str(self.object))
+        
+        if hasattr(self.object, "constraints") and (len(self.object.constraints) > 0) and self.config.bake_constraints:
+            osglog.log("Baking constraints " + str(self.object.constraints))
+            action = osgbake.bake(bpy.context.scene,
+                                 self.object,
+                                 bpy.context.scene.frame_start, 
+                                 bpy.context.scene.frame_end,
+                                 self.config.bake_frame_step,
+                                 False, #only_selected
+                                 True,  #do_pose
+                                 True,  #do_object
+                                 False, #do_constraint_clear
+                                 None,  #action
+                                 False) #to_quat
+        else:
+            if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
+                action = self.object.animation_data.action
 
         if action:
-            debug("found action %s" % action.name)
-            anim = self.createAnimationFromAction(self.object.name, action)
+            osglog.log("found action %s" % action.name)
+            
+            # XXX sharing animation channels isn't possible with the osg 2.8 file format reader
+            # so we have to export a separate copy of the action for every object it applies to.
+            # Keeping the following code there for future reference, though.
+            #if action in self.uniq_anims:
+            #    return self.uniq_anims[action]
+            #anim = self.createAnimationFromAction(action.name, action)
+            
+            anim = self.createAnimationFromAction(self.object.name + "_" + action.name, action)
+            self.uniq_anims[action] = anim
             return anim
+            
         return None
 
     def createAnimationFromTrack(self, name, track):
@@ -1269,13 +1300,13 @@ class BlenderAnimationToAnimation(object):
     def createAnimationFromAction(self, name, action):
         animation = Animation()
         animation.setName(name)
-        self.convertActionsToAnimation(animation, action)
+        self.convertActionsToAnimation(name, animation, action)
         self.animation = animation
         return animation
 
-    def convertActionsToAnimation(self, anim, action):
+    def convertActionsToAnimation(self, name, anim, action):
         # Or we could call the other "type" here.
-        channels = exportActionsToKeyframeSplitRotationTranslationScale(self.object.name, action, self.config.anim_fps)
+        channels = exportActionsToKeyframeSplitRotationTranslationScale(name, action, self.config.anim_fps)
         for i in channels:
             anim.channels.append(i)
 
@@ -1563,3 +1594,5 @@ def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps):
         channels.append(scale);
 
     return channels
+
+	

@@ -130,32 +130,78 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     # List of operator properties, the attributes will be assigned
     # to the class instance from the operator settings before calling.
 
-    AUTHOR = StringProperty(name="Author's Name", description="Name of the Author of this model", default="")
+    AUTHOR = StringProperty(name="Author", description="Name of the Author of this model", default="")
     SELECTED = BoolProperty(name="Only Export Selected", description="Only export the selected model", default=False)
     INDENT = IntProperty(name="Number of Indent Spaces", description="Number of Spaces to use for indentation in the model file", default=3, min=1, max=8)
     FLOATPRE = IntProperty(name="Floating Point Precision", description="The Floating Point Precision to use in exported model file", min=1, max=8, default=4)
-    ANIMFPS = IntProperty(name="Frames Per Second", description="Number of Frames Per Second to use for exported animations", min=1, max=25, default=25)
-    EXPORTANIM = BoolProperty(name="Export animations", description="Export animation yes/no", default=False)
-    APPLYMODIFIERS = BoolProperty(name="Apply Modifiers", description="Apply modifiers before exporting yes/no", default=False)
-
+    ANIMFPS = IntProperty(name="Frames Per Second", description="Number of Frames Per Second to use for exported animations", min=1, max=300, default=30)
+    EXPORTANIM = BoolProperty(name="Export animations", description="Export animation yes/no", default=True)
+    APPLYMODIFIERS = BoolProperty(name="Apply Modifiers", description="Apply modifiers before exporting yes/no", default=True)
+    LOG = BoolProperty(name="Write log", description="Write log file yes/no", 
+        default=True)
+        #default=False)
+    BAKE_CONSTRAINTS = BoolProperty(name="Bake Constraints", description="Bake constraints into actions", default=True)
+    BAKE_FRAME_STEP = IntProperty(name="Bake frame step", description="Frame step when baking actions", default=1, min=1, max=30)
+    
+    first_draw = True
+    
+    def draw(self, context):
+        layout = self.layout
+        
+        row = layout.row(align=True)
+        row.prop(self, "AUTHOR")
+        
+        row = layout.row(align=True)
+        row.prop(self, "SELECTED")
+        
+        row = layout.row(align=True)
+        row.prop(self, "EXPORTANIM")
+        
+        row = layout.row(align=True)
+        row.prop(self, "APPLYMODIFIERS")
+        
+        row = layout.row(align=True)
+        row.prop(self, "BAKE_CONSTRAINTS")
+        
+        row = layout.row(align=True)
+        row.prop(self, "LOG")
+        
+        if self.first_draw:
+            self.ANIMFPS = context.scene.render.fps
+            self.first_draw = False
+            
+        row = layout.row(align=True)
+        row.prop(self, "ANIMFPS")
+        
+        row = layout.row(align=True)
+        row.prop(self, "BAKE_FRAME_STEP")
+        
+        row = layout.row(align=True)
+        row.prop(self, "FLOATPRE")
+        
+        row = layout.row(align=True)
+        row.prop(self, "INDENT")
+    
     def execute(self, context):
         if not self.filepath:
             raise Exception("filepath not set")
 
         selected = "ALL"
         if self.SELECTED:
-                selected = "SELECTED_ONLY_WITH_CHILDREN"
+            selected = "SELECTED_ONLY_WITH_CHILDREN"
 
         config = osgconf.Config( {
                 "FILENAME": self.filepath,
                 "AUTHOR": self.AUTHOR,
-                "LOG": True,
+                "LOG": self.LOG,
                 "SELECTED": selected,
                 "INDENT": self.INDENT,
                 "FLOATPRE": self.FLOATPRE,
                 "ANIMFPS": self.ANIMFPS,
                 "EXPORTANIM": self.EXPORTANIM,
-                "APPLY_MODIFIERS": self.APPLYMODIFIERS
+                "APPLY_MODIFIERS": self.APPLYMODIFIERS,
+                "BAKE_CONSTRAINTS": self.BAKE_CONSTRAINTS,
+                "BAKE_FRAME_STEP": self.BAKE_FRAME_STEP
                 })
 
         print("FILENAME:" + repr(config.filename))
