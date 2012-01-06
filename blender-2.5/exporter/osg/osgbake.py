@@ -77,26 +77,15 @@ def obj_frame_info(obj):
     info["matrix_key"] = obj.matrix_local.copy()
     return info
 
-
-def bake(scene,
+def bakedTransforms(scene,
          obj,
          frame_start,
-         frame_end, step=1,
-         only_selected=False,
+         frame_end, 
+         step=1,
          do_pose=True,
-         do_object=True,
-         do_constraint_clear=False,
-         action=None,
-         to_quat=False):
+         do_object=True):
 
-    pose = obj.pose
     frame_back = scene.frame_current
-
-    if pose is None:
-        do_pose = False
-
-    if do_pose is None and do_object is None:
-        return None
 
     pose_info = []
     obj_info = []
@@ -114,8 +103,39 @@ def bake(scene,
             pose_info.append(pose_frame_info(obj))
         if do_object:
             obj_info.append(obj_frame_info(obj))
+            
+    scene.frame_set(frame_back)
+            
+    return (frame_range, obj_info, pose_info)
 
-        f += 1
+def bake(scene,
+         obj,
+         frame_start,
+         frame_end, step=1,
+         only_selected=False,
+         do_pose=True,
+         do_object=True,
+         do_constraint_clear=False,
+         action=None,
+         to_quat=False):
+         
+    pose = obj.pose
+    
+    if pose is None:
+        do_pose = False
+
+    if do_pose is None and do_object is None:
+        return None
+
+    if to_quat:
+        print("Change rotation to QUATERNION")
+        obj.rotation_mode = 'QUATERNION'
+        print("rotation " + obj.rotation_mode)
+
+    # -------------------------------------------------------------------------
+    # Collect transformations
+
+    (frame_range, obj_info, pose_info) = bakedTransforms(scene, obj, frame_start, frame_end, step, do_pose, do_object)
 
     # -------------------------------------------------------------------------
     # Create action
@@ -133,6 +153,10 @@ def bake(scene,
 
     # -------------------------------------------------------------------------
     # Apply transformations to action
+    
+    frame_back = scene.frame_current
+    
+    # XXX TODO bake to action fcurves instead of to the object directly
 
     # pose
     for name, pbone in (pose_items if do_pose else ()):
@@ -169,11 +193,6 @@ def bake(scene,
             while obj.constraints:
                 obj.constraints.remove(obj.constraints[0])
 
-        if to_quat == True:
-            print("Change rotation to QUATERNION")
-            obj.rotation_mode = 'QUATERNION'
-            print("rotation " + obj.rotation_mode )
-
         for f in frame_range:
             matrix = obj_info[(f - frame_start) // step]["matrix_key"]
             obj.matrix_local = matrix
@@ -192,6 +211,9 @@ def bake(scene,
             obj.keyframe_insert("scale", -1, f)
 
     scene.frame_set(frame_back)
+    
+    if not do_constraint_clear:
+        atd.action = None
 
     return action
 
@@ -229,7 +251,7 @@ class BakeAction(Operator):
             )
     clear_consraints = BoolProperty(
             name="Clear Constraints",
-            default=False,
+            default=True,
             )
     bake_types = EnumProperty(
             name="Bake Data",

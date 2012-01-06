@@ -17,9 +17,9 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
-VERSION = "0.9.0"
-AUTHOR  = "Jeremy Moles, Cedric Pinson"
-EMAIL   = "jeremy@emperorlinux.com, cedric.pinson@plopbyte.com"
+VERSION = "0.9.1"
+AUTHOR  = "Jeremy Moles, Cedric Pinson, Peter Amstutz"
+EMAIL   = "jeremy@emperorlinux.com, cedric.pinson@plopbyte.com, peter.amstutz@tseboston.com"
 URL     = "http://github.com/cedricpinson/osgexport"
 DOC = "Export models and animations for use in OpenSceneGraph"
 
