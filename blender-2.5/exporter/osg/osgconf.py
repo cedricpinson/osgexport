@@ -16,7 +16,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 #  Jeremy Moles <jeremy@emperorlinux.com>
 
 
@@ -43,6 +43,7 @@ class Config(object):
         self.anim_fps = map.get("ANIMFPS", 25.0)
         self.log_file = None
         self.log = map.get("LOG", True)
+        self.only_visible = map.get("VISIBLE", True)
         self.selected = map.get("SELECTED", "ALL")
         self.relative_path = map.get("RELATIVE_PATH", False)
         self.anim_bake = map.get("BAKE", "FORCE")
