@@ -28,6 +28,7 @@ import sys
 import math
 import os
 import shutil
+import subprocess
 from sys import exit
 
 import osg
@@ -251,7 +252,7 @@ def createUpdateMatrixTransform(obj):
     return callback
 
 def createAnimationsGenericObject(osg_object, blender_object, config, update_callback, uniq_anims):
-    if not config.export_anim or not update_callback:
+    if (config.export_anim is False) or (update_callback is None):
         return None
 
     action2animation = BlenderAnimationToAnimation(object = blender_object, config = config, 
@@ -587,10 +588,25 @@ class Export(object):
                 except:
                     osglog.log("error while trying to copy file %s to %s" %(imagename, nativePath))
 
+        if self.config.osgconv_to_ive:
+            r = [self.config.osgconv_path, self.config.getFullName("osg"), self.config.getFullName("ive")]
+            try:
+                subprocess.call(r)
+            except Exception as e:
+                print("Error running " + str(r))
+                print(repr(e))
+            
+        if self.config.run_viewer:
+            r = [self.config.osgconv_path, self.config.getFullName("osg")]
+            try:
+                subprocess.Popen([self.config.viewer_path, self.config.getFullName("osg")])
+            except Exception as e:
+                print("Error running " + str(r))
+                print(repr(e))
 
         if self.config.log_file is not None:
             self.config.closeLogfile()
-
+            
 
     def createGeodeFromObject(self, mesh, skeleton = None):
         osglog.log("exporting object " + mesh.name)
@@ -1251,22 +1267,30 @@ class BlenderAnimationToAnimation(object):
         
         osglog.log("Exporting animation " + str(self.object))
         
+        need_bake = False
+        
         if hasattr(self.object, "constraints") and (len(self.object.constraints) > 0) and self.config.bake_constraints:
             osglog.log("Baking constraints " + str(self.object.constraints))
-            action = osgbake.bake(bpy.context.scene,
-                                 self.object,
-                                 bpy.context.scene.frame_start, 
-                                 bpy.context.scene.frame_end,
-                                 self.config.bake_frame_step,
-                                 False, #only_selected
-                                 True,  #do_pose
-                                 True,  #do_object
-                                 False, #do_constraint_clear
-                                 None,  #action
-                                 False) #to_quat
+            need_bake = True
         else:
             if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
                 action = self.object.animation_data.action
+                for fcu in action.fcurves:
+                    for kf in fcu.keyframe_points:
+                        if kf.interpolation != 'LINEAR':
+                            need_bake = True
+                            
+        if need_bake:
+            action = osgbake.bake(bpy.context.scene,
+                     self.object,
+                     bpy.context.scene.frame_start, 
+                     bpy.context.scene.frame_end,
+                     self.config.bake_frame_step,
+                     False, #only_selected
+                     True,  #do_pose
+                     True,  #do_object
+                     False, #do_constraint_clear
+                     False) #to_quat
 
         if action:
             osglog.log("found action %s" % action.name)

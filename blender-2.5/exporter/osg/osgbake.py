@@ -20,7 +20,7 @@
 
 import bpy
 from bpy.types import Operator
-
+from . import osglog
 
 def pose_frame_info(obj):
     from mathutils import Matrix
@@ -107,6 +107,70 @@ def bakedTransforms(scene,
     scene.frame_set(frame_back)
             
     return (frame_range, obj_info, pose_info)
+    
+def action_fcurve_ensure(action, data_path, array_index):
+    for fcu in action.fcurves:
+        if fcu.data_path == data_path and fcu.array_index == array_index:
+            return fcu
+
+    return action.fcurves.new(data_path=data_path, index=array_index)
+    
+def make_fcurves(action, rotation_mode):
+    fc = {}
+    fc["location_x"] = action.fcurves.new("location", 0, "Location")
+    fc["location_y"] = action.fcurves.new("location", 1, "Location")
+    fc["location_z"] = action.fcurves.new("location", 2, "Location")
+    
+    if rotation_mode == 'QUATERNION':
+        fc["rot_x"] = action.fcurves.new("rotation_quaternion", 0, "Rotation")
+        fc["rot_y"] = action.fcurves.new("rotation_quaternion", 1, "Rotation")
+        fc["rot_z"] = action.fcurves.new("rotation_quaternion", 2, "Rotation")
+        fc["rot_w"] = action.fcurves.new("rotation_quaternion", 3, "Rotation")
+    elif rotation_mode == 'AXIS_ANGLE':
+        fc["rot_x"] = action.fcurves.new("rotation_axis_angle", 0, "Rotation")
+        fc["rot_y"] = action.fcurves.new("rotation_axis_angle", 1, "Rotation")
+        fc["rot_z"] = action.fcurves.new("rotation_axis_angle", 2, "Rotation")
+        fc["rot_w"] = action.fcurves.new("rotation_axis_angle", 3, "Rotation")
+    else:  # euler, XYZ, ZXY etc
+        fc["rot_x"] = action.fcurves.new("rotation_euler", 0, "Rotation")
+        fc["rot_y"] = action.fcurves.new("rotation_euler", 1, "Rotation")
+        fc["rot_z"] = action.fcurves.new("rotation_euler", 2, "Rotation")
+    
+    fc["scale_x"] = action.fcurves.new("scale", 0, "Scale")
+    fc["scale_y"] = action.fcurves.new("scale", 1, "Scale")
+    fc["scale_z"] = action.fcurves.new("scale", 2, "Scale")
+    
+    return fc
+    
+def set_keys(fc, f, matrix, rotation_mode):
+    opt = {'NEEDED'}
+    trans = matrix.to_translation()
+    fc["location_x"].keyframe_points.insert(f, trans[0], opt)
+    fc["location_y"].keyframe_points.insert(f, trans[1], opt)
+    fc["location_z"].keyframe_points.insert(f, trans[2], opt)
+
+    if rotation_mode == 'QUATERNION':
+        quat = matrix.to_quaternion()
+        fc["rot_x"].keyframe_points.insert(f, quat[0], opt)
+        fc["rot_y"].keyframe_points.insert(f, quat[1], opt)
+        fc["rot_z"].keyframe_points.insert(f, quat[2], opt)
+        fc["rot_w"].keyframe_points.insert(f, quat[3], opt)
+    elif rotation_mode == 'AXIS_ANGLE':
+        aa = matrix.to_quaternion().to_axis_angle()
+        fc["rot_x"].keyframe_points.insert(f, aa[0], opt)
+        fc["rot_y"].keyframe_points.insert(f, aa[1], opt)
+        fc["rot_z"].keyframe_points.insert(f, aa[2], opt)
+        fc["rot_w"].keyframe_points.insert(f, aa[3], opt)
+    else:  # euler, XYZ, ZXY etc
+        eu = matrix.to_euler(rotation_mode)
+        fc["rot_x"].keyframe_points.insert(f, eu[0], opt)
+        fc["rot_y"].keyframe_points.insert(f, eu[1], opt)
+        fc["rot_z"].keyframe_points.insert(f, eu[2], opt)
+
+    sc = matrix.to_scale()
+    fc["scale_x"].keyframe_points.insert(f, sc[0], opt)
+    fc["scale_y"].keyframe_points.insert(f, sc[1], opt)
+    fc["scale_z"].keyframe_points.insert(f, sc[2], opt)
 
 def bake(scene,
          obj,
@@ -116,7 +180,6 @@ def bake(scene,
          do_pose=True,
          do_object=True,
          do_constraint_clear=False,
-         action=None,
          to_quat=False):
          
     pose = obj.pose
@@ -140,11 +203,7 @@ def bake(scene,
     # -------------------------------------------------------------------------
     # Create action
 
-    # incase animation data hassnt been created
-    atd = obj.animation_data_create()
-    if action is None:
-        action = bpy.data.actions.new("Action")
-    atd.action = action
+    action = bpy.data.actions.new("Action")
 
     if do_pose:
         pose_items = pose.bones.items()
@@ -156,12 +215,12 @@ def bake(scene,
     
     frame_back = scene.frame_current
     
-    # XXX TODO bake to action fcurves instead of to the object directly
-
     # pose
     for name, pbone in (pose_items if do_pose else ()):
         if only_selected and not pbone.bone.select:
             continue
+            
+        fc = make_fcurves(pbone)
 
         if do_constraint_clear:
             while pbone.constraints:
@@ -192,29 +251,29 @@ def bake(scene,
         if do_constraint_clear:
             while obj.constraints:
                 obj.constraints.remove(obj.constraints[0])
+                
+        fc = make_fcurves(action, obj.rotation_mode)
 
         for f in frame_range:
             matrix = obj_info[(f - frame_start) // step]["matrix_key"]
-            obj.matrix_local = matrix
+            set_keys(fc, f, matrix, obj.rotation_mode)
+            
+    # Eliminate duplicate keyframe entries.
+    for fcu in action.fcurves:
+        keyframe_points = fcu.keyframe_points
+        i = 1
+        while i < len(fcu.keyframe_points) - 1:
+            val_prev = keyframe_points[i - 1].co[1]
+            val_next = keyframe_points[i + 1].co[1]
+            val = keyframe_points[i].co[1]
 
-            obj.keyframe_insert("location", -1, f)
-
-            rotation_mode = obj.rotation_mode
-
-            if rotation_mode == 'QUATERNION':
-                obj.keyframe_insert("rotation_quaternion", -1, f)
-            elif rotation_mode == 'AXIS_ANGLE':
-                obj.keyframe_insert("rotation_axis_angle", -1, f)
-            else:  # euler, XYZ, ZXY etc
-                obj.keyframe_insert("rotation_euler", -1, f)
-
-            obj.keyframe_insert("scale", -1, f)
+            if abs(val - val_prev) + abs(val - val_next) < 0.0001:
+                keyframe_points.remove(keyframe_points[i])
+            else:
+                i += 1
 
     scene.frame_set(frame_back)
     
-    if not do_constraint_clear:
-        atd.action = None
-
     return action
 
 
@@ -259,7 +318,7 @@ class BakeAction(Operator):
             items=(('POSE', "Pose", ""),
                    ('OBJECT', "Object", ""),
                    ),
-            default={'POSE'},
+            default={'POSE', 'OBJECT'},
             )
     to_quat = BoolProperty(
             name="To Quaternion",
@@ -277,7 +336,6 @@ class BakeAction(Operator):
                       'POSE' in self.bake_types,
                       'OBJECT' in self.bake_types,
                       self.clear_consraints,
-                      None,
                       self.to_quat
                       )
 
@@ -285,19 +343,8 @@ class BakeAction(Operator):
             self.report({'INFO'}, "Nothing to bake")
             return {'CANCELLED'}
 
-        # basic cleanup, could move elsewhere
-        for fcu in action.fcurves:
-            keyframe_points = fcu.keyframe_points
-            i = 1
-            while i < len(fcu.keyframe_points) - 1:
-                val_prev = keyframe_points[i - 1].co[1]
-                val_next = keyframe_points[i + 1].co[1]
-                val = keyframe_points[i].co[1]
-
-                if abs(val - val_prev) + abs(val - val_next) < 0.0001:
-                    keyframe_points.remove(keyframe_points[i])
-                else:
-                    i += 1
+        atd = bpy.context.object.animation_data_create()
+        atd.action = action
 
         return {'FINISHED'}
 

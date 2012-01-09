@@ -31,30 +31,39 @@ def debug(str):
         osglog.log(str)
 
 class Config(object):
-    def __init__(self, map = None):
+    def __init__(self):
         object.__init__(self)
-        if map is None:
-            map = {}
-        self.filename = map.get("FILENAME", "")
-        self.author = map.get("AUTHOR","")
-        self.indent = map.get("INDENT", int(2))
-        self.float_precision = map.get("FLOATPRE",int(5))
-        self.format_num = map.get("FLOATNUM", 0)
-        self.anim_fps = map.get("ANIMFPS", 25.0)
+        self.activate()
+        
+    def defaultattr(self, attr, value):
+        if not hasattr(self, attr):
+            setattr(self, attr, value)
+      
+    def activate(self):
         self.log_file = None
-        self.log = map.get("LOG", True)
-        self.selected = map.get("SELECTED", "ALL")
-        self.relative_path = map.get("RELATIVE_PATH", False)
-        self.anim_bake = map.get("BAKE", "FORCE")
-        self.export_anim = map.get("EXPORTANIM", True)
-        self.object_selected = map.get("OBJECT_SELECTED", None)
-        self.apply_modifiers = map.get("APPLY_MODIFIERS", True)
-        self.bake_constraints = map.get("BAKE_CONSTRAINTS", True)
-        self.bake_frame_step = map.get("BAKE_FRAME_STEP", 1)
-        self.fullpath = ""
+        
+        self.defaultattr("filename", "")
+        self.defaultattr("fullpath", "")
+        self.defaultattr("author", "")
+        self.defaultattr("indent", int(2))
+        self.defaultattr("float_precision", int(5))
+        self.defaultattr("format_num", int(0))
+        self.defaultattr("anim_fps", 25.0)
+        self.defaultattr("log", False)
+        self.defaultattr("selected", "ALL")
+        self.defaultattr("relative_path", "False")
+        self.defaultattr("export_anim", True)
+        self.defaultattr("object_selected", None)
+        self.defaultattr("apply_modifiers", True)
+        self.defaultattr("bake_constraints", True)
+        self.defaultattr("bake_frame_step", 1)
+        self.defaultattr("osgconv_to_ive", False)
+        self.defaultattr("osgconv_path", "osgconv.exe")
+        self.defaultattr("run_viewer", False)
+        self.defaultattr("viewer_path", "osgviewer.exe")
+        
         self.exclude_objects = []
         osglog.LOGFILE = None
-        self.initFilePaths()
         status = " without log"
         if self.log:
             status = " with log"
@@ -71,21 +80,23 @@ class Config(object):
             osglog.log("Animations will not be exported")
         
     def closeLogfile(self):
-        filename = self.log_file.name
-        osglog.log("Check log file " + filename)
-        self.log_file.close()
-        osglog.LOGFILE = None
+        if self.log_file != None:
+            filename = self.log_file.name
+            osglog.log("Check log file " + filename)
+            self.log_file.close()
+            self.log_file = None
+            osglog.LOGFILE = None
 
     def validFilename(self):
         if len(self.filename) == 0:
             return False
         return True
         
-    def initFilePaths(self):
-        if len(self.filename) == 0:
-            dirname  = "."
-        else:
-            dirname = os.path.dirname(self.filename)
+    def initFilePaths(self, filename):
+        self.filename = filename
+        dirname = os.path.dirname(self.filename)
+        if dirname == '':
+            dirname = '.'
         basename = os.path.splitext(os.path.basename(self.filename))[0]
         
         if not os.path.isdir(dirname):
@@ -101,6 +112,7 @@ class Config(object):
             return os.path.basename(name)
         return name
 
+    # the directory the file will be written to
     def getFullPath(self):
         return self.fullpath
 
