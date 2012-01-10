@@ -16,7 +16,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.net>
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
 #  Jeremy Moles <jeremy@emperorlinux.com>
 
 
@@ -51,7 +51,8 @@ class Config(object):
         self.defaultattr("anim_fps", 25.0)
         self.defaultattr("log", False)
         self.defaultattr("selected", "ALL")
-        self.defaultattr("relative_path", "False")
+        self.defaultattr("relative_path", False)
+        self.defaultattr("only_visible", True)
         self.defaultattr("export_anim", True)
         self.defaultattr("object_selected", None)
         self.defaultattr("apply_modifiers", True)

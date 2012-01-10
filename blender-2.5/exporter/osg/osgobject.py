@@ -660,7 +660,7 @@ class Light(StateAttribute):
     def __init__(self, *args, **kwargs):
         StateAttribute.__init__(self, *args, **kwargs)
         self.light_num = 0
-        self.ambient = (0.05, 0.05, 0.05, 1.0)
+        self.ambient = (0.0, 0.0, 0.0, 1.0)
         self.diffuse = (0.8, 0.8, 0.8, 1.0)
         self.specular = (1.0, 1.0, 1.0, 1.0)
         self.position = (0.0, 0.0, 1.0, 0.0)
@@ -818,12 +818,13 @@ class Texture2D(StateTextureAttribute):
 class Material(StateAttribute):
     def __init__(self, *args, **kwargs):
         StateAttribute.__init__(self, *args, **kwargs)
+        diffuse_energy = 0.8
         self.colormode = "OFF"
         self.emission = (0.0, 0.0, 0.0, 1.0)
-        self.ambient = (0.2, 0.2, 0.2, 1.0)
-        self.diffuse = (0.8, 0.8, 0.8, 1.0)
-        self.specular = (0.0, 0.0, 0.0, 1.0)
-        self.shininess = 0.0
+        self.ambient = (0.0, 0.0, 0.0, 1.0)
+        self.diffuse = (0.8 * diffuse_energy, 0.8 * diffuse_energy, 0.8 * diffuse_energy, 1.0)
+        self.specular = (0.5, 0.5, 0.5, 1.0)
+        self.shininess = 40/(512/128) # blender encode shininess to 512 and opengl to 128
 
     def className(self):
         return "Material"

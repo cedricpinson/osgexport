@@ -1,4 +1,4 @@
-# -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
+# -*- python-indent: 4; mode: python -*-
 #
 # Copyright (C) 2008-2011 Cedric Pinson
 #
@@ -273,7 +273,6 @@ def createAnimationsObjectAndSetCallback(osg_node, obj, config, uniq_anims):
 def createAnimationMaterialAndSetCallback(osg_node, obj, config, uniq_anims):
     return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
 
-
 class Export(object):
     def __init__(self, config = None):
         object.__init__(self)
@@ -291,6 +290,18 @@ class Export(object):
         self.uniq_geodes = {}
         self.uniq_anims = {}
 
+    def isValidToExport(self, object):
+        if object.name in self.config.exclude_objects:
+            return False
+        
+        if self.config.only_visible == True:
+            if object in bpy.context.visible_objects:
+                return True
+        else:
+            return True
+
+        return False
+        
     def setArmatureInRestMode(self):
         for arm in bpy.data.objects:
             if arm.type.lower() == "Armature".lower():
@@ -330,7 +341,7 @@ class Export(object):
         return "no name"
 
     def exportChildrenRecursively(self, obj, parent, rootItem):
-        if obj.name in self.config.exclude_objects:
+        if self.isValidToExport(obj) == False:
             return None
             
         osglog.log("")
@@ -481,19 +492,13 @@ class Export(object):
             except ValueError:
                 osglog.log("Error, problem happens when assigning object %s to scene %s" % (o.name, bpy.context.scene.name))
                 raise
-                
-        for obj in bpy.context.scene.objects:
-            if self.config.selected == "SELECTED_ONLY_WITH_CHILDREN":
-                if obj.select:
-                    self.exportItemAndChildren(obj)
-            else:
-                parent = obj.parent
-                found = False
-                for p in bpy.context.scene.objects:
-                    if p == parent:
-                        found = True
-                        break
-                if parent == None or not found:
+
+        if self.config.selected == "SELECTED_ONLY_WITH_CHILDREN":
+            for obj in bpy.context.selected_objects:
+                self.exportItemAndChildren(obj)
+        else:
+            for obj in bpy.context.scene.objects:
+                if obj.parent == None: # export root elements
                     self.exportItemAndChildren(obj)
 
         self.restoreArmatureRestMode()
@@ -525,7 +530,10 @@ class Export(object):
                 lm.ambient = (amb[0], amb[1], amb[2], 1.0)
 
             st.attributes.append(lm)
-            #st.attributes.append(Material()) # not sure to add a default material with color mode off
+
+            # add by default
+            st.attributes.append(Material())
+
             light_num = 0
             for name, ls in self.lights.items():
                 ls.light.light_num = light_num
@@ -684,26 +692,27 @@ class BlenderLightToLightSource(object):
         ls = LightSource()
         ls.setName(self.object.name)
         light = ls.light
-        light.diffuse = (self.lamp.color[0] * self.lamp.energy, self.lamp.color[1]* self.lamp.energy, self.lamp.color[2] * self.lamp.energy,1.0) # put light to 0 it will inherit the position from parent transform
-#        light.specular = light.diffuse
+        energy = self.lamp.energy*2.0
+        light.diffuse = (self.lamp.color[0] * energy, self.lamp.color[1]* energy, self.lamp.color[2] * energy,1.0) # put light to 0 it will inherit the position from parent transform
+        light.specular = (energy, energy, energy, 1.0) #light.diffuse
 
         # Lamp', 'Sun', 'Spot', 'Hemi', 'Area', or 'Photon
-        if self.lamp.type.lower() == 'Lamp'.lower() or self.lamp.type.lower() == 'Spot'.lower():
+        if self.lamp.type == 'POINT' or self.lamp.type == 'SPOT':
             # position light
             # Note DW - the distance may not be necessary anymore (blender 2.5)
             light.position = (0,0,0,1) # put light to 0 it will inherit the position from parent transform
             light.linear_attenuation = self.lamp.linear_attenuation / self.lamp.distance
             light.quadratic_attenuation = self.lamp.quadratic_attenuation / ( self.lamp.distance * self.lamp.distance )
 
-        elif self.lamp.type.lower() == 'Sun'.lower():
+        elif self.lamp.type == 'SUN':
             light.position = (0,0,1,0) # put light to 0 it will inherit the position from parent transform
 
-        if self.lamp.type.lower() == 'Spot'.lower():
+        if self.lamp.type == 'SPOT':
             light.spot_cutoff = self.lamp.spot_size * .5
             if light.spot_cutoff > 90:
                 light.spot_cutoff = 180
             light.spot_exponent = 128.0 * self.lamp.spot_blend
-
+            
         return ls
 
 class BlenderObjectToGeometry(object):
@@ -728,7 +737,7 @@ class BlenderObjectToGeometry(object):
         except: 
             image_object = None
         if image_object is None:
-            osglog.log("WARNING the texture %s has no Image, skip it" % mtex.texture.name)
+            osglog.log("WARNING the texture %s has no Image, skip it" % str(mtex))
             return None
         texture = Texture2D()
         texture.name = mtex.texture.name
@@ -812,8 +821,7 @@ class BlenderObjectToGeometry(object):
                     s.modes["GL_BLEND"] = "ON"
 
                 ambient_factor = mat_source.ambient
-                m.ambient = (mat_source.diffuse_color[0] * ambient_factor, mat_source.diffuse_color[1] * ambient_factor, mat_source.diffuse_color[2] * ambient_factor, 1)
-
+                m.ambient = (ambient_factor, ambient_factor, ambient_factor, 1)
                 spec = mat_source.specular_intensity
                 m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
 
