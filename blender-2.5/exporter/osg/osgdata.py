@@ -68,6 +68,8 @@ def createImageFilename(texturePath, image):
         ext = "unknown"
     name = name + "." +ext
     print("create Image Filename " + name)
+    if texturePath != "" and not texturePath.endswith("/"):
+        texturePath = texturePath + "/"
     return texturePath + name
 
 def getImageFilesFromStateSet(stateset):
@@ -105,9 +107,9 @@ def getDeltaMatrixFromMatrix(parent, child):
         bi.invert()
         return bi*child
 
-def getChildrenOf(object):
+def getChildrenOf(scene, object):
     children = []
-    for obj in bpy.context.scene.objects:
+    for obj in scene.objects:
         if obj.parent == object:
             children.append(obj)
     return children
@@ -150,13 +152,13 @@ def findArmatureObjectForTrack(track):
 #    if index != -1:
 #        objname = ipo.name[index+1:]
 #        try:
-#            obj = bpy.context.scene.objects[objname]
+#            obj = self.config.scene.objects[objname]
 #            log("bake ipo %s to object %s" % (ipo.name, objname))
 #            return obj
 #        except:
 #            return None
 #
-#    for o in bpy.context.scene.objects:
+#    for o in self.config.scene.objects:
 #        if o.getIpo() == ipo:
 #            log("bake ipo %s to object %s" % (ipo.name, o.name))
 #            return o
@@ -294,8 +296,8 @@ class Export(object):
         if object.name in self.config.exclude_objects:
             return False
         
-        if self.config.only_visible == True:
-            if object in bpy.context.visible_objects:
+        if self.config.only_visible:
+            if object.is_visible(self.config.scene):
                 return True
         else:
             return True
@@ -441,7 +443,7 @@ class Export(object):
         elif parent:
             parent.children.append(item)
 
-        children = getChildrenOf(obj)
+        children = getChildrenOf(self.config.scene, obj)
         for child in children:
             self.exportChildrenRecursively(child, item, rootItem)
         return item
@@ -478,7 +480,7 @@ class Export(object):
 
     def process(self):
 #        Object.resetWriter()
-        self.scene_name = bpy.context.scene.name
+        self.scene_name = self.config.scene.name
         osglog.log("current scene %s" % self.scene_name)
         if self.config.validFilename() is False:
             self.config.filename += self.scene_name
@@ -487,19 +489,16 @@ class Export(object):
         if self.config.object_selected != None:
             o = bpy.data.objects[self.config.object_selected]
             try:
-                bpy.context.scene.objects.active = o
-                bpy.context.scene.objects.selected = [o]
+                self.config.scene.objects.active = o
+                self.config.scene.objects.selected = [o]
             except ValueError:
-                osglog.log("Error, problem happens when assigning object %s to scene %s" % (o.name, bpy.context.scene.name))
+                osglog.log("Error, problem happens when assigning object %s to scene %s" % (o.name, self.config.scene.name))
                 raise
 
-        if self.config.selected == "SELECTED_ONLY_WITH_CHILDREN":
-            for obj in bpy.context.selected_objects:
+        for obj in self.config.scene.objects:
+            if (self.config.selected == "SELECTED_ONLY_WITH_CHILDREN" and obj.select) \
+                    or (self.config.selected == "ALL" and obj.parent == None):
                 self.exportItemAndChildren(obj)
-        else:
-            for obj in bpy.context.scene.objects:
-                if obj.parent == None: # export root elements
-                    self.exportItemAndChildren(obj)
 
         self.restoreArmatureRestMode()
         self.postProcess()
@@ -525,8 +524,8 @@ class Export(object):
             # retrieve world to global ambient
             lm = LightModel()
             lm.ambient = (0.0, 0.0, 0.0, 1.0)
-            if bpy.context.scene.world is not None:
-                amb = bpy.context.scene.world.ambient_color
+            if self.config.scene.world is not None:
+                amb = self.config.scene.world.ambient_color
                 lm.ambient = (amb[0], amb[1], amb[2], 1.0)
 
             st.attributes.append(lm)
@@ -555,11 +554,11 @@ class Export(object):
 
         filename = self.config.getFullName("osg")
         osglog.log("write file to " + filename)
-        sfile = open(filename, "wb")
+        with open(filename, "wb") as sfile:
         #sfile.write(str(self.root).encode('utf-8'))
-        self.root.write(sfile)
-
-        nativePath = os.path.abspath(self.config.getFullPath())+ "/textures/"
+            self.root.write(sfile)
+        
+        nativePath = os.path.join(os.path.abspath(self.config.getFullPath()), self.config.texture_prefix) + os.sep
         blenderPath = bpy.path.relpath(nativePath)
         if len(self.images) > 0:
             try:
@@ -569,6 +568,7 @@ class Export(object):
                 osglog.log("can't create textures directory %s" % nativePath)
                 raise
                 
+        copied_images = []
         for i in self.images:
             if i is not None:
                 imagename = bpy.path.basename(i.filepath)
@@ -578,7 +578,11 @@ class Export(object):
                         try:
                             if len(imagename.split('.')) == 1:
                                 imagename += ".png"
-                            filename = blenderPath + "/"+ imagename
+                            filename = blenderPath + "/" + imagename
+                            if not os.path.exists(filename):
+                                # record which images that were newly copied and can be safely
+                                # cleaned up
+                                copied_images.append(filename)
                             i.filepath_raw = filename
                             osglog.log("packed file, save it to %s" %(os.path.abspath(bpy.path.abspath(filename))))
                             i.save()
@@ -587,8 +591,12 @@ class Export(object):
                         i.filepath_raw = original_filepath
                     else:
                         filepath = os.path.abspath(bpy.path.abspath(i.filepath))
-                        texturePath = nativePath + imagename
+                        texturePath = os.path.join(nativePath, imagename)
                         if os.path.exists(filepath):
+                            if not os.path.exists(texturePath):
+                                # record which images that were newly copied and can be safely
+                                # cleaned up
+                                copied_images.append(texturePath)
                             shutil.copy(filepath, texturePath)
                             osglog.log("copy file %s to %s" %(filepath, texturePath))
                         else:
@@ -597,9 +605,17 @@ class Export(object):
                     osglog.log("error while trying to copy file %s to %s" %(imagename, nativePath))
 
         if self.config.osgconv_to_ive:
-            r = [self.config.osgconv_path, self.config.getFullName("osg"), self.config.getFullName("ive")]
+            if self.config.osgconv_embed_textures:
+                r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile", self.config.getFullName("osg"), self.config.getFullName("ive")]
+            else:
+                r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile", self.config.getFullName("osg"), self.config.getFullName("ive")]
             try:
-                subprocess.call(r)
+                if subprocess.call(r) == 0:
+                    if self.config.osgconv_cleanup:
+                        os.unlink(self.config.getFullName("osg"))
+                        if self.config.osgconv_embed_textures:
+                            for i in copied_images:
+                                os.unlink(i)
             except Exception as e:
                 print("Error running " + str(r))
                 print(repr(e))
@@ -632,7 +648,7 @@ class Export(object):
                     break
                     
         if self.config.apply_modifiers and len(mesh.modifiers) > 0:
-          mesh_object = mesh.to_mesh(bpy.context.scene, True, 'PREVIEW')
+          mesh_object = mesh.to_mesh(self.config.scene, True, 'PREVIEW')
         else:
           mesh_object = mesh.data
          
@@ -727,7 +743,7 @@ class BlenderObjectToGeometry(object):
         if self.config.apply_modifiers is False:
           self.mesh = self.object.data
         else:
-          self.mesh = self.object.to_mesh(bpy.context.scene, True, 'PREVIEW')
+          self.mesh = self.object.to_mesh(self.config.scene, True, 'PREVIEW')
         self.material_animations = {}
 
     def createTexture2D(self, mtex):
@@ -743,7 +759,7 @@ class BlenderObjectToGeometry(object):
         texture.name = mtex.texture.name
 
         # reference texture relative to export path
-        filename = createImageFilename("textures/",image_object)
+        filename = createImageFilename(self.config.texture_prefix, image_object)
         texture.file = filename
         texture.source_image = image_object
         return texture
@@ -1289,10 +1305,10 @@ class BlenderAnimationToAnimation(object):
                             need_bake = True
                             
         if need_bake:
-            action = osgbake.bake(bpy.context.scene,
+            action = osgbake.bake(self.config.scene,
                      self.object,
-                     bpy.context.scene.frame_start, 
-                     bpy.context.scene.frame_end,
+                     self.config.scene.frame_start, 
+                     self.config.scene.frame_end,
                      self.config.bake_frame_step,
                      False, #only_selected
                      True,  #do_pose

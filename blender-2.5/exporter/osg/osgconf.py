@@ -42,8 +42,6 @@ class Config(object):
     def activate(self):
         self.log_file = None
         
-        self.defaultattr("filename", "")
-        self.defaultattr("fullpath", "")
         self.defaultattr("author", "")
         self.defaultattr("indent", int(2))
         self.defaultattr("float_precision", int(5))
@@ -52,6 +50,7 @@ class Config(object):
         self.defaultattr("log", False)
         self.defaultattr("selected", "ALL")
         self.defaultattr("relative_path", False)
+        self.defaultattr("texture_prefix", "textures")
         self.defaultattr("only_visible", True)
         self.defaultattr("export_anim", True)
         self.defaultattr("object_selected", None)
@@ -60,9 +59,15 @@ class Config(object):
         self.defaultattr("bake_frame_step", 1)
         self.defaultattr("osgconv_to_ive", False)
         self.defaultattr("osgconv_path", "osgconv.exe")
+        self.defaultattr("osgconv_embed_textures", False)
         self.defaultattr("run_viewer", False)
         self.defaultattr("viewer_path", "osgviewer.exe")
+        self.defaultattr("export_all_scenes", False)
+        self.defaultattr("osgconv_cleanup", False)
+        self.defaultattr("history", {})
         
+        self.filepath = ""
+        self.fullpath = ""
         self.exclude_objects = []
         osglog.LOGFILE = None
         status = " without log"
