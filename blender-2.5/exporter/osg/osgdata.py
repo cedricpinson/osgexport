@@ -604,6 +604,7 @@ class Export(object):
                 except:
                     osglog.log("error while trying to copy file %s to %s" %(imagename, nativePath))
 
+        filetoview = self.config.getFullName("osg")
         if self.config.osgconv_to_ive:
             if self.config.osgconv_embed_textures:
                 r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile", self.config.getFullName("osg"), self.config.getFullName("ive")]
@@ -611,6 +612,7 @@ class Export(object):
                 r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile", self.config.getFullName("osg"), self.config.getFullName("ive")]
             try:
                 if subprocess.call(r) == 0:
+                    filetoview = self.config.getFullName("ive")
                     if self.config.osgconv_cleanup:
                         os.unlink(self.config.getFullName("osg"))
                         if self.config.osgconv_embed_textures:
@@ -621,9 +623,9 @@ class Export(object):
                 print(repr(e))
             
         if self.config.run_viewer:
-            r = [self.config.osgconv_path, self.config.getFullName("osg")]
+            r = [self.config.viewer_path, filetoview]
             try:
-                subprocess.Popen([self.config.viewer_path, self.config.getFullName("osg")])
+                subprocess.Popen(r)
             except Exception as e:
                 print("Error running " + str(r))
                 print(repr(e))
