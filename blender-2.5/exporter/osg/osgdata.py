@@ -181,25 +181,6 @@ def findArmatureObjectForTrack(track):
 #            return o
 #    return None
 
-
-# TODO
-def createAnimationsSkeletonObject(osg_object, blender_object, config, update_callback):
-    if config.export_anim is not True:
-        return None
-
-    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config,
-                                                   uniq_anims = self.uniq_anims)
-    anim = action2animation.createAnimation()
-    osglog.log("animations created for object %s" % ( blender_object.name))
-    if anim:
-        update_callback.setName(osg_object.name)
-        osg_object.update_callbacks.append(update_callback)
-        osglog.log("processed animation %s" % anim.name)
-        return anim
-
-    return None
-
-
 def createUpdateMatrixTransform(obj):
     callback = UpdateMatrixTransform()
     has_location_keys = False
@@ -268,9 +249,28 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
         return anim
 
     return None
+    
+def createAnimationsSkeletonObject(osg_object, blender_object, config, uniq_anims):
+    if (config.export_anim is False):
+        return None
+
+    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config, 
+                                                   uniq_anims = uniq_anims)
+    anim = action2animation.createAnimation()
+    osglog.log("animations created for object %s" % (blender_object.name))
+    if anim:
+        osglog.log("processed animation %s" % anim.name)
+        for (bname, bone) in osg_object.boneDict.items():
+            bone.update_callbacks[0].setName(anim.name)
+        return anim
+
+    return None
 
 def createAnimationsObjectAndSetCallback(osg_node, obj, config, uniq_anims):
     return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform(obj), uniq_anims)
+    
+def createAnimationsSkeletonAndSetCallback(osg_node, obj, config, uniq_anims):
+    return createAnimationsSkeletonObject(osg_node, obj, config, uniq_anims)
 
 def createAnimationMaterialAndSetCallback(osg_node, obj, config, uniq_anims):
     return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
@@ -282,7 +282,7 @@ class Export(object):
         self.config = config
         if self.config is None:
             self.config = osgconf.Config()
-        self.rest_armatures = {}
+        self.rest_armatures = []
         self.animations = {}
         self.images = set()
         self.lights = {}
@@ -306,23 +306,15 @@ class Export(object):
         
     def setArmatureInRestMode(self):
         for arm in bpy.data.objects:
-            if arm.type.lower() == "Armature".lower():
-                if hasattr(arm, "pose_position"):
-                    arm.pose_position = 'REST'
-                #self.rest_armatures[arm] = arm.animation_data.action
-                #arm.animation_data.action = None
-                #for bone in arm.animation_data.bones:
-                #    bone.quat = Quaternion()
-                #    bone.loc = Vector(0,0,0)
-                #    bone.size = Vector(1,1,1)
-                #arm.getPose().update()
+            if arm.type == "ARMATURE":
+                print(arm)
+                if arm.data.pose_position == 'POSE':
+                    arm.data.pose_position = 'REST'
+                    self.rest_armatures.append(arm)
 
-    def restoreArmatureRestMode(self):
-        for arm in self.rest_armatures.keys():
-            if hasattr(arm, "pose_position"):
-                arm.pose_position = 'POSE'
-            #arm.animation_data.action = self.rest_armatures[arm]
-            #arm.getPose().update()
+    def restoreArmaturePoseMode(self):
+        for arm in self.rest_armatures:
+            arm.data.pose_position = 'POSE'
 
     def exportItemAndChildren(self, obj):
         item = self.exportChildrenRecursively(obj, None, None)
@@ -348,6 +340,7 @@ class Export(object):
             
         osglog.log("")
 
+        anims = None
         item = None
         if obj in self.uniq_objects:
             osglog.log(str("use referenced item for " + obj.name + " " + obj.type))
@@ -355,11 +348,8 @@ class Export(object):
         else:
             osglog.log("Type of " + obj.name + " is " + obj.type)
             if obj.type == "ARMATURE":
-                item = self.createSkeletonAndAnimations(obj)
-                # We already do this in the above function - this would give us 2 animations
-                #anim = createAnimationsSkeletonAndSetCallback(item, obj, self.config, self.uniq_anims)
-                #if anim != None:
-                #    self.animations[anim.name] = anim
+                item = self.createSkeleton(obj)
+                #anims = createAnimationsSkeletonAndSetCallback(item, obj, self.config, self.uniq_anims)
 
             elif obj.type == "MESH":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
@@ -371,9 +361,7 @@ class Export(object):
                 item.matrix = matrix
                 objectItem = self.createGeodeFromObject(obj)
 
-                anim = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
-                if anim != None:
-                    self.animations[anim.name] = anim
+                anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
 
                 item.children.append(objectItem)
                 
@@ -386,9 +374,6 @@ class Export(object):
                 item.matrix = matrix
                 lightItem = self.createLight(obj)
                 anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
-                if anims != None:
-                    for anim in anims: 
-                        self.animations[anim.name] = anim
                 item.children.append(lightItem)
 
             elif obj.type == "EMPTY":
@@ -396,15 +381,16 @@ class Export(object):
                 item = MatrixTransform()
                 item.setName(obj.name)
                 item.matrix = matrix
-                anim = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
-                if anim:
-                    self.animations[anim.name] = anim
+                anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
                 self.evaluateGroup(obj, item, rootItem)
             else:
                 osglog.log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
                 return None
             self.uniq_objects[obj] = item
 
+        if anims != None:
+            for anim in anims: 
+                self.animations[anim.name] = anim
 
         if rootItem is None:
             rootItem = item
@@ -449,33 +435,28 @@ class Export(object):
         return item
 
 
-    def createSkeletonAndAnimations(self, obj):
+    def createSkeleton(self, obj):
         osglog.log("processing Armature " + obj.name)
-
-        original_pose_position = obj.data.pose_position
-        obj.data.pose_position = 'REST'
 
         roots = getRootBonesList(obj.data)
 
         matrix = getDeltaMatrixFrom(obj.parent, obj)
         skeleton = Skeleton(obj.name, matrix)
         for bone in roots:
-            b = Bone( obj, bone)
+            b = Bone(obj, bone)
             b.buildBoneChildren()
             skeleton.children.append(b)
         skeleton.collectBones()
 
         # code need to be rewritten - does not work anymore
-        if self.config.export_anim is True:
-            if hasattr(obj, "animation_data") and hasattr(obj.animation_data, "nla_tracks") and len(obj.animation_data.nla_tracks) > 0:
-                for nla_track in obj.animation_data.nla_tracks:
-                    action2animation = BlenderNLATrackToAnimation(track = nla_track, config = self.config)
-                    anim = action2animation.createAnimationFromTrack()
-                    if anim is not None:
-                        self.animations[anim.name] = anim
-
-        obj.data.pose_position = original_pose_position
-
+        #if self.config.export_anim is True:
+            #if hasattr(obj, "animation_data") and hasattr(obj.animation_data, "nla_tracks") and len(obj.animation_data.nla_tracks) > 0:
+            #    for nla_track in obj.animation_data.nla_tracks:
+            #        action2animation = BlenderNLATrackToAnimation(track = nla_track, config = self.config)
+            #        anim = action2animation.createAnimationFromTrack()
+            #        if anim is not None:
+            #            self.animations[anim.name] = anim
+        
         return skeleton
 
     def process(self):
@@ -485,22 +466,25 @@ class Export(object):
         if self.config.validFilename() is False:
             self.config.filename += self.scene_name
         self.config.createLogfile()
+        
         self.setArmatureInRestMode()
-        if self.config.object_selected != None:
-            o = bpy.data.objects[self.config.object_selected]
-            try:
-                self.config.scene.objects.active = o
-                self.config.scene.objects.selected = [o]
-            except ValueError:
-                osglog.log("Error, problem happens when assigning object %s to scene %s" % (o.name, self.config.scene.name))
-                raise
+        try:
+            if self.config.object_selected != None:
+                o = bpy.data.objects[self.config.object_selected]
+                try:
+                    self.config.scene.objects.active = o
+                    self.config.scene.objects.selected = [o]
+                except ValueError:
+                    osglog.log("Error, problem happens when assigning object %s to scene %s" % (o.name, self.config.scene.name))
+                    raise
 
-        for obj in self.config.scene.objects:
-            if (self.config.selected == "SELECTED_ONLY_WITH_CHILDREN" and obj.select) \
-                    or (self.config.selected == "ALL" and obj.parent == None):
-                self.exportItemAndChildren(obj)
-
-        self.restoreArmatureRestMode()
+            for obj in self.config.scene.objects:
+                if (self.config.selected == "SELECTED_ONLY_WITH_CHILDREN" and obj.select) \
+                            or (self.config.selected == "ALL" and obj.parent == None):
+                        self.exportItemAndChildren(obj)
+        finally:
+            self.restoreArmaturePoseMode()
+        
         self.postProcess()
 
     def postProcess(self):
@@ -558,8 +542,8 @@ class Export(object):
         #sfile.write(str(self.root).encode('utf-8'))
             self.root.write(sfile)
         
-        nativePath = os.path.join(os.path.abspath(self.config.getFullPath()), self.config.texture_prefix) + os.sep
-        blenderPath = bpy.path.relpath(nativePath)
+        nativePath = os.path.join(os.path.abspath(self.config.getFullPath()), self.config.texture_prefix)
+        #blenderPath = bpy.path.relpath(nativePath)
         if len(self.images) > 0:
             try:
                 if not os.path.exists(nativePath):
@@ -578,7 +562,7 @@ class Export(object):
                         try:
                             if len(imagename.split('.')) == 1:
                                 imagename += ".png"
-                            filename = blenderPath + "/" + imagename
+                            filename = os.path.join(nativePath, imagename)
                             if not os.path.exists(filename):
                                 # record which images that were newly copied and can be safely
                                 # cleaned up
@@ -601,8 +585,8 @@ class Export(object):
                             osglog.log("copy file %s to %s" %(filepath, texturePath))
                         else:
                             osglog.log("file %s not available" %(filepath))
-                except:
-                    osglog.log("error while trying to copy file %s to %s" %(imagename, nativePath))
+                except Exception  as e:
+                    osglog.log("error while trying to copy file %s to %s: %s" %(imagename, nativePath, str(e)))
 
         filetoview = self.config.getFullName("osg")
         if self.config.osgconv_to_ive:
@@ -640,19 +624,25 @@ class Export(object):
         # check if the mesh has a armature modifier
         # if no we don't write influence
         exportInfluence = False
-        if mesh.parent and mesh.parent.type.lower() is "ARMATURE".lower():
+        if mesh.parent and mesh.parent.type == "ARMATURE":
             exportInfluence = True
-        if exportInfluence is False:
-            #print mesh.name, " Modifiers ", len(mesh.modifiers)
-            for mod in mesh.modifiers:
-                if mod.type.lower() == "ARMATURE".lower():
-                    exportInfluence = True
-                    break
-                    
-        if self.config.apply_modifiers and len(mesh.modifiers) > 0:
-          mesh_object = mesh.to_mesh(self.config.scene, True, 'PREVIEW')
+        
+        has_armature_modifiers = False
+        has_non_armature_modifiers = False
+        
+        for mod in mesh.modifiers:
+            if mod.type == "ARMATURE":
+                has_armature_modifiers = True
+            else:
+                has_non_armature_modifiers = True
+        
+        if has_armature_modifiers:
+            exportInfluence = True
+ 
+        if self.config.apply_modifiers and has_non_armature_modifiers:
+            mesh_object = mesh.to_mesh(self.config.scene, True, 'PREVIEW')
         else:
-          mesh_object = mesh.data
+            mesh_object = mesh.data
          
         osglog.log("mesh_object is " + mesh_object.name)
         
@@ -667,11 +657,13 @@ class Export(object):
                 break
 
         geometries = []
-        converter = BlenderObjectToGeometry(object = mesh, config = self.config, 
+        converter = BlenderObjectToGeometry(object = mesh, mesh = mesh_object,
+                                            config = self.config, 
                                             uniq_stateset = self.uniq_stateset)
         sources_geometries = converter.convert()
 
-        if exportInfluence is True and hasVertexGroup is True:
+        osglog.log("vertex groups %s %s " % (exportInfluence, hasVertexGroup))
+        if exportInfluence and hasVertexGroup:
             for geom in sources_geometries:
                 rig_geom = RigGeometry()
                 rig_geom.sourcegeometry = geom
@@ -742,10 +734,12 @@ class BlenderObjectToGeometry(object):
         self.uniq_stateset = kwargs.get("uniq_stateset", {})
         self.uniq_anims = kwargs.get("uniq_anims", {})
         self.geom_type = Geometry
-        if self.config.apply_modifiers is False:
-          self.mesh = self.object.data
-        else:
-          self.mesh = self.object.to_mesh(self.config.scene, True, 'PREVIEW')
+        self.mesh = kwargs.get("mesh", None)
+        
+        #if self.config.apply_modifiers is False:
+        #  self.mesh = self.object.data
+        #else:
+        #  self.mesh = self.object.to_mesh(self.config.scene, True, 'PREVIEW')
         self.material_animations = {}
 
     def createTexture2D(self, mtex):
@@ -1093,35 +1087,34 @@ class BlenderObjectToGeometry(object):
         #        vg.vertexes = vertex_weight_list
         #        vgroups[i] = vg
 
-        blenObject = None
-        for obj in bpy.context.blend_data.objects:
-            if obj.data == mesh:
-                blenObject = obj
+        #blenObject = None
+        #for obj in bpy.context.blend_data.objects:
+        #    if obj.data == mesh:
+        #        blenObject = obj
 
-        if blenObject:
-            for vertex_group in blenObject.vertex_groups:
-                osglog.log("Look at vertex group:" + repr(vertex_group))
-                verts = {}
-                for idx in range(0, len(mesh.vertices)):
-                    weight = 0
+        for vertex_group in self.object.vertex_groups:
+            osglog.log("Look at vertex group:" + repr(vertex_group))
+            verts = {}
+            for idx in range(0, len(mesh.vertices)):
+                weight = 0
 
-                    for vg in mesh.vertices[idx].groups:
-                        if vg.group == vertex_group.index:
-                            weight = vg.weight
-                    if weight >= 0.001:
-                        if idx in original_vertexes2optimized.keys():
-                            for v in original_vertexes2optimized[idx]:
-                                if not v in verts.keys():
-                                    verts[v] = weight
-                        
-                if len(verts) == 0:
-                    osglog.log( "WARNING group has no vertexes, skip it, if really unsued you should clean it")
-                else:
-                    vertex_weight_list = [ list(e) for e in verts.items() ]
-                    vg = VertexGroup()
-                    vg.targetGroupName = vertex_group.name
-                    vg.vertexes = vertex_weight_list
-                    vgroups[vertex_group.name] = vg
+                for vg in mesh.vertices[idx].groups:
+                    if vg.group == vertex_group.index:
+                        weight = vg.weight
+                if weight >= 0.001:
+                    if idx in original_vertexes2optimized.keys():
+                        for v in original_vertexes2optimized[idx]:
+                            if not v in verts.keys():
+                                verts[v] = weight
+                    
+            if len(verts) == 0:
+                osglog.log( "WARNING group has no vertexes, skip it, if really unsued you should clean it")
+            else:
+                vertex_weight_list = [ list(e) for e in verts.items() ]
+                vg = VertexGroup()
+                vg.targetGroupName = vertex_group.name
+                vg.vertexes = vertex_weight_list
+                vgroups[vertex_group.name] = vg
 
         if (len(vgroups)):
             osglog.log("vertex groups %s" % str(len(vgroups)))

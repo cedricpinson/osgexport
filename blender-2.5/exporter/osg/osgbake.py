@@ -23,59 +23,13 @@ from bpy.types import Operator
 from . import osglog
 
 def pose_frame_info(obj):
-    from mathutils import Matrix
-
     info = {}
-
-    pose = obj.pose
-
-    pose_items = pose.bones.items()
-
-    for name, pbone in pose_items:
-        binfo = {}
-        bone = pbone.bone
-
-        binfo["parent"] = getattr(bone.parent, "name", None)
-        binfo["bone"] = bone
-        binfo["pbone"] = pbone
-        binfo["matrix_local"] = bone.matrix_local.copy()
-        try:
-            binfo["matrix_local_inv"] = binfo["matrix_local"].inverted()
-        except:
-            binfo["matrix_local_inv"] = Matrix()
-
-        binfo["matrix"] = bone.matrix.copy()
-        binfo["matrix_pose"] = pbone.matrix.copy()
-        try:
-            binfo["matrix_pose_inv"] = binfo["matrix_pose"].inverted()
-        except:
-            binfo["matrix_pose_inv"] = Matrix()
-
-        info[name] = binfo
-
-    for name, pbone in pose_items:
-        binfo = info[name]
-        binfo_parent = binfo.get("parent", None)
-        if binfo_parent:
-            binfo_parent = info[binfo_parent]
-
-        matrix = binfo["matrix_pose"]
-        rest_matrix = binfo["matrix_local"]
-
-        if binfo_parent:
-            matrix = binfo_parent["matrix_pose_inv"] * matrix
-            rest_matrix = binfo_parent["matrix_local_inv"] * rest_matrix
-
-        binfo["matrix_key"] = rest_matrix.inverted() * matrix
-
+    for name, pbone in  obj.pose.bones.items():
+        info[name] = pbone.matrix_basis.copy()
     return info
-
 
 def obj_frame_info(obj):
-    info = {}
-    # parent = obj.parent
-    info["matrix_key"] = obj.matrix_local.copy()
-    return info
+    return obj.matrix_local.copy()
 
 def bakedTransforms(scene,
          obj,
@@ -91,6 +45,10 @@ def bakedTransforms(scene,
     obj_info = []
 
     frame_range = range(frame_start, frame_end + 1, step)
+    
+    if obj.type == "ARMATURE":
+        original_pose_position = armature.pose_position
+        obj.data.pose_position = 'POSE'
 
     # -------------------------------------------------------------------------
     # Collect transformations
@@ -105,6 +63,9 @@ def bakedTransforms(scene,
             obj_info.append(obj_frame_info(obj))
             
     scene.frame_set(frame_back)
+    
+    if obj.type == "ARMATURE":
+        obj.data.pose_position = 'REST'
             
     return (frame_range, obj_info, pose_info)
     
@@ -115,30 +76,30 @@ def action_fcurve_ensure(action, data_path, array_index):
 
     return action.fcurves.new(data_path=data_path, index=array_index)
     
-def make_fcurves(action, rotation_mode):
+def make_fcurves(action, rotation_mode, prefix=""):
     fc = {}
-    fc["location_x"] = action.fcurves.new("location", 0, "Location")
-    fc["location_y"] = action.fcurves.new("location", 1, "Location")
-    fc["location_z"] = action.fcurves.new("location", 2, "Location")
+    fc["location_x"] = action.fcurves.new(prefix+"location", 0, "Location")
+    fc["location_y"] = action.fcurves.new(prefix+"location", 1, "Location")
+    fc["location_z"] = action.fcurves.new(prefix+"location", 2, "Location")
     
     if rotation_mode == 'QUATERNION':
-        fc["rot_x"] = action.fcurves.new("rotation_quaternion", 0, "Rotation")
-        fc["rot_y"] = action.fcurves.new("rotation_quaternion", 1, "Rotation")
-        fc["rot_z"] = action.fcurves.new("rotation_quaternion", 2, "Rotation")
-        fc["rot_w"] = action.fcurves.new("rotation_quaternion", 3, "Rotation")
+        fc["rot_w"] = action.fcurves.new(prefix+"rotation_quaternion", 0, "Rotation")
+        fc["rot_x"] = action.fcurves.new(prefix+"rotation_quaternion", 1, "Rotation")
+        fc["rot_y"] = action.fcurves.new(prefix+"rotation_quaternion", 2, "Rotation")
+        fc["rot_z"] = action.fcurves.new(prefix+"rotation_quaternion", 3, "Rotation")
     elif rotation_mode == 'AXIS_ANGLE':
-        fc["rot_x"] = action.fcurves.new("rotation_axis_angle", 0, "Rotation")
-        fc["rot_y"] = action.fcurves.new("rotation_axis_angle", 1, "Rotation")
-        fc["rot_z"] = action.fcurves.new("rotation_axis_angle", 2, "Rotation")
-        fc["rot_w"] = action.fcurves.new("rotation_axis_angle", 3, "Rotation")
+        fc["rot_w"] = action.fcurves.new(prefix+"rotation_axis_angle", 0, "Rotation")
+        fc["rot_x"] = action.fcurves.new(prefix+"rotation_axis_angle", 1, "Rotation")
+        fc["rot_y"] = action.fcurves.new(prefix+"rotation_axis_angle", 2, "Rotation")
+        fc["rot_z"] = action.fcurves.new(prefix+"rotation_axis_angle", 3, "Rotation")
     else:  # euler, XYZ, ZXY etc
-        fc["rot_x"] = action.fcurves.new("rotation_euler", 0, "Rotation")
-        fc["rot_y"] = action.fcurves.new("rotation_euler", 1, "Rotation")
-        fc["rot_z"] = action.fcurves.new("rotation_euler", 2, "Rotation")
+        fc["rot_x"] = action.fcurves.new(prefix+"rotation_euler", 0, "Rotation")
+        fc["rot_y"] = action.fcurves.new(prefix+"rotation_euler", 1, "Rotation")
+        fc["rot_z"] = action.fcurves.new(prefix+"rotation_euler", 2, "Rotation")
     
-    fc["scale_x"] = action.fcurves.new("scale", 0, "Scale")
-    fc["scale_y"] = action.fcurves.new("scale", 1, "Scale")
-    fc["scale_z"] = action.fcurves.new("scale", 2, "Scale")
+    fc["scale_x"] = action.fcurves.new(prefix+"scale", 0, "Scale")
+    fc["scale_y"] = action.fcurves.new(prefix+"scale", 1, "Scale")
+    fc["scale_z"] = action.fcurves.new(prefix+"scale", 2, "Scale")
     
     return fc
     
@@ -151,16 +112,16 @@ def set_keys(fc, f, matrix, rotation_mode):
 
     if rotation_mode == 'QUATERNION':
         quat = matrix.to_quaternion()
-        fc["rot_x"].keyframe_points.insert(f, quat[0], opt)
-        fc["rot_y"].keyframe_points.insert(f, quat[1], opt)
-        fc["rot_z"].keyframe_points.insert(f, quat[2], opt)
-        fc["rot_w"].keyframe_points.insert(f, quat[3], opt)
+        fc["rot_w"].keyframe_points.insert(f, quat[0], opt)
+        fc["rot_x"].keyframe_points.insert(f, quat[1], opt)
+        fc["rot_y"].keyframe_points.insert(f, quat[2], opt)
+        fc["rot_z"].keyframe_points.insert(f, quat[3], opt)
     elif rotation_mode == 'AXIS_ANGLE':
         aa = matrix.to_quaternion().to_axis_angle()
-        fc["rot_x"].keyframe_points.insert(f, aa[0], opt)
-        fc["rot_y"].keyframe_points.insert(f, aa[1], opt)
-        fc["rot_z"].keyframe_points.insert(f, aa[2], opt)
-        fc["rot_w"].keyframe_points.insert(f, aa[3], opt)
+        fc["rot_w"].keyframe_points.insert(f, aa[0], opt)
+        fc["rot_x"].keyframe_points.insert(f, aa[1], opt)
+        fc["rot_y"].keyframe_points.insert(f, aa[2], opt)
+        fc["rot_z"].keyframe_points.insert(f, aa[3], opt)
     else:  # euler, XYZ, ZXY etc
         eu = matrix.to_euler(rotation_mode)
         fc["rot_x"].keyframe_points.insert(f, eu[0], opt)
@@ -220,33 +181,34 @@ def bake(scene,
         if only_selected and not pbone.bone.select:
             continue
             
-        fc = make_fcurves(pbone)
-
         if do_constraint_clear:
             while pbone.constraints:
                 pbone.constraints.remove(pbone.constraints[0])
+            
+        fc = make_fcurves(action, pbone.rotation_mode, "pose.bones[\"%s\"]." % (pbone.name))
 
         for f in frame_range:
-            matrix = pose_info[(f - frame_start) // step][name]["matrix_key"]
+            matrix = pose_info[(f - frame_start) // step][name]
+            set_keys(fc, f, matrix, pbone.rotation_mode)
 
             # pbone.location = matrix.to_translation()
             # pbone.rotation_quaternion = matrix.to_quaternion()
-            pbone.matrix_basis = matrix
+            #pbone.matrix_basis = matrix
+            #
+            #pbone.keyframe_insert("location", -1, f, name)
+            #
+            #rotation_mode = pbone.rotation_mode
+            #
+            #if rotation_mode == 'QUATERNION':
+            #    pbone.keyframe_insert("rotation_quaternion", -1, f, name)
+            #elif rotation_mode == 'AXIS_ANGLE':
+            #    pbone.keyframe_insert("rotation_axis_angle", -1, f, name)
+            #else:  # euler, XYZ, ZXY etc
+            #    pbone.keyframe_insert("rotation_euler", -1, f, name)
+            #
+            #pbone.keyframe_insert("scale", -1, f, name)
 
-            pbone.keyframe_insert("location", -1, f, name)
-
-            rotation_mode = pbone.rotation_mode
-
-            if rotation_mode == 'QUATERNION':
-                pbone.keyframe_insert("rotation_quaternion", -1, f, name)
-            elif rotation_mode == 'AXIS_ANGLE':
-                pbone.keyframe_insert("rotation_axis_angle", -1, f, name)
-            else:  # euler, XYZ, ZXY etc
-                pbone.keyframe_insert("rotation_euler", -1, f, name)
-
-            pbone.keyframe_insert("scale", -1, f, name)
-
-    # object. TODO. multiple objects
+    # object.
     if do_object:
         if do_constraint_clear:
             while obj.constraints:
@@ -255,7 +217,7 @@ def bake(scene,
         fc = make_fcurves(action, obj.rotation_mode)
 
         for f in frame_range:
-            matrix = obj_info[(f - frame_start) // step]["matrix_key"]
+            matrix = obj_info[(f - frame_start) // step]
             set_keys(fc, f, matrix, obj.rotation_mode)
             
     # Eliminate duplicate keyframe entries.
