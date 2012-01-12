@@ -515,6 +515,33 @@ class Export(object):
         
         self.postProcess()
 
+    # OSG requires that rig geometry be a child of the skeleton,
+    # but Blender does not.  Move any meshes that are modified by
+    # an armature to be under the armature.
+    def reparentRiggedGeodes(self, item, parent):
+        if      isinstance(item, MatrixTransform) \
+                and len(item.children) == 1 \
+                and isinstance(item.children[0], Geode) \
+                and not isinstance(parent, Skeleton):
+            geode = item.children[0]
+            osglog.log("geode {}".format(geode.name))
+            if geode.armature_modifier != None:
+                parent.children.remove(item)
+                
+                arm = self.uniq_objects[item.children[0].armature_modifier.object]
+                for (k, v) in self.uniq_objects.items():
+                    if v == item:
+                        meshobj = k
+                
+                item.matrix = getDeltaMatrixFromMatrix(item.children[0].armature_modifier.object.matrix_world, meshobj.matrix_world)
+                
+                arm.children.append(item)
+                osglog.log("NOTICE: Reparenting {} to {}".format(geode.name, arm.name))
+        if hasattr(item, "children"):
+            for c in list(item.children):
+                self.reparentRiggedGeodes(c, item)
+        
+
     def postProcess(self):
         # set only one root to the scene
         self.root = None
@@ -525,6 +552,8 @@ class Export(object):
             animation_manager = BasicAnimationManager()
             animation_manager.animations = self.animations
             self.root.update_callbacks.append(animation_manager)
+            
+        self.reparentRiggedGeodes(self.root, None)
 
         # index light num for opengl use and enable them in a stateset
         if len(self.lights) > 0:
@@ -548,7 +577,7 @@ class Export(object):
             light_num = 0
             for name, ls in self.lights.items():
                 ls.light.light_num = light_num
-                key = "GL_LIGHT%s" % light_num
+                key = "GL_LIGHT{}".format(light_num)
                 st.modes[key] = "ON"
                 light_num += 1
 
@@ -577,7 +606,7 @@ class Export(object):
                 if not os.path.exists(nativePath):
                     os.mkdir(nativePath)
             except:
-                osglog.log("can't create textures directory %s" % nativePath)
+                osglog.log("can't create textures directory {}".format(nativePath))
                 raise
                 
         copied_images = []
@@ -596,10 +625,10 @@ class Export(object):
                                 # cleaned up
                                 copied_images.append(filename)
                             i.filepath_raw = filename
-                            osglog.log("packed file, save it to %s" %(os.path.abspath(bpy.path.abspath(filename))))
+                            osglog.log("packed file, save it to {}".format(os.path.abspath(bpy.path.abspath(filename))))
                             i.save()
                         except:
-                            osglog.log("failed to save file %s to %s" %(imagename, nativePath))
+                            osglog.log("failed to save file {} to {}".format(imagename, nativePath))
                         i.filepath_raw = original_filepath
                     else:
                         filepath = os.path.abspath(bpy.path.abspath(i.filepath))
@@ -610,11 +639,11 @@ class Export(object):
                                 # cleaned up
                                 copied_images.append(texturePath)
                             shutil.copy(filepath, texturePath)
-                            osglog.log("copy file %s to %s" %(filepath, texturePath))
+                            osglog.log("copy file {} to {}".format(filepath, texturePath))
                         else:
-                            osglog.log("file %s not available" %(filepath))
+                            osglog.log("file {} not available".format(filepath))
                 except Exception  as e:
-                    osglog.log("error while trying to copy file %s to %s: %s" %(imagename, nativePath, str(e)))
+                    osglog.log("error while trying to copy file {} to {}: {}".format(imagename, nativePath, str(e)))
 
         filetoview = self.config.getFullName("osg")
         if self.config.osgconv_to_ive:
@@ -655,16 +684,16 @@ class Export(object):
         if mesh.parent and mesh.parent.type == "ARMATURE":
             exportInfluence = True
         
-        has_armature_modifiers = False
+        armature_modifier = None
         has_non_armature_modifiers = False
         
         for mod in mesh.modifiers:
             if mod.type == "ARMATURE":
-                has_armature_modifiers = True
+                armature_modifier = mod
             else:
                 has_non_armature_modifiers = True
         
-        if has_armature_modifiers:
+        if armature_modifier != None:
             exportInfluence = True
  
         if self.config.apply_modifiers and has_non_armature_modifiers:
@@ -703,6 +732,7 @@ class Export(object):
             
         geode = Geode()
         geode.setName(mesh_object.name)
+        geode.armature_modifier = armature_modifier
 
         if len(geometries) > 0:
             for geom in geometries:
@@ -1427,6 +1457,7 @@ def getChannel(target, action, fps, data_path, array_indexes):
     
     for time in times:
         realtime = (time) / fps
+        osglog.log("time {} {} {}".format(time, realtime, fps))
 
         # realtime = time
         if realtime > duration:

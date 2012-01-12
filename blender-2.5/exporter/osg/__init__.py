@@ -234,7 +234,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.config.indent = self.INDENT
         self.config.only_visible = self.ONLY_VISIBLE
         self.config.float_precision =  self.FLOATPRE
-        self.config.fps = self.ANIMFPS
+        self.config.anim_fps = self.ANIMFPS
         self.config.export_anim = self.EXPORTANIM
         self.config.apply_modifiers = self.APPLYMODIFIERS
         self.config.log = self.LOG
