@@ -47,7 +47,7 @@ def bakedTransforms(scene,
     frame_range = range(frame_start, frame_end + 1, step)
     
     if obj.type == "ARMATURE":
-        original_pose_position = armature.pose_position
+        original_pose_position = obj.data.pose_position
         obj.data.pose_position = 'POSE'
 
     # -------------------------------------------------------------------------
