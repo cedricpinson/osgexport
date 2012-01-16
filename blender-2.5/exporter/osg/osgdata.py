@@ -1366,19 +1366,25 @@ class BlenderAnimationToAnimation(object):
         if self.action != None:
             osglog.log("found action %s, prefix is %s" % (self.action.name, prefix))
             
-            # XXX sharing animation channels isn't possible with the osg 2.8 file format reader
-            # so we have to export a separate copy of the action for every object it applies to.
+            # Sharing animation channels isn't possible with the osg 2.8 file format reader
+            # so we have to export a separate channel for every object it applies to.
             # Keeping the following code there for future reference, though.
-            #if action in self.uniq_anims:
-            #    return self.uniq_anims[action]
-            #anim = self.createAnimationFromAction(action.name, action)
+            #if self.action in self.uniq_anims:
+            #    return self.uniq_anims[self.action]
             
             if target == None:
                 target = self.object.name
             
             anim = self.createAnimationFromAction(target, self.action_name, self.action, prefix)
-            #self.uniq_anims[self.action] = anim
-            return anim
+            osglog.log("uniq_anims ".format(self.uniq_anims))
+            
+            if self.action in self.uniq_anims:
+                add_to_anim = self.uniq_anims[self.action]
+                add_to_anim.channels = add_to_anim.channels + anim.channels
+                return None
+            else:
+                self.uniq_anims[self.action] = anim
+                return anim
         else:
             return None
 
