@@ -50,8 +50,12 @@ Matrix     = mathutils.Matrix
 Euler      = mathutils.Euler
 
 def createImageFilename(texturePath, image):
-    ext = bpy.path.basename(image.filepath).split(".")
-    name = ext[0]
+    fn = bpy.path.basename(image.filepath)
+    i = fn.rfind(".")
+    if i != -1:
+        name = fn[0:i]
+    else:
+        name = fn
     # [BMP, IRIS, PNG, JPEG, TARGA, TARGA_RAW, AVI_JPEG, AVI_RAW, FRAMESERVER]
     #print("format " + image.file_format)
     if image.file_format == 'PNG':
@@ -427,22 +431,7 @@ class Export(object):
             bone = findBoneInHierarchy(rootItem, obj.parent_bone)
             if bone is None:
                 osglog.log(str("WARNING " + obj.parent_bone + " not found"))
-            else:
-                # import bpy
-                # import mathutils
-
-                # arm_ob = bpy.data.objects['Armature']
-                # cube_ob = bpy.data.objects['Cube']
-                # bone = arm_ob.data.bones['Bone']
-                # pose_bone = arm_ob.pose.bones['Bone']
-
-                # bone_matrix = mathutils.Matrix.Translation(pose_bone.matrix[1].to_3d()*bone.length) * pose_bone.matrix
-                # cube_matrix_world = arm_ob.matrix_world*bone_matrix*cube_ob.matrix_parent_inverse*cube_ob.matrix_basis
-
-                # print("Compare:")
-                # print(cube_matrix_world)
-                # print(cube_ob.matrix_world)
-
+            else:               
                 armature = obj.parent.data
                 original_pose_position = armature.pose_position
                 armature.pose_position = 'REST'
@@ -612,7 +601,7 @@ class Export(object):
         copied_images = []
         for i in self.images:
             if i is not None:
-                imagename = bpy.path.basename(i.filepath)
+                imagename = bpy.path.basename(createImageFilename("", i))
                 try:
                     if i.packed_file:
                         original_filepath = i.filepath_raw
@@ -681,8 +670,8 @@ class Export(object):
         # check if the mesh has a armature modifier
         # if no we don't write influence
         exportInfluence = False
-        if mesh.parent and mesh.parent.type == "ARMATURE":
-            exportInfluence = True
+        #if mesh.parent and mesh.parent.type == "ARMATURE":
+        #    exportInfluence = True
         
         armature_modifier = None
         has_non_armature_modifiers = False
