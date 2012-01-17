@@ -17,13 +17,10 @@
 # ##### END GPL LICENSE BLOCK #####
 
 import imp
-import osg.osgbake
 import sys
 import os
 import bpy
 import pickle
-
-imp.reload(osgbake)
 
 bl_info = {
     "name": "Export OSG format (.osg)",
@@ -64,7 +61,7 @@ def OpenSceneGraphExport(config=None):
 def main():
     import sys       # to get command line args
     import argparse  # to parse options for us and print a nice help message
-
+    
     # get the args passed to blender after "--", all of which are ignored by
     # blender so scripts may receive their own arguments
     argv = sys.argv
@@ -83,18 +80,21 @@ def main():
 
     # Example utility, add some text and renders or saves it (with options)
     # Possible types are: string, int, long, choice, float and complex.
-    parser.add_argument("-s", "--save", dest="save_path", metavar='FILE|PATH', help="Save the generated file to the specified path")
+    parser.add_argument("-o", "--output", dest="save_path", metavar='FILE|PATH', help="Save the generated file to the specified path")
     parser.add_argument("-a", "--enable-animation", dest="enable_animation", action="store_const", const=True, default=False, help="Enable saving of animations")
     parser.add_argument("-m", "--apply-modifiers", dest="apply_modifiers", action="store_const", const=True, default=False, help="Apply modifiers before exporting")
 
     args = parser.parse_args(argv)  # In this example we wont use the args
 
-    config = osgconf.Config({'FILENAME': args.save_path,
-                             'EXPORTANIM': args.enable_animation,
-                             'APPLY_MODIFIERS': args.apply_modifiers,
-                             })
-    OpenSceneGraphExport(config)
-    
+    if args.save_path == None:
+        print("\n*** No output filename specified (use -o)")
+    else:
+        config = osgconf.Config()
+        config.initFilePaths(args.save_path)
+        config.export_anim = args.enable_animation
+        config.apply_modifiers = args.apply_modifiers
+        config.scene = bpy.context.scene
+        OpenSceneGraphExport(config)
 
 if __name__ == "__main__":
     main()
@@ -121,7 +121,7 @@ try:
     print("Use old import path - your blender is not the latest version")
 except:
     from bpy_extras.io_utils import ExportHelper
-    print("Use new import path")
+    #print("Use new import path")
 
 
 class OSGGUI(bpy.types.Operator, ExportHelper):
