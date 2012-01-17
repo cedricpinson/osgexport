@@ -423,7 +423,7 @@ class Export(object):
             self.uniq_objects[obj] = item
         
         if anims != None:
-            self.animations += anims
+            self.animations += [a for a in anims if a != None]
 
         if rootItem is None:
             rootItem = item
@@ -1382,7 +1382,7 @@ class BlenderAnimationToAnimation(object):
             if self.action in self.uniq_anims:
                 add_to_anim = self.uniq_anims[self.action]
                 add_to_anim.channels = add_to_anim.channels + anim.channels
-                return None
+                return add_to_anim
             else:
                 self.uniq_anims[self.action] = anim
                 return anim
