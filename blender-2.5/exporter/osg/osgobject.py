@@ -1253,10 +1253,10 @@ class Bone(MatrixTransform):
     def getMatrixInArmatureSpace(self):
         return self.bone.matrix_local
 
-    def collect(self, list):
-        list.append(self)
+    def collect(self, d):
+        d[self.name] = self
         for boneChild in self.children:
-            boneChild.collect(list)
+            boneChild.collect(d)
 
     def className(self):
         return "Bone"
@@ -1298,16 +1298,16 @@ class Bone(MatrixTransform):
 class Skeleton(MatrixTransform):
     def __init__(self, name="", matrix=None):
         MatrixTransform.__init__(self)
-        self.boneList = []
+        self.boneDict = {}
         self.matrix = matrix
         self.setName(name)
         self.update_callbacks = []
         self.update_callbacks.append(UpdateSkeleton())
 
     def collectBones(self):
-        self.boneList = []
+        self.boneDict = {}
         for bone in self.children:
-            bone.collect(self.boneList)
+            bone.collect(self.boneDict)
 
     def getMatrixInArmatureSpace(self):
         return self.matrix
