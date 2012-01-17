@@ -64,6 +64,7 @@ class Config(object):
         self.defaultattr("viewer_path", "osgviewer.exe")
         self.defaultattr("export_all_scenes", False)
         self.defaultattr("osgconv_cleanup", False)
+        self.defaultattr("zero_translations", False)
         self.defaultattr("history", {})
         
         self.filepath = ""

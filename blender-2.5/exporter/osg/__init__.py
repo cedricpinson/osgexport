@@ -153,6 +153,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     VIEWER_PATH = StringProperty(name="viewer path", subtype="FILENAME", default="")
     TEXTURE_PREFIX = StringProperty(name="texture prefix", default="")
     EXPORT_ALL_SCENES = BoolProperty(name="Export all scenes", default=False)
+    ZERO_TRANSLATIONS = BoolProperty(name="Zero world translations", default=False)
    
     def draw(self, context):
         layout = self.layout
@@ -166,6 +167,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         layout.row(align=True).prop(self, "APPLYMODIFIERS")
         layout.row(align=True).prop(self, "BAKE_CONSTRAINTS")
         layout.row(align=True).prop(self, "LOG")
+        layout.row(align=True).prop(self, "ZERO_TRANSLATIONS")
         layout.row(align=True).prop(self, "ANIMFPS")
         layout.row(align=True).prop(self, "BAKE_FRAME_STEP")
         layout.row(align=True).prop(self, "FLOATPRE")
@@ -201,6 +203,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         
         self.EXPORTANIM = self.config.export_anim
         self.APPLYMODIFIERS = self.config.apply_modifiers
+        self.ZERO_TRANSLATIONS = self.config.zero_translations
         self.LOG = self.config.log
         self.BAKE_CONSTRAINTS = self.config.bake_constraints
         self.BAKE_FRAME_STEP = self.config.bake_frame_step
@@ -238,6 +241,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.config.export_anim = self.EXPORTANIM
         self.config.apply_modifiers = self.APPLYMODIFIERS
         self.config.log = self.LOG
+        self.config.zero_translations = self.ZERO_TRANSLATIONS
         self.config.bake_constraints = self.BAKE_CONSTRAINTS
         self.config.bake_frame_step = self.BAKE_FRAME_STEP
         self.config.osgconv_to_ive = self.OSGCONV_TO_IVE

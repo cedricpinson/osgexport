@@ -387,17 +387,25 @@ class Export(object):
                 item = self.createSkeleton(obj)
                 anims = createAnimationsSkeletonObject(item, obj, self.config, self.uniq_anims)
 
-            elif obj.type == "MESH":
+            elif obj.type == "MESH" or obj.type == "EMPTY":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
                 # matrix for our use. Not if an armature we force it to be in rest position to compute
                 # matrix in the good space
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
                 item = MatrixTransform()
                 item.setName(obj.name)
-                item.matrix = matrix
-                objectItem = self.createGeodeFromObject(obj)
+                
+                item.matrix = matrix.copy()
+                if self.config.zero_translations and parent == None:
+                    item.matrix[3].xyz = Vector()
+                
                 anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
-                item.children.append(objectItem)
+                
+                if obj.type == "MESH":
+                    objectItem = self.createGeodeFromObject(obj)
+                    item.children.append(objectItem)
+                else:
+                    self.evaluateGroup(obj, item, rootItem)
 
             elif obj.type == "LAMP":
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
@@ -408,13 +416,6 @@ class Export(object):
                 anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
                 item.children.append(lightItem)
 
-            elif obj.type == "EMPTY":
-                matrix = getDeltaMatrixFrom(obj.parent, obj)
-                item = MatrixTransform()
-                item.setName(obj.name)
-                item.matrix = matrix
-                anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
-                self.evaluateGroup(obj, item, rootItem)
             else:
                 osglog.log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
                 return None
