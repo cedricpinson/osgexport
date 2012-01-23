@@ -19,7 +19,6 @@
 # <pep8-80 compliant>
 
 import bpy
-from bpy.types import Operator
 
 
 def pose_frame_info(obj):
@@ -199,7 +198,7 @@ def bake(frame_start,
 from bpy.props import IntProperty, BoolProperty, EnumProperty
 
 
-class BakeAction(Operator):
+class BakeAction(bpy.types.Operator):
     '''Bake animation to an Action'''
     bl_idname = "osg.bake"
     bl_label = "Bake Action"
