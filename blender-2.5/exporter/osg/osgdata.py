@@ -28,6 +28,7 @@ import sys
 import math
 import os
 import shutil
+import subprocess
 from sys import exit
 
 import osg
@@ -35,7 +36,7 @@ from . import osglog
 from . import osgconf
 from .osgconf import DEBUG
 from .osgconf import debug
-#from . import osgbake
+from . import osgbake
 # from osgbake import BakeIpoForMaterial, BakeIpoForObject, BakeAction
 # from osglog import log
 from . import osgobject
@@ -49,8 +50,12 @@ Matrix     = mathutils.Matrix
 Euler      = mathutils.Euler
 
 def createImageFilename(texturePath, image):
-    ext = bpy.path.basename(image.filepath).split(".")
-    name = ext[0]
+    fn = bpy.path.basename(image.filepath)
+    i = fn.rfind(".")
+    if i != -1:
+        name = fn[0:i]
+    else:
+        name = fn
     # [BMP, IRIS, PNG, JPEG, TARGA, TARGA_RAW, AVI_JPEG, AVI_RAW, FRAMESERVER]
     #print("format " + image.file_format)
     if image.file_format == 'PNG':
@@ -67,11 +72,13 @@ def createImageFilename(texturePath, image):
         ext = "unknown"
     name = name + "." +ext
     print("create Image Filename " + name)
+    if texturePath != "" and not texturePath.endswith("/"):
+        texturePath = texturePath + "/"
     return texturePath + name
 
 def getImageFilesFromStateSet(stateset):
     list = []
-    if DEBUG: debug("stateset %s" % str(stateset))
+    if DEBUG: osglog.log("stateset %s" % str(stateset))
     if stateset is not None and len(stateset.texture_attributes) > 0:
         for unit, attributes in stateset.texture_attributes.items():
             for a in attributes:
@@ -104,9 +111,9 @@ def getDeltaMatrixFromMatrix(parent, child):
         bi.invert()
         return bi*child
 
-def getChildrenOf(object):
+def getChildrenOf(scene, object):
     children = []
-    for obj in bpy.context.scene.objects:
+    for obj in scene.objects:
         if obj.parent == object:
             children.append(obj)
     return children
@@ -149,13 +156,13 @@ def findArmatureObjectForTrack(track):
 #    if index != -1:
 #        objname = ipo.name[index+1:]
 #        try:
-#            obj = bpy.context.scene.objects[objname]
+#            obj = self.config.scene.objects[objname]
 #            log("bake ipo %s to object %s" % (ipo.name, objname))
 #            return obj
 #        except:
 #            return None
 #
-#    for o in bpy.context.scene.objects:
+#    for o in self.config.scene.objects:
 #        if o.getIpo() == ipo:
 #            log("bake ipo %s to object %s" % (ipo.name, o.name))
 #            return o
@@ -178,106 +185,131 @@ def findArmatureObjectForTrack(track):
 #            return o
 #    return None
 
-
-# TODO
-def createAnimationsSkeletonObject(osg_object, blender_object, config, update_callback):
-    if config.export_anim is not True:
-        return None
-
-    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config)
-    anim = action2animation.createAnimation()
-    debug("animations created for object %s" % ( blender_object.name))
-    if anim:
-        update_callback.setName(osg_object.name)
-        osg_object.update_callbacks.append(update_callback)
-        osglog.log("processed animation %s" % anim.name)
-        return anim
-
-    return None
-
-
-def createAnimationsGenericObject(osg_object, blender_object, config, update_callback):
-    if config.export_anim is not True:
-        return None
-
-    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config)
-    anim = action2animation.createAnimation()
-    debug("animations created for object %s" % ( blender_object.name))
-    if anim:
-        update_callback.setName(osg_object.name)
-        osg_object.update_callbacks.append(update_callback)
-        osglog.log("processed animation %s" % anim.name)
-        return anim
-
-    return None
-
-def createUpdateMatrixTransform(obj):
-    callback = UpdateMatrixTransform()
+def createAnimationUpdate(obj, callback, rotation_mode, prefix="", zero=False):
+    has_location_keys = False
+    has_scale_keys = False
+    has_rotation_keys = False
+        
     if obj.animation_data:
         action = obj.animation_data.action
+        
         if action:
             for curve in action.fcurves:
-                if curve.data_path.endswith("location"):
-                    callback.stacked_transforms.append(StackedTranslateElement())
-                    break
-
-            for curve in action.fcurves:
-                if curve.data_path.endswith("rotation_quaternion"):
-                    callback.stacked_transforms.append(StackedQuaternionElement())
-                    break
-
-            for curve in action.fcurves:
-                if curve.data_path.endswith("rotation_euler"):
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_z', axis = Vector((0,0,1)) ))
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_y', axis = Vector((0,1,0)) ))
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_x', axis = Vector((1,0,0)) ))
-                    break
-
-            for curve in action.fcurves:
-                if curve.data_path.endswith("scale"):
-                    callback.stacked_transforms.append(StackedScaleElement())
-                    break
+                datapath = curve.data_path[len(prefix):]
+                osglog.log("curve.data_path " + curve.data_path + " " + str(curve.array_index) + " " + datapath)
+                if datapath == "location":
+                    has_location_keys = True
+                
+                if datapath.startswith("rotation"):
+                    has_rotation_keys = True
+                
+                if datapath == "scale":
+                    has_scale_keys = True
+                    
+    if not (has_location_keys or has_scale_keys or has_rotation_keys) and (len(obj.constraints) == 0):
+        return None
+    
+    if zero:
+        if has_location_keys:
+            tr = StackedTranslateElement()
+            tr.translate = Vector()
+            callback.stacked_transforms.append(tr)
+            
+            if has_rotation_keys:
+                if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
+                    rotation_keys = [StackedRotateAxisElement(name = "euler_x", axis = Vector((1,0,0)), angle = 0),
+                                     StackedRotateAxisElement(name = "euler_y", axis = Vector((0,1,0)), angle = 0),
+                                     StackedRotateAxisElement(name = "euler_z", axis = Vector((0,0,1)), angle = 0)]
+                
+                    callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[2]) - ord('X')])
+                    callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[1]) - ord('X')])
+                    callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[0]) - ord('X')])
+                
+                if rotation_mode == "QUATERNION":
+                    q = StackedQuaternionElement()
+                    q.quaternion = Quaternion()
+                    callback.stacked_transforms.append(q)
+                
+                if rotation_mode == "AXIS_ANGLE":
+                    callback.stacked_transforms.append(StackedRotateAxisElement(name = "axis_angle", 
+                                                        axis = Vector((1, 0, 0)), 
+                                                        angle = 0))
+        if has_scale_keys:
+            sc = StackedScaleElement()
+            sc.scale = Vector(obj.scale)
+            callback.stacked_transforms.append(sc)
+            
+    else:
+        tr = StackedTranslateElement()
+        tr.translate = Vector(obj.location)
+        callback.stacked_transforms.append(tr)
+        
+        if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
+            rotation_keys = [StackedRotateAxisElement(name = "euler_x", axis = Vector((1,0,0)), angle = obj.rotation_euler[0]),
+                             StackedRotateAxisElement(name = "euler_y", axis = Vector((0,1,0)), angle = obj.rotation_euler[1]),
+                             StackedRotateAxisElement(name = "euler_z", axis = Vector((0,0,1)), angle = obj.rotation_euler[2])]
+        
+            callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[2]) - ord('X')])
+            callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[1]) - ord('X')])
+            callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[0]) - ord('X')])
+            
+        if rotation_mode == "QUATERNION":
+            q = StackedQuaternionElement()
+            q.quaternion = obj.rotation_quaternion
+            callback.stacked_transforms.append(q)
+        
+        if rotation_mode == "AXIS_ANGLE":
+            callback.stacked_transforms.append(StackedRotateAxisElement(name = "axis_angle", 
+                                                axis = Vector(obj.rotation_axis_angle[0:2]), 
+                                                angle = obj.rotation_axis_angle[3]))
+        
+        sc = StackedScaleElement()
+        sc.scale = Vector(obj.scale)
+        callback.stacked_transforms.append(sc)
 
     return callback
 
-def createUpdateBone(obj):
-    callback = UpdateBone()
-    if obj.animation_data:
-        action = obj.animation_data.action
-        if action:
-            for curve in action.fcurves:
-                if curve.data_path.endswith("location"):
-                    callback.stacked_transforms.append(StackedTranslateElement())
-                    break
+def createAnimationsGenericObject(osg_object, blender_object, config, update_callback, uniq_anims):
+    if (config.export_anim is False) or (update_callback is None):
+        return None
 
-            for curve in action.fcurves:
-                if curve.data_path.endswith("rotation_quaternion"):
-                    callback.stacked_transforms.append(StackedQuaternionElement())
-                    break
+    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config, 
+                                                   uniq_anims = uniq_anims)
+    anim = action2animation.createAnimation()
+    osglog.log("animations created for object '%s'" % (blender_object.name))
+    if anim != None:
+        osglog.log("processed animation '%s'" % anim.name)
+        osg_object.update_callbacks.append(update_callback)
+    return [anim]
+    
+def createAnimationsSkeletonObject(osg_object, blender_object, config, uniq_anims):
+    osglog.log("animation_data is %s %s" % (blender_object.name, blender_object.animation_data))
+    if (config.export_anim is False) or (blender_object.animation_data == None) or (blender_object.animation_data.action == None):
+        return None
 
-            for curve in action.fcurves:
-                if curve.data_path.endswith("rotation_euler"):
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_z', axis = Vector((0,0,1)) ))
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_y', axis = Vector((0,1,0)) ))
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = 'euler_x', axis = Vector((1,0,0)) ))
-                    break
+    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config, 
+                                                   uniq_anims = uniq_anims)
+    osglog.log("animations created for object '%s'" % (blender_object.name))
+    
+    anims = []                                           
+    for (bname, bone) in osg_object.boneDict.items():
+        anim = action2animation.createAnimation(target=bname, prefix=('pose.bones["%s"].' % (bname)))
+        osglog.log("animations processed for armature %s bone %s" % (blender_object.name, bname))
 
-            for curve in action.fcurves:
-                if curve.data_path.endswith("scale"):
-                    callback.stacked_transforms.append(StackedScaleElement())
-                    break
+        if anim != None:
+            anims.append(anim)
+    
+    return anims
 
-    return callback
-
-def createAnimationsSkeletonAndSetCallback(osg_node, obj, config):
+def createAnimationsObjectAndSetCallback(osg_node, obj, config, uniq_anims):
+    return createAnimationsGenericObject(osg_node, obj, config, 
+                createAnimationUpdate(obj, UpdateMatrixTransform(name=obj.name), obj.rotation_mode), 
+                uniq_anims)
+    
+def createAnimationMaterialAndSetCallback(osg_node, obj, config, uniq_anims):
+    osglog.log("WARNING update material animation not yet supported")
     return None
-    return createAnimationsGenericObject(osg_node, obj, config, createUpdateBone(obj))
-
-def createAnimationsObjectAndSetCallback(osg_node, obj, config):
-    return createAnimationsGenericObject(osg_node, obj, config, createUpdateMatrixTransform(obj))
-
-def createAnimationMaterialAndSetCallback(osg_node, obj, config):
-    return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial())
+    #return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
 
 class Export(object):
     def __init__(self, config = None):
@@ -286,20 +318,22 @@ class Export(object):
         self.config = config
         if self.config is None:
             self.config = osgconf.Config()
-        self.rest_armatures = {}
-        self.animations = {}
+        self.rest_armatures = []
+        self.animations = []
         self.images = set()
         self.lights = {}
         self.root = None
         self.uniq_objects = {}
         self.uniq_stateset = {}
+        self.uniq_geodes = {}
+        self.uniq_anims = {}
 
     def isValidToExport(self, object):
         if object.name in self.config.exclude_objects:
             return False
         
-        if self.config.only_visible == True:
-            if object in bpy.context.visible_objects:
+        if self.config.only_visible:
+            if object.is_visible(self.config.scene):
                 return True
         else:
             return True
@@ -308,23 +342,15 @@ class Export(object):
         
     def setArmatureInRestMode(self):
         for arm in bpy.data.objects:
-            if arm.type.lower() == "Armature".lower():
-                if hasattr(arm, "pose_position"):
-                    arm.pose_position = 'REST'
-                #self.rest_armatures[arm] = arm.animation_data.action
-                #arm.animation_data.action = None
-                #for bone in arm.animation_data.bones:
-                #    bone.quat = Quaternion()
-                #    bone.loc = Vector(0,0,0)
-                #    bone.size = Vector(1,1,1)
-                #arm.getPose().update()
+            if arm.type == "ARMATURE":
+                print(arm)
+                if arm.data.pose_position == 'POSE':
+                    arm.data.pose_position = 'REST'
+                    self.rest_armatures.append(arm)
 
-    def restoreArmatureRestMode(self):
-        for arm in self.rest_armatures.keys():
-            if hasattr(arm, "pose_position"):
-                arm.pose_position = 'POSE'
-            #arm.animation_data.action = self.rest_armatures[arm]
-            #arm.getPose().update()
+    def restoreArmaturePoseMode(self):
+        for arm in self.rest_armatures:
+            arm.data.pose_position = 'POSE'
 
     def exportItemAndChildren(self, obj):
         item = self.exportChildrenRecursively(obj, None, None)
@@ -347,64 +373,57 @@ class Export(object):
     def exportChildrenRecursively(self, obj, parent, rootItem):
         if self.isValidToExport(obj) == False:
             return None
-
-        item = None
-        if list(self.uniq_objects.keys()).count(obj) > 0:
             
+        osglog.log("")
+
+        anims = []
+        item = None
+        if obj in self.uniq_objects:
             osglog.log(str("use referenced item for " + obj.name + " " + obj.type))
             item = self.uniq_objects[obj]
         else:
+            osglog.log("Type of " + obj.name + " is " + obj.type)
             if obj.type == "ARMATURE":
-                item = self.createSkeletonAndAnimations(obj)
-                # We already do this in the above function - this would give us 2 animations
-                anim = createAnimationsSkeletonAndSetCallback(item, obj, self.config)
-                if anim != None:
-                    self.animations[anim.name] = anim
+                item = self.createSkeleton(obj)
+                anims = createAnimationsSkeletonObject(item, obj, self.config, self.uniq_anims)
 
-            elif obj.type.lower() == "Mesh".lower():
+            elif obj.type == "MESH" or obj.type == "EMPTY":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
                 # matrix for our use. Not if an armature we force it to be in rest position to compute
                 # matrix in the good space
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
                 item = MatrixTransform()
                 item.setName(obj.name)
-                item.matrix = matrix
-                objectItem = self.createMesh(obj)
-
-                anim = createAnimationsObjectAndSetCallback(item, obj, self.config)
-                if anim != None:
-                    self.animations[anim.name] = anim
-
-                item.children.append(objectItem)
                 
-                # skeleton need to be refactored
+                item.matrix = matrix.copy()
+                if self.config.zero_translations and parent == None:
+                    item.matrix[3].xyz = Vector()
+                
+                anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
+                
+                if obj.type == "MESH":
+                    objectItem = self.createGeodeFromObject(obj)
+                    item.children.append(objectItem)
+                else:
+                    self.evaluateGroup(obj, item, rootItem)
 
-            elif obj.type.lower() == "Lamp".lower():
+            elif obj.type == "LAMP":
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
                 item = MatrixTransform()
                 item.setName(obj.name)
                 item.matrix = matrix
                 lightItem = self.createLight(obj)
-                anims = createAnimationsObjectAndSetCallback(item, obj, self.config)
-                if anims != None:
-                    for anim in anims: 
-                        self.animations[anim.name] = anim
+                anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
                 item.children.append(lightItem)
 
-            elif obj.type.lower() == "Empty".lower():
-                matrix = getDeltaMatrixFrom(obj.parent, obj)
-                item = MatrixTransform()
-                item.setName(obj.name)
-                item.matrix = matrix
-                anim = createAnimationsObjectAndSetCallback(item, obj, self.config)
-                if anim:
-                    self.animations[anim.name] = anim
-                self.evaluateGroup(obj, item, rootItem)
             else:
                 osglog.log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
                 return None
+            
             self.uniq_objects[obj] = item
-
+        
+        if anims != None:
+            self.animations += [a for a in anims if a != None]
 
         if rootItem is None:
             rootItem = item
@@ -413,22 +432,7 @@ class Export(object):
             bone = findBoneInHierarchy(rootItem, obj.parent_bone)
             if bone is None:
                 osglog.log(str("WARNING " + obj.parent_bone + " not found"))
-            else:
-                # import bpy
-                # import mathutils
-
-                # arm_ob = bpy.data.objects['Armature']
-                # cube_ob = bpy.data.objects['Cube']
-                # bone = arm_ob.data.bones['Bone']
-                # pose_bone = arm_ob.pose.bones['Bone']
-
-                # bone_matrix = mathutils.Matrix.Translation(pose_bone.matrix[1].to_3d()*bone.length) * pose_bone.matrix
-                # cube_matrix_world = arm_ob.matrix_world*bone_matrix*cube_ob.matrix_parent_inverse*cube_ob.matrix_basis
-
-                # print("Compare:")
-                # print(cube_matrix_world)
-                # print(cube_ob.matrix_world)
-
+            else:               
                 armature = obj.parent.data
                 original_pose_position = armature.pose_position
                 armature.pose_position = 'REST'
@@ -443,68 +447,90 @@ class Export(object):
         elif parent:
             parent.children.append(item)
 
-        children = getChildrenOf(obj)
+        children = getChildrenOf(self.config.scene, obj)
         for child in children:
             self.exportChildrenRecursively(child, item, rootItem)
         return item
 
 
-    def createSkeletonAndAnimations(self, obj):
+    def createSkeleton(self, obj):
         osglog.log("processing Armature " + obj.name)
-
-        original_pose_position = obj.data.pose_position
-        obj.data.pose_position = 'REST'
 
         roots = getRootBonesList(obj.data)
 
         matrix = getDeltaMatrixFrom(obj.parent, obj)
         skeleton = Skeleton(obj.name, matrix)
         for bone in roots:
-            b = Bone( obj, bone)
+            b = Bone(obj, bone)
             b.buildBoneChildren()
             skeleton.children.append(b)
         skeleton.collectBones()
 
         # code need to be rewritten - does not work anymore
-        if self.config.export_anim is True:
-            if hasattr(obj, "animation_data") and hasattr(obj.animation_data, "nla_tracks") and len(obj.animation_data.nla_tracks) > 0:
-                for nla_track in obj.animation_data.nla_tracks:
-                    action2animation = BlenderNLATrackToAnimation(track = nla_track, config = self.config)
-                    anim = action2animation.createAnimationFromTrack()
-                    if anim is not None:
-                        self.animations[anim.name] = anim
-
-        obj.data.pose_position = original_pose_position
-
+        #if self.config.export_anim is True:
+            #if hasattr(obj, "animation_data") and hasattr(obj.animation_data, "nla_tracks") and len(obj.animation_data.nla_tracks) > 0:
+            #    for nla_track in obj.animation_data.nla_tracks:
+            #        action2animation = BlenderNLATrackToAnimation(track = nla_track, config = self.config)
+            #        anim = action2animation.createAnimationFromTrack()
+            #        if anim is not None:
+            #            self.animations[anim.name] = anim
+        
         return skeleton
 
     def process(self):
 #        Object.resetWriter()
-        self.scene_name = bpy.context.scene.name
+        self.scene_name = self.config.scene.name
         osglog.log("current scene %s" % self.scene_name)
         if self.config.validFilename() is False:
             self.config.filename += self.scene_name
         self.config.createLogfile()
+        
         self.setArmatureInRestMode()
-        if self.config.object_selected != None:
-            o = bpy.data.objects[self.config.object_selected]
-            try:
-                bpy.context.scene.objects.active = o
-                bpy.context.scene.objects.selected = [o]
-            except ValueError:
-                osglog.log("Error, problem happens when assigning object %s to scene %s" % (o.name, bpy.context.scene.name))
-                raise
+        try:
+            if self.config.object_selected != None:
+                o = bpy.data.objects[self.config.object_selected]
+                try:
+                    self.config.scene.objects.active = o
+                    self.config.scene.objects.selected = [o]
+                except ValueError:
+                    osglog.log("Error, problem happens when assigning object %s to scene %s" % (o.name, self.config.scene.name))
+                    raise
 
-        if self.config.selected == "SELECTED_ONLY_WITH_CHILDREN":
-            for obj in bpy.context.selected_objects:
-                self.exportItemAndChildren(obj)
-        else:
-            for obj in bpy.context.scene.objects:
-                if obj.parent == None: # export root elements
-                    self.exportItemAndChildren(obj)
-
-        self.restoreArmatureRestMode()
+            for obj in self.config.scene.objects:
+                if (self.config.selected == "SELECTED_ONLY_WITH_CHILDREN" and obj.select) \
+                            or (self.config.selected == "ALL" and obj.parent == None):
+                        self.exportItemAndChildren(obj)
+        finally:
+            self.restoreArmaturePoseMode()
+        
         self.postProcess()
+
+    # OSG requires that rig geometry be a child of the skeleton,
+    # but Blender does not.  Move any meshes that are modified by
+    # an armature to be under the armature.
+    def reparentRiggedGeodes(self, item, parent):
+        if      isinstance(item, MatrixTransform) \
+                and len(item.children) == 1 \
+                and isinstance(item.children[0], Geode) \
+                and not isinstance(parent, Skeleton):
+            geode = item.children[0]
+            osglog.log("geode {}".format(geode.name))
+            if geode.armature_modifier != None:
+                parent.children.remove(item)
+                
+                arm = self.uniq_objects[item.children[0].armature_modifier.object]
+                for (k, v) in self.uniq_objects.items():
+                    if v == item:
+                        meshobj = k
+                
+                item.matrix = getDeltaMatrixFromMatrix(item.children[0].armature_modifier.object.matrix_world, meshobj.matrix_world)
+                
+                arm.children.append(item)
+                osglog.log("NOTICE: Reparenting {} to {}".format(geode.name, arm.name))
+        if hasattr(item, "children"):
+            for c in list(item.children):
+                self.reparentRiggedGeodes(c, item)
+        
 
     def postProcess(self):
         # set only one root to the scene
@@ -514,9 +540,10 @@ class Export(object):
         self.root.children = self.items
         if len(self.animations) > 0:
             animation_manager = BasicAnimationManager()
-            animation_manager.animations = self.animations.values()
+            animation_manager.animations = self.animations
             self.root.update_callbacks.append(animation_manager)
-
+            
+        self.reparentRiggedGeodes(self.root, None)
 
         # index light num for opengl use and enable them in a stateset
         if len(self.lights) > 0:
@@ -528,8 +555,8 @@ class Export(object):
             # retrieve world to global ambient
             lm = LightModel()
             lm.ambient = (0.0, 0.0, 0.0, 1.0)
-            if bpy.context.scene.world is not None:
-                amb = bpy.context.scene.world.ambient_color
+            if self.config.scene.world is not None:
+                amb = self.config.scene.world.ambient_color
                 lm.ambient = (amb[0], amb[1], amb[2], 1.0)
 
             st.attributes.append(lm)
@@ -540,7 +567,7 @@ class Export(object):
             light_num = 0
             for name, ls in self.lights.items():
                 ls.light.light_num = light_num
-                key = "GL_LIGHT%s" % light_num
+                key = "GL_LIGHT{}".format(light_num)
                 st.modes[key] = "ON"
                 light_num += 1
 
@@ -558,74 +585,116 @@ class Export(object):
 
         filename = self.config.getFullName("osg")
         osglog.log("write file to " + filename)
-        sfile = open(filename, "wb")
+        with open(filename, "wb") as sfile:
         #sfile.write(str(self.root).encode('utf-8'))
-        self.root.write(sfile)
-
-        nativePath = os.path.abspath(self.config.getFullPath())+ "/textures/"
-        blenderPath = bpy.path.relpath(nativePath)
+            self.root.write(sfile)
+        
+        nativePath = os.path.join(os.path.abspath(self.config.getFullPath()), self.config.texture_prefix)
+        #blenderPath = bpy.path.relpath(nativePath)
         if len(self.images) > 0:
             try:
                 if not os.path.exists(nativePath):
                     os.mkdir(nativePath)
             except:
-                osglog.log("can't create textures directory %s" % nativePath)
+                osglog.log("can't create textures directory {}".format(nativePath))
                 raise
                 
+        copied_images = []
         for i in self.images:
             if i is not None:
-                imagename = bpy.path.basename(i.filepath)
+                imagename = bpy.path.basename(createImageFilename("", i))
                 try:
                     if i.packed_file:
                         original_filepath = i.filepath_raw
                         try:
                             if len(imagename.split('.')) == 1:
                                 imagename += ".png"
-                            filename = blenderPath + "/"+ imagename
+                            filename = os.path.join(nativePath, imagename)
+                            if not os.path.exists(filename):
+                                # record which images that were newly copied and can be safely
+                                # cleaned up
+                                copied_images.append(filename)
                             i.filepath_raw = filename
-                            osglog.log("packed file, save it to %s" %(os.path.abspath(bpy.path.abspath(filename))))
+                            osglog.log("packed file, save it to {}".format(os.path.abspath(bpy.path.abspath(filename))))
                             i.save()
                         except:
-                            osglog.log("failed to save file %s to %s" %(imagename, nativePath))
+                            osglog.log("failed to save file {} to {}".format(imagename, nativePath))
                         i.filepath_raw = original_filepath
                     else:
                         filepath = os.path.abspath(bpy.path.abspath(i.filepath))
-                        texturePath = nativePath + imagename
+                        texturePath = os.path.join(nativePath, imagename)
                         if os.path.exists(filepath):
+                            if not os.path.exists(texturePath):
+                                # record which images that were newly copied and can be safely
+                                # cleaned up
+                                copied_images.append(texturePath)
                             shutil.copy(filepath, texturePath)
-                            osglog.log("copy file %s to %s" %(filepath, texturePath))
+                            osglog.log("copy file {} to {}".format(filepath, texturePath))
                         else:
-                            osglog.log("file %s not available" %(filepath))
-                except:
-                    osglog.log("error while trying to copy file %s to %s" %(imagename, nativePath))
+                            osglog.log("file {} not available".format(filepath))
+                except Exception  as e:
+                    osglog.log("error while trying to copy file {} to {}: {}".format(imagename, nativePath, str(e)))
 
+        filetoview = self.config.getFullName("osg")
+        if self.config.osgconv_to_ive:
+            if self.config.osgconv_embed_textures:
+                r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile", self.config.getFullName("osg"), self.config.getFullName("ive")]
+            else:
+                r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile", self.config.getFullName("osg"), self.config.getFullName("ive")]
+            try:
+                if subprocess.call(r) == 0:
+                    filetoview = self.config.getFullName("ive")
+                    if self.config.osgconv_cleanup:
+                        os.unlink(self.config.getFullName("osg"))
+                        if self.config.osgconv_embed_textures:
+                            for i in copied_images:
+                                os.unlink(i)
+            except Exception as e:
+                print("Error running " + str(r))
+                print(repr(e))
+            
+        if self.config.run_viewer:
+            r = [self.config.viewer_path, filetoview]
+            try:
+                subprocess.Popen(r)
+            except Exception as e:
+                print("Error running " + str(r))
+                print(repr(e))
 
         if self.config.log_file is not None:
             self.config.closeLogfile()
+            
 
-
-    def createMesh(self, mesh, skeleton = None):
-        if self.config.apply_modifiers is False:
-          mesh_object  = mesh.data
-        else:
-          mesh_object = mesh.to_mesh(bpy.context.scene, True, 'PREVIEW')
-
-        osglog.log("exporting mesh " + mesh.name)
-
-        geode = Geode()
-        geode.setName(mesh.name)
+    def createGeodeFromObject(self, mesh, skeleton = None):
+        osglog.log("exporting object " + mesh.name)
 
         # check if the mesh has a armature modifier
         # if no we don't write influence
         exportInfluence = False
-        if mesh.parent and mesh.parent.type.lower() is "ARMATURE".lower():
+        #if mesh.parent and mesh.parent.type == "ARMATURE":
+        #    exportInfluence = True
+        
+        armature_modifier = None
+        has_non_armature_modifiers = False
+        
+        for mod in mesh.modifiers:
+            if mod.type == "ARMATURE":
+                armature_modifier = mod
+            else:
+                has_non_armature_modifiers = True
+        
+        if armature_modifier != None:
             exportInfluence = True
-        if exportInfluence is False:
-            #print mesh.name, " Modifiers ", len(mesh.modifiers)
-            for mod in mesh.modifiers:
-                if mod.type.lower() == "ARMATURE".lower():
-                    exportInfluence = True
-                    break
+ 
+        if self.config.apply_modifiers and has_non_armature_modifiers:
+            mesh_object = mesh.to_mesh(self.config.scene, True, 'PREVIEW')
+        else:
+            mesh_object = mesh.data
+         
+        osglog.log("mesh_object is " + mesh_object.name)
+        
+        if mesh_object in self.uniq_geodes:
+            return self.uniq_geodes[mesh_object]
 
         hasVertexGroup = False
         
@@ -633,14 +702,15 @@ class Export(object):
             if len(vertex.groups) > 0:
                 hasVertexGroup = True
                 break
-            
-
 
         geometries = []
-        converter = BlenderObjectToGeometry(object = mesh, config = self.config, uniq_stateset = self.uniq_stateset)
+        converter = BlenderObjectToGeometry(object = mesh, mesh = mesh_object,
+                                            config = self.config, 
+                                            uniq_stateset = self.uniq_stateset)
         sources_geometries = converter.convert()
 
-        if exportInfluence is True and hasVertexGroup is True:
+        osglog.log("vertex groups %s %s " % (exportInfluence, hasVertexGroup))
+        if exportInfluence and hasVertexGroup:
             for geom in sources_geometries:
                 rig_geom = RigGeometry()
                 rig_geom.sourcegeometry = geom
@@ -649,12 +719,19 @@ class Export(object):
                 geometries.append(rig_geom)
         else:
             geometries = sources_geometries
+            
+        geode = Geode()
+        geode.setName(mesh_object.name)
+        geode.armature_modifier = armature_modifier
 
         if len(geometries) > 0:
             for geom in geometries:
                 geode.drawables.append(geom)
             for name in converter.material_animations.keys():
-                self.animations[name] = converter.material_animations[name]
+                self.animations.append(converter.material_animations[name])
+                
+        self.uniq_geodes[mesh_object] = geode
+                
         return geode
 
     def createLight(self, obj):
@@ -703,11 +780,14 @@ class BlenderObjectToGeometry(object):
         if not self.config:
             self.config = osgconf.Config()
         self.uniq_stateset = kwargs.get("uniq_stateset", {})
+        self.uniq_anims = kwargs.get("uniq_anims", {})
         self.geom_type = Geometry
-        if self.config.apply_modifiers is False:
-          self.mesh = self.object.data
-        else:
-          self.mesh = self.object.to_mesh(bpy.context.scene, True, 'PREVIEW')
+        self.mesh = kwargs.get("mesh", None)
+        
+        #if self.config.apply_modifiers is False:
+        #  self.mesh = self.object.data
+        #else:
+        #  self.mesh = self.object.to_mesh(self.config.scene, True, 'PREVIEW')
         self.material_animations = {}
 
     def createTexture2D(self, mtex):
@@ -723,18 +803,18 @@ class BlenderObjectToGeometry(object):
         texture.name = mtex.texture.name
 
         # reference texture relative to export path
-        filename = createImageFilename("textures/",image_object)
+        filename = createImageFilename(self.config.texture_prefix, image_object)
         texture.file = filename
         texture.source_image = image_object
         return texture
 
     def adjustUVLayerFromMaterial(self, geom, material):
         uvs = geom.uvs
-        if DEBUG: debug("geometry uvs %s" % (str(uvs)))
+        if DEBUG: osglog.log("geometry uvs %s" % (str(uvs)))
         geom.uvs = {}
 
         texture_list = material.texture_slots
-        if DEBUG: debug("texture list %s" % str(texture_list))
+        if DEBUG: osglog.log("texture list %s" % str(texture_list))
 
         # find a default channel if exist uv
         default_uv = None
@@ -749,19 +829,19 @@ class BlenderObjectToGeometry(object):
                 if len(uv_layer) > 0 and not uv_layer in uvs.keys():
                     osglog.log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (material.name, texture_list[i], uv_layer, geom.name))
                 if len(uv_layer) > 0 and uv_layer in uvs.keys():
-                    if DEBUG: debug("texture %s use uv layer %s" % (i, uv_layer))
+                    if DEBUG: osglog.log("texture %s use uv layer %s" % (i, uv_layer))
                     geom.uvs[i] = TexCoordArray()
                     geom.uvs[i].array = uvs[uv_layer].array
                     geom.uvs[i].index = i
                 elif default_uv:
-                    if DEBUG: debug("texture %s use default uv layer %s" % (i, default_uv_key))
+                    if DEBUG: osglog.log("texture %s use default uv layer %s" % (i, default_uv_key))
                     geom.uvs[i] = TexCoordArray()
                     geom.uvs[i].index = i
                     geom.uvs[i].array = default_uv.array
 
         # adjust uvs channels if no textures assigned
         if len(geom.uvs.keys()) == 0:
-            if DEBUG: debug("no texture set, adjust uvs channels, in arbitrary order")
+            if DEBUG: osglog.log("no texture set, adjust uvs channels, in arbitrary order")
             index = 0
             for k in uvs.keys():
                 uvs[k].index = index
@@ -785,7 +865,7 @@ class BlenderObjectToGeometry(object):
                 s.setName(mat_source.name)
 
                 #bpy.ops.object.select_name(name=self.object.name)
-                anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config)
+                anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config, self.uniq_anims)
                 if anim :
                     self.material_animations[anim.name] = anim
 
@@ -796,7 +876,7 @@ class BlenderObjectToGeometry(object):
                 m.diffuse = (mat_source.diffuse_color[0] * refl, mat_source.diffuse_color[1] * refl, mat_source.diffuse_color[2] * refl, mat_source.alpha)
 
                 # if alpha not 1 then we set the blending mode on
-                if DEBUG: debug("state material alpha %s" % str(mat_source.alpha))
+                if DEBUG: osglog.log("state material alpha %s" % str(mat_source.alpha))
                 if mat_source.alpha != 1.0:
                     s.modes["GL_BLEND"] = "ON"
 
@@ -812,12 +892,12 @@ class BlenderObjectToGeometry(object):
                 s.attributes.append(m)
 
                 texture_list = mat_source.texture_slots
-                if DEBUG: debug("texture list %s" % str(texture_list))
+                if DEBUG: osglog.log("texture list %s" % str(texture_list))
 
                 for i in range(0, len(texture_list)):
                     if texture_list[i] is not None:
                         t = self.createTexture2D(texture_list[i])
-                        if DEBUG: debug("texture %s %s" % (i, texture_list[i]))
+                        if DEBUG: osglog.log("texture %s %s" % (i, texture_list[i]))
                         if t is not None:
                             if not i in s.texture_attributes.keys():
                                 s.texture_attributes[i] = []
@@ -829,7 +909,7 @@ class BlenderObjectToGeometry(object):
                                 pass
                                 # happens for all generated textures
                                 #log("can't read the source image file for texture %s" % t.name)
-                if DEBUG: debug("state set %s" % str(s))
+                if DEBUG: osglog.log("state set %s" % str(s))
         return s
 
     def createGeomForMaterialIndex(self, material_index, mesh):
@@ -857,8 +937,8 @@ class BlenderObjectToGeometry(object):
                 vertexes.append(mesh.vertices[vertex])
                 f.append(index)
                 if DEBUG: fdebug.append(vertex)
-            if DEBUG: debug("true face %s" % str(fdebug))
-            if DEBUG: debug("face %s" % str(f))
+            if DEBUG: osglog.log("true face %s" % str(fdebug))
+            if DEBUG: osglog.log("face %s" % str(f))
             collected_faces.append((face,f))
 
         if (len(collected_faces) == 0):
@@ -980,7 +1060,7 @@ class BlenderObjectToGeometry(object):
         vertex_dict = {}
         for i in range(0, len(vertexes)):
             key = get_vertex_key(i)
-            if DEBUG: debug("key %s" % str(key))
+            if DEBUG: osglog.log("key %s" % str(key))
             if key in vertex_dict.keys():
                 vertex_dict[key].append(i)
             else:
@@ -992,21 +1072,21 @@ class BlenderObjectToGeometry(object):
             index = len(mapping_vertexes)
             merged_vertexes[i] = index
             mapping_vertexes.append([i])
-            if DEBUG: debug("process vertex %s" % i)
+            if DEBUG: osglog.log("process vertex %s" % i)
             vertex_indexes = vertex_dict[get_vertex_key(i)]
             for j in vertex_indexes:
                 if j <= i:
                     continue
                 if tagged_vertexes[j] is True: # avoid processing more than one time a vertex
                     continue
-                if DEBUG: debug("   vertex %s is the same" % j)
+                if DEBUG: osglog.log("   vertex %s is the same" % j)
                 merged_vertexes[j] = index
                 tagged_vertexes[j] = True
                 mapping_vertexes[index].append(j)
 
         if DEBUG:
             for i in range(0, len(mapping_vertexes)):
-                debug("vertex %s contains %s" % (str(i), str(mapping_vertexes[i])))
+                osglog.log("vertex %s contains %s" % (str(i), str(mapping_vertexes[i])))
 
         if len(mapping_vertexes) != len(vertexes):
             osglog.log("vertexes reduced from %s to %s" % (str(len(vertexes)),len(mapping_vertexes)))
@@ -1021,8 +1101,8 @@ class BlenderObjectToGeometry(object):
                 f.append(merged_vertexes[v])
                 if DEBUG: fdebug.append(vertexes[mapping_vertexes[merged_vertexes[v]][0]].index)
             faces.append(f)
-            if DEBUG: debug("new face %s" % str(f))
-            if DEBUG: debug("true face %s" % str(fdebug))
+            if DEBUG: osglog.log("new face %s" % str(f))
+            if DEBUG: osglog.log("true face %s" % str(fdebug))
             
         osglog.log("faces %s" % str(len(faces)))
 
@@ -1055,35 +1135,34 @@ class BlenderObjectToGeometry(object):
         #        vg.vertexes = vertex_weight_list
         #        vgroups[i] = vg
 
-        blenObject = None
-        for obj in bpy.context.blend_data.objects:
-            if obj.data == mesh:
-                blenObject = obj
+        #blenObject = None
+        #for obj in bpy.context.blend_data.objects:
+        #    if obj.data == mesh:
+        #        blenObject = obj
 
-        if blenObject:
-            for vertex_group in blenObject.vertex_groups:
-                osglog.log("Look at vertex group:" + repr(vertex_group))
-                verts = {}
-                for idx in range(0, len(mesh.vertices)):
-                    weight = 0
+        for vertex_group in self.object.vertex_groups:
+            #osglog.log("Look at vertex group: " + repr(vertex_group))
+            verts = {}
+            for idx in range(0, len(mesh.vertices)):
+                weight = 0
 
-                    for vg in mesh.vertices[idx].groups:
-                        if vg.group == vertex_group.index:
-                            weight = vg.weight
-                    if weight >= 0.001:
-                        if idx in original_vertexes2optimized.keys():
-                            for v in original_vertexes2optimized[idx]:
-                                if not v in verts.keys():
-                                    verts[v] = weight
-                        
-                if len(verts) == 0:
-                    osglog.log( "WARNING group has no vertexes, skip it, if really unsued you should clean it")
-                else:
-                    vertex_weight_list = [ list(e) for e in verts.items() ]
-                    vg = VertexGroup()
-                    vg.targetGroupName = vertex_group.name
-                    vg.vertexes = vertex_weight_list
-                    vgroups[vertex_group.name] = vg
+                for vg in mesh.vertices[idx].groups:
+                    if vg.group == vertex_group.index:
+                        weight = vg.weight
+                if weight >= 0.001:
+                    if idx in original_vertexes2optimized.keys():
+                        for v in original_vertexes2optimized[idx]:
+                            if not v in verts.keys():
+                                verts[v] = weight
+                    
+            if len(verts) == 0:
+                osglog.log( "WARNING group has no vertexes, skip it, if really unsued you should clean it")
+            else:
+                vertex_weight_list = [ list(e) for e in verts.items() ]
+                vg = VertexGroup()
+                vg.targetGroupName = vertex_group.name
+                vg.vertexes = vertex_weight_list
+                vgroups[vertex_group.name] = vg
 
         if (len(vgroups)):
             osglog.log("vertex groups %s" % str(len(vgroups)))
@@ -1222,10 +1301,12 @@ class BlenderAnimationToAnimation(object):
     def __init__(self, *args, **kwargs):
         self.config = kwargs["config"]
         self.object = kwargs.get("object", None)
+        self.uniq_anims = kwargs.get("uniq_anims", {})
         self.animations = None
+        self.action = None
+        self.action_name = None
 
-    def createAnimation(self):
-        action = None
+    def createAnimation(self, target=None, prefix=""):
 
         # track could be interesting, to export multi animation but we would need to be able to associate different track to an animation. Why ?
         # because track are used to compose an animation base on different action
@@ -1243,331 +1324,180 @@ class BlenderAnimationToAnimation(object):
         #     if len(nla_tracks) == 0:
         #         action = self.object.animation_data.action
 
-        # debug("create animation for %s" % self.object.name)
+        # osglog.log("create animation for %s" % self.object.name)
         # anims = []
         # if len(nla_tracks) > 0:
-        #     debug("found tracks %d" % (len(nla_tracks)))
+        #     osglog.log("found tracks %d" % (len(nla_tracks)))
         #     for nla_track in nla_tracks:
-        #         debug("found track %s" % str(nla_track))
+        #         osglog.log("found track %s" % str(nla_track))
         #         anim = self.createAnimationFromTrack(self.object.name, nla_track)
         #         anims.append(anim)
+        
+        osglog.log("Exporting animation on object " + str(self.object))
+        
+        if self.action == None:
+            need_bake = False
+            
+            if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
+                self.action_name = self.object.animation_data.action.name
+            
+            if hasattr(self.object, "constraints") and (len(self.object.constraints) > 0) and self.config.bake_constraints:
+                osglog.log("Baking constraints " + str(self.object.constraints))
+                need_bake = True
+            else:
+                if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
+                    self.action = self.object.animation_data.action
+                    for fcu in self.action.fcurves:
+                        for kf in fcu.keyframe_points:
+                            if kf.interpolation != 'LINEAR':
+                                need_bake = True
+                                
+            if need_bake:
+                self.action = osgbake.bake(self.config.scene,
+                         self.object,
+                         self.config.scene.frame_start, 
+                         self.config.scene.frame_end,
+                         self.config.bake_frame_step,
+                         False, #only_selected
+                         True,  #do_pose
+                         True,  #do_object
+                         False, #do_constraint_clear
+                         False) #to_quat
 
-        if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
-            action = self.object.animation_data.action
+        if self.action != None:
+            osglog.log("found action %s, prefix is %s" % (self.action.name, prefix))
+            
+            # Sharing animation channels isn't possible with the osg 2.8 file format reader
+            # so we have to export a separate channel for every object it applies to.
+            # Keeping the following code there for future reference, though.
+            #if self.action in self.uniq_anims:
+            #    return self.uniq_anims[self.action]
+            
+            if target == None:
+                target = self.object.name
+            
+            anim = self.createAnimationFromAction(target, self.action_name, self.action, prefix)
+            osglog.log("uniq_anims ".format(self.uniq_anims))
+            
+            if self.action in self.uniq_anims:
+                add_to_anim = self.uniq_anims[self.action]
+                add_to_anim.channels = add_to_anim.channels + anim.channels
+                return add_to_anim
+            else:
+                self.uniq_anims[self.action] = anim
+                return anim
+        else:
+            return None
 
-        if action:
-            debug("found action %s" % action.name)
-            anim = self.createAnimationFromAction(self.object.name, action)
-            return anim
-        return None
+    #def createAnimationFromTrack(self, name, track):
+    #    animation = Animation()
+    #    animation.setName(name)
+    #
+    #    actions = []
+    #    if track:
+    #        for strip in track.strips:
+    #            actions.append(strip.action)
+    #
+    #    self.convertActionsToAnimation(animation, actions)
+    #    self.animation = animation
+    #    return animation
 
-    def createAnimationFromTrack(self, name, track):
+    def createAnimationFromAction(self, target, name, action, prefix):
         animation = Animation()
         animation.setName(name)
-
-        actions = []
-        if track:
-            for strip in track.strips:
-                actions.append(strip.action)
-
-        self.convertActionsToAnimation(animation, actions)
+        self.convertActionsToAnimation(target, animation, action, prefix)
         self.animation = animation
         return animation
 
-    def createAnimationFromAction(self, name, action):
-        animation = Animation()
-        animation.setName(name)
-        self.convertActionsToAnimation(animation, action)
-        self.animation = animation
-        return animation
-
-    def convertActionsToAnimation(self, anim, action):
-        # Or we could call the other "type" here.
-        channels = exportActionsToKeyframeSplitRotationTranslationScale(self.object.name, action, self.config.anim_fps)
+    def convertActionsToAnimation(self, target, anim, action, prefix):
+        channels = exportActionsToKeyframeSplitRotationTranslationScale(target, action, self.config.anim_fps, prefix)
         for i in channels:
             anim.channels.append(i)
 
 
-# x,y,z should be baked
-# return a channel that contains a vector x,y,z
-def getTranslateChannel(target, action, fps):
+def getChannel(target, action, fps, data_path, array_indexes):
     times = []
-    sampler = None
     duration = 0
-    for fcurve in action.fcurves:
-        l = fcurve.data_path.split("\"")
-        if len(l) > 1:
-            target = l[1]
-            
-        for keyframe in fcurve.keyframe_points:
-            if fcurve.data_path.endswith("location"):
-                if times.count(keyframe.co[0]) == 0:
-                    times.append(keyframe.co[0])
-    if len(times) == 0:
-        return None
-
-    channel = Channel()
-    channel.target = target
-    channel.type = "Vec3LinearChannel"
+    fcurves = []
     
-    times.sort()
-    for time in times:
-        realtime = (time) / fps
-
-        # realtime = time
-        if realtime > duration:
-            duration = realtime
-
-        trans = Vector()
+    for array_index in array_indexes:
         for fcurve in action.fcurves:
-            if fcurve.data_path.endswith("location"):
-               trans[fcurve.array_index] = fcurve.evaluate(time)
-        channel.keys.append((realtime, trans[0], trans[1], trans[2]))
+            #osglog.log("fcurves %s %s matches %s %s " %(fcurve.data_path, fcurve.array_index, data_path, array_index))
+            if fcurve.data_path == data_path and fcurve.array_index == array_index:
+                fcurves.append(fcurve)
+                #osglog.log("yes")
+            
+    if len(fcurves) == 0:
+        return None
         
-    return channel
-
-
-def getQuaternionChannel(target, action, fps):
-    times = []
-    sampler = None
-    duration = 0
-    for fcurve in action.fcurves:
-        l = fcurve.data_path.split("\"")
-        if len(l) > 1:
-            target = l[1]
-            
+    
+    for fcurve in fcurves:
         for keyframe in fcurve.keyframe_points:
-            if fcurve.data_path.endswith("rotation_quaternion"):
-                if times.count(keyframe.co[0]) == 0:
-                    times.append(keyframe.co[0])
+            if times.count(keyframe.co[0]) == 0:
+                times.append(keyframe.co[0])
+    
     if len(times) == 0:
         return None
-
-    channel = Channel()
-    channel.target = target
-    channel.type = "QuatSphericalLinearChannel"
-    
-    times.sort()
-    for time in times:
-        realtime = (time) / fps
-
-        # realtime = time
-        if realtime > duration:
-            duration = realtime
-
-        data = Quaternion()
-        for fcurve in action.fcurves:
-            if fcurve.data_path.endswith("rotation_quaternion"):
-               data[fcurve.array_index] = fcurve.evaluate(time)
-        channel.keys.append((realtime, data[1], data[2], data[3], data[0]))
         
-    return channel
-
-def getTranslateAxisChannel(target, action, fps, axis):
-    times = []
-    sampler = None
-    duration = 0
-    for fcurve in action.fcurves:
-        l = fcurve.data_path.split("\"")
-        if len(l) > 1:
-            target = l[1]
-            
-        for keyframe in fcurve.keyframe_points:
-            if fcurve.data_path.endswith("location") and fcurve.array_index == axis:
-                if times.count(keyframe.co[0]) == 0:
-                    times.append(keyframe.co[0])
-    if len(times) == 0:
-        return None
-
     channel = Channel()
     channel.target = target
-    channel.type = "FloatLinearChannel"
+    
+    if len(array_indexes) == 1:
+        channel.type = "FloatLinearChannel"
+    if len(array_indexes) == 3:
+        channel.type = "Vec3LinearChannel"
+    if len(array_indexes) == 4:
+        channel.type = "QuatSphericalLinearChannel"
     
     times.sort()
+    
     for time in times:
         realtime = (time) / fps
+        osglog.log("time {} {} {}".format(time, realtime, fps))
 
         # realtime = time
         if realtime > duration:
             duration = realtime
 
-        value = 0.0
-        for fcurve in action.fcurves:
-            if fcurve.data_path.endswith("location") and fcurve.array_index == axis:
-               value = fcurve.evaluate(time)
-        channel.keys.append((realtime, value))
-        
-    return channel
-
-def getScaleChannel(target, action, fps):
-    times = []
-    sampler = None
-    duration = 0
-    for fcurve in action.fcurves:
-        l = fcurve.data_path.split("\"")
-        if len(l) > 1:
-            target = l[1]
-            
-        for keyframe in fcurve.keyframe_points:
-            if fcurve.data_path.endswith("scale"):
-                if times.count(keyframe.co[0]) == 0:
-                    times.append(keyframe.co[0])
-    if len(times) == 0:
-        return None
-
-    channel = Channel()
-    channel.target = target
-    channel.type = "Vec3LinearChannel"
+        value = [realtime]
+        for fcurve in fcurves:
+            value.append(fcurve.evaluate(time))
+        channel.keys.append(value)
     
-    times.sort()
-    for time in times:
-        realtime = (time) / fps
-
-        # realtime = time
-        if realtime > duration:
-            duration = realtime
-
-        value = Vector((1,1,1))
-        for fcurve in action.fcurves:
-            if fcurve.data_path.endswith("scale"):
-               value[fcurve.array_index] = fcurve.evaluate(time)
-        channel.keys.append((realtime, value[0], value[1], value[2]))
     return channel
-
-
-def getScaleAxisChannel(target, action, fps, axis):
-    times = []
-    sampler = None
-    duration = 0
-    for fcurve in action.fcurves:
-        l = fcurve.data_path.split("\"")
-        if len(l) > 1:
-            target = l[1]
-            
-        for keyframe in fcurve.keyframe_points:
-            if fcurve.data_path.endswith("scale") and fcurve.array_index == axis:
-                if times.count(keyframe.co[0]) == 0:
-                    times.append(keyframe.co[0])
-    if len(times) == 0:
-        return None
-
-    channel = Channel()
-    channel.target = target
-    channel.type = "FloatLinearChannel"
-    
-    times.sort()
-    for time in times:
-        realtime = (time) / fps
-
-        # realtime = time
-        if realtime > duration:
-            duration = realtime
-
-        value = 1.0
-        for fcurve in action.fcurves:
-            if fcurve.data_path.endswith("scale") and fcurve.array_index == axis:
-               value = fcurve.evaluate(time)
-        channel.keys.append((realtime, value[0]))
-    return channel
-
-def getEulerChannel(target, action, fps):
-    times = []
-    sampler = None
-    duration = 0
-    for fcurve in action.fcurves:
-        l = fcurve.data_path.split("\"")
-        if len(l) > 1:
-            target = l[1]
-            
-        for keyframe in fcurve.keyframe_points:
-            if fcurve.data_path.endswith("rotation_euler"):
-                if times.count(keyframe.co[0]) == 0:
-                    times.append(keyframe.co[0])
-    if len(times) == 0:
-        return None
-
-    channel = Channel()
-    channel.target = target
-    channel.type = "Vec3LinearChannel"
-    
-    times.sort()
-    for time in times:
-        realtime = (time) / fps
-
-        # realtime = time
-        if realtime > duration:
-            duration = realtime
-
-        euler = Euler()
-        for fcurve in action.fcurves:
-            if fcurve.data_path.endswith("rotation_euler"):
-               euler[fcurve.array_index] = fcurve.evaluate(time)
-        channel.keys.append((realtime, euler[0], euler[1], euler[2]))
-    return channel
-
-
-
-def getEulerAxisChannel(target, action, fps, axis):
-    times = []
-    sampler = None
-    duration = 0
-    for fcurve in action.fcurves:
-        l = fcurve.data_path.split("\"")
-        if len(l) > 1:
-            target = l[1]
-            
-        for keyframe in fcurve.keyframe_points:
-            if fcurve.data_path.endswith("rotation_euler") and fcurve.array_index == axis:
-                if times.count(keyframe.co[0]) == 0:
-                    times.append(keyframe.co[0])
-    if len(times) == 0:
-        return None
-
-    channel = Channel()
-    channel.target = target
-    channel.type = "FloatLinearChannel"
-    
-    times.sort()
-    for time in times:
-        realtime = (time) / fps
-
-        # realtime = time
-        if realtime > duration:
-            duration = realtime
-
-        value = 0
-        for fcurve in action.fcurves:
-            if fcurve.data_path.endswith("rotation_euler")  and fcurve.array_index == axis:
-               value = fcurve.evaluate(time)
-        channel.keys.append((realtime, value))
-    return channel
-
 
 # as for blender 2.49
-def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps):
+def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps, prefix):
     channels = []
 
-    translate = getTranslateChannel(target, action, fps)
+    translate = getChannel(target, action, fps, prefix+"location", [0, 1, 2])
     if translate:
         translate.setName("translate")
-        channels.append(translate);
+        channels.append(translate)
 
     euler = []
     eulerName = [ "euler_x", "euler_y", "euler_z"]
     for i in range(0,3):
-        c = getEulerAxisChannel(target, action, fps, i)
+        c = getChannel(target, action, fps, prefix+"rotation_euler", [i])
         if c:
             c.setName(eulerName[i])
             channels.append(c)
 
-    quaternion = getQuaternionChannel(target, action, fps)
+    quaternion = getChannel(target, action, fps, prefix+"rotation_quaternion", [1, 2, 3, 0])
     if quaternion:
         quaternion.setName("quaternion")
-        channels.append(quaternion);
+        channels.append(quaternion)
+        
+    axis_angle = getChannel(target, action, fps, prefix+"rotation_axis_angle", [1, 2, 3, 0])
+    if axis_angle:
+        axis_angle.setName("axis_angle")
+        channels.append(axis_angle)
 
-    scale = getScaleChannel(target, action, fps)
+    scale = getChannel(target, action, fps, prefix+"scale", [0, 1, 2])
     if scale:
         scale.setName("scale")
-        channels.append(scale);
+        channels.append(scale)
 
     return channels
+
+    
