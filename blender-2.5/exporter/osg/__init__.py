@@ -22,12 +22,10 @@ import os
 import bpy
 import pickle
 
-VERSION="0.10.0"
-
 bl_info = {
     "name": "Export OSG format (.osg)",
     "author": "Jeremy Moles, Cedric Pinson, Peter Amstutz",
-    "version": (0,10,0),
+    "version": (0,10,1),
     "blender": (2, 5, 9),
     "email": "jeremy@emperorlinux.com, cedric.pinson@plopbyte.com, peter.amstutz@tseboston.com",
     "api": 36339,
