@@ -22,6 +22,8 @@ import os
 import bpy
 import pickle
 
+VERSION="0.10.0"
+
 bl_info = {
     "name": "Export OSG format (.osg)",
     "author": "Jeremy Moles, Cedric Pinson, Peter Amstutz",
@@ -45,7 +47,7 @@ __bpydoc__  = bl_info["description"]
 sys.path.insert(0, "./")
 BlenderExporterDir = os.getenv("BlenderExporter", os.path.join(bpy.context.user_preferences.filepaths.script_directory,"blenderExporter"))
 print("BlenderExporter directory ", BlenderExporterDir)
-sys.path.append(BlenderExporterDir)
+sys.path.insert(0,BlenderExporterDir)
 
 import bpy
 import osg
@@ -61,7 +63,7 @@ def OpenSceneGraphExport(config=None):
 def main():
     import sys       # to get command line args
     import argparse  # to parse options for us and print a nice help message
-    
+
     # get the args passed to blender after "--", all of which are ignored by
     # blender so scripts may receive their own arguments
     argv = sys.argv
