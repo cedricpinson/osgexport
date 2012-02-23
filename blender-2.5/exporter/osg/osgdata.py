@@ -1,6 +1,6 @@
 # -*- python-indent: 4; mode: python -*-
 #
-# Copyright (C) 2008-2011 Cedric Pinson
+# Copyright (C) 2008-2012 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -41,8 +41,6 @@ from . import osgbake
 # from osglog import log
 from . import osgobject
 from .osgobject import *
-#from osgconf import debug
-#from osgconf import DEBUG
 
 Vector     = mathutils.Vector
 Quaternion = mathutils.Quaternion
@@ -78,7 +76,7 @@ def createImageFilename(texturePath, image):
 
 def getImageFilesFromStateSet(stateset):
     list = []
-    if DEBUG: osglog.log("stateset %s" % str(stateset))
+    #if DEBUG: osglog.log("stateset %s" % str(stateset))
     if stateset is not None and len(stateset.texture_attributes) > 0:
         for unit, attributes in stateset.texture_attributes.items():
             for a in attributes:
@@ -554,7 +552,7 @@ class Export(object):
 
             # retrieve world to global ambient
             lm = LightModel()
-            lm.ambient = (0.0, 0.0, 0.0, 1.0)
+            lm.ambient = (1.0, 1.0, 1.0, 1.0)
             if self.config.scene.world is not None:
                 amb = self.config.scene.world.ambient_color
                 lm.ambient = (amb[0], amb[1], amb[2], 1.0)
@@ -671,6 +669,7 @@ class Export(object):
         # check if the mesh has a armature modifier
         # if no we don't write influence
         exportInfluence = False
+
         #if mesh.parent and mesh.parent.type == "ARMATURE":
         #    exportInfluence = True
         
@@ -750,7 +749,8 @@ class BlenderLightToLightSource(object):
         ls = LightSource()
         ls.setName(self.object.name)
         light = ls.light
-        energy = self.lamp.energy*2.0
+        energy = self.lamp.energy
+        light.ambient = (1.0, 1.0, 1.0, 1.0)
         light.diffuse = (self.lamp.color[0] * energy, self.lamp.color[1]* energy, self.lamp.color[2] * energy,1.0) # put light to 0 it will inherit the position from parent transform
         light.specular = (energy, energy, energy, 1.0) #light.diffuse
 
@@ -766,7 +766,7 @@ class BlenderLightToLightSource(object):
             light.position = (0,0,1,0) # put light to 0 it will inherit the position from parent transform
 
         if self.lamp.type == 'SPOT':
-            light.spot_cutoff = self.lamp.spot_size * .5
+            light.spot_cutoff = math.degrees(self.lamp.spot_size * .5)
             if light.spot_cutoff > 90:
                 light.spot_cutoff = 180
             light.spot_exponent = 128.0 * self.lamp.spot_blend
@@ -881,7 +881,10 @@ class BlenderObjectToGeometry(object):
                     s.modes["GL_BLEND"] = "ON"
 
                 ambient_factor = mat_source.ambient
-                m.ambient = (ambient_factor, ambient_factor, ambient_factor, 1)
+                m.ambient =(bpy.context.scene.world.ambient_color[0]*ambient_factor,
+                            bpy.context.scene.world.ambient_color[1]*ambient_factor,
+                            bpy.context.scene.world.ambient_color[2]*ambient_factor,
+                            1.0)
                 spec = mat_source.specular_intensity
                 m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
 
@@ -909,7 +912,7 @@ class BlenderObjectToGeometry(object):
                                 pass
                                 # happens for all generated textures
                                 #log("can't read the source image file for texture %s" % t.name)
-                if DEBUG: osglog.log("state set %s" % str(s))
+                #if DEBUG: osglog.log("state set %s" % str(s))
         return s
 
     def createGeomForMaterialIndex(self, material_index, mesh):
@@ -1007,17 +1010,17 @@ class BlenderObjectToGeometry(object):
 
 
             for textureLayer in mesh.uv_textures:
-                idx = 0
                 textureLayer.active = True
                 mesh.update()
                 uv_array = []
-                for data in textureLayer.data:
+
+                for face,f in collected_faces:
+                    data = textureLayer.data[face.index]
                     uv_array.append(data.uv1)
                     uv_array.append(data.uv2)
                     uv_array.append(data.uv3)
-                    if len(mesh.faces[idx].vertices) > 3:
+                    if len(face.vertices) > 3:
                         uv_array.append(data.uv4)
-                    idx += 1
                 uvs[textureLayer.name] = uv_array
             backup_texture.active = True
             mesh.update()
@@ -1377,6 +1380,7 @@ class BlenderAnimationToAnimation(object):
                 target = self.object.name
             
             anim = self.createAnimationFromAction(target, self.action_name, self.action, prefix)
+
             osglog.log("uniq_anims ".format(self.uniq_anims))
             
             if self.action in self.uniq_anims:

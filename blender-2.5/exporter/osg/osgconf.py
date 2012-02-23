@@ -22,6 +22,7 @@
 
 
 import os
+import sys
 from . import osglog
 from . import osgobject
 
@@ -41,30 +42,39 @@ class Config(object):
       
     def activate(self):
         self.log_file = None
-        
         self.defaultattr("author", "")
+        self.defaultattr("filename", "")
+
         self.defaultattr("indent", int(2))
         self.defaultattr("float_precision", int(5))
         self.defaultattr("format_num", int(0))
         self.defaultattr("anim_fps", 25.0)
-        self.defaultattr("log", False)
+        self.defaultattr("log", True)
         self.defaultattr("selected", "ALL")
         self.defaultattr("relative_path", False)
         self.defaultattr("texture_prefix", "textures")
         self.defaultattr("only_visible", True)
         self.defaultattr("export_anim", True)
         self.defaultattr("object_selected", None)
-        self.defaultattr("apply_modifiers", True)
+
+        self.defaultattr("zero_translations", False)
+        self.defaultattr("apply_modifiers", False)
         self.defaultattr("bake_constraints", True)
         self.defaultattr("bake_frame_step", 1)
         self.defaultattr("osgconv_to_ive", False)
-        self.defaultattr("osgconv_path", "osgconv.exe")
+        osgconv_util = "osgconv"
+        if sys.platform == 'win32':
+            osgconv_util += ".exe"
+        self.defaultattr("osgconv_path", osgconv_util)
         self.defaultattr("osgconv_embed_textures", False)
         self.defaultattr("run_viewer", False)
-        self.defaultattr("viewer_path", "osgviewer.exe")
+        osgviewer_util = "osgviewer"
+        if sys.platform == 'win32':
+            osgviewer_util += ".exe"
+        self.defaultattr("viewer_path", osgviewer_util)
         self.defaultattr("export_all_scenes", False)
         self.defaultattr("osgconv_cleanup", False)
-        self.defaultattr("zero_translations", False)
+
         self.defaultattr("history", {})
         
         self.filepath = ""

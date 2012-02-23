@@ -23,7 +23,7 @@ MACRO(BUILD_DATA)
   SET(DATA_TARGETNAME ${DATA_TARGET}.osg)
   ADD_CUSTOM_COMMAND (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGETNAME}
     COMMAND ${BLENDER}
-    ARGS  --background ${DATA_SOURCE} --python osgExport.py -- --save="${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGET}"
+    ARGS  --background ${DATA_SOURCE} --python osg/__init__.py -- --output="${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGET}" --enable-animation
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${EXPORTER}
     DEPENDS ${DATA_SOURCE}
     COMMENT "build data from ${DATA_SOURCE}"
