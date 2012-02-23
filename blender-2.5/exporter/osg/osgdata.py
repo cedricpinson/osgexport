@@ -552,7 +552,7 @@ class Export(object):
 
             # retrieve world to global ambient
             lm = LightModel()
-            lm.ambient = (0.0, 0.0, 0.0, 1.0)
+            lm.ambient = (1.0, 1.0, 1.0, 1.0)
             if self.config.scene.world is not None:
                 amb = self.config.scene.world.ambient_color
                 lm.ambient = (amb[0], amb[1], amb[2], 1.0)
@@ -749,7 +749,8 @@ class BlenderLightToLightSource(object):
         ls = LightSource()
         ls.setName(self.object.name)
         light = ls.light
-        energy = self.lamp.energy*2.0
+        energy = self.lamp.energy
+        light.ambient = (1.0, 1.0, 1.0, 1.0)
         light.diffuse = (self.lamp.color[0] * energy, self.lamp.color[1]* energy, self.lamp.color[2] * energy,1.0) # put light to 0 it will inherit the position from parent transform
         light.specular = (energy, energy, energy, 1.0) #light.diffuse
 
@@ -765,7 +766,7 @@ class BlenderLightToLightSource(object):
             light.position = (0,0,1,0) # put light to 0 it will inherit the position from parent transform
 
         if self.lamp.type == 'SPOT':
-            light.spot_cutoff = self.lamp.spot_size * .5
+            light.spot_cutoff = math.degrees(self.lamp.spot_size * .5)
             if light.spot_cutoff > 90:
                 light.spot_cutoff = 180
             light.spot_exponent = 128.0 * self.lamp.spot_blend
@@ -880,7 +881,10 @@ class BlenderObjectToGeometry(object):
                     s.modes["GL_BLEND"] = "ON"
 
                 ambient_factor = mat_source.ambient
-                m.ambient = (ambient_factor, ambient_factor, ambient_factor, 1)
+                m.ambient =(bpy.context.scene.world.ambient_color[0]*ambient_factor,
+                            bpy.context.scene.world.ambient_color[1]*ambient_factor,
+                            bpy.context.scene.world.ambient_color[2]*ambient_factor,
+                            1.0)
                 spec = mat_source.specular_intensity
                 m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
 

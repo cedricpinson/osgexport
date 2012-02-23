@@ -1,4 +1,4 @@
-# Copyright (C) 2008 Cedric Pinson
+# Copyright (C) 2012 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,13 +17,7 @@
 # Authors:
 #  Cedric Pinson <cedric.pinson@plopbyte.com>
 
-INCLUDE(MacroUtils)
 
-ADD_SUBDIRECTORY(robot)
-ADD_SUBDIRECTORY(example)
-ADD_SUBDIRECTORY(walker)
-ADD_SUBDIRECTORY(avatar)
-ADD_SUBDIRECTORY(nathan)
-ADD_SUBDIRECTORY(bignathan)
-ADD_SUBDIRECTORY(multimaterial)
-ADD_SUBDIRECTORY(lights)
+SET ( DATA_SOURCE ${PROJECT_SOURCE_DIR}/data/lights/lights.blend )
+SET ( DATA_TARGET  lights )
+BUILD_DATA()
