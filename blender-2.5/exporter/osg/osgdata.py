@@ -358,10 +358,21 @@ class Export(object):
     def evaluateGroup(self, obj, item, rootItem):
         if obj.dupli_group is None or len(obj.dupli_group.objects) == 0:
             return
-        osglog.log(str("resolving " + obj.dupli_group.name + " for " + obj.name))
+        osglog.log(str("resolving " + obj.dupli_group.name + " for " + obj.name + " offset " + str(obj.dupli_group.dupli_offset)) )
+
+
+        group = MatrixTransform()
+        group.matrix = Matrix.Translation(-obj.dupli_group.dupli_offset)
+        item.children.append(group)
+        
+        # for group we disable the only visible
+        config_visible = self.config.only_visible
+        self.config.only_visible = False
         for o in obj.dupli_group.objects:
             osglog.log(str("object " + str(o)))
-            self.exportChildrenRecursively( o, item, rootItem)
+            self.exportChildrenRecursively( o, group, rootItem)
+        self.config.only_visible = config_visible
+        # and restore it after processing group
 
     def getName(self, obj):
         if hasattr(obj, "name"):
@@ -872,18 +883,22 @@ class BlenderObjectToGeometry(object):
                 if mat_source.use_shadeless:
                     s.modes["GL_LIGHTING"] = "OFF"
 
+                alpha = 1.0
+                if mat_source.use_transparency:
+                    alpha = 1.0 - mat_source.alpha
+
                 refl = mat_source.diffuse_intensity
-                m.diffuse = (mat_source.diffuse_color[0] * refl, mat_source.diffuse_color[1] * refl, mat_source.diffuse_color[2] * refl, mat_source.alpha)
+                m.diffuse = (mat_source.diffuse_color[0] * refl, mat_source.diffuse_color[1] * refl, mat_source.diffuse_color[2] * refl, alpha)
 
                 # if alpha not 1 then we set the blending mode on
-                if DEBUG: osglog.log("state material alpha %s" % str(mat_source.alpha))
-                if mat_source.alpha != 1.0:
+                if DEBUG: osglog.log("state material alpha %s" % str(alpha))
+                if alpha != 1.0:
                     s.modes["GL_BLEND"] = "ON"
 
                 ambient_factor = mat_source.ambient
-                m.ambient =(bpy.context.scene.world.ambient_color[0]*ambient_factor,
-                            bpy.context.scene.world.ambient_color[1]*ambient_factor,
-                            bpy.context.scene.world.ambient_color[2]*ambient_factor,
+                m.ambient =((bpy.context.scene.world.ambient_color[0])*ambient_factor,
+                            (bpy.context.scene.world.ambient_color[1])*ambient_factor,
+                            (bpy.context.scene.world.ambient_color[2])*ambient_factor,
                             1.0)
                 spec = mat_source.specular_intensity
                 m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
@@ -1341,7 +1356,7 @@ class BlenderAnimationToAnimation(object):
         if self.action == None:
             need_bake = False
             
-            if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
+            if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action") and self.object.animation_data.action != None:
                 self.action_name = self.object.animation_data.action.name
             
             if hasattr(self.object, "constraints") and (len(self.object.constraints) > 0) and self.config.bake_constraints:

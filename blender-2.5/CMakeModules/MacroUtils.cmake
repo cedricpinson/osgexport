@@ -19,11 +19,18 @@
 
 
 MACRO(BUILD_DATA)
+
+  IF (${ARGC} EQUAL 1)
+    SET(flags "${ARGV0}")
+  ELSE (${ARGC} EQUAL 1)
+    SET(flags "--enable-animation")
+  ENDIF (${ARGC} EQUAL 1)
+
   # need DATA_SOURCE and DATA_TARGET
   SET(DATA_TARGETNAME ${DATA_TARGET}.osg)
   ADD_CUSTOM_COMMAND (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGETNAME}
     COMMAND ${BLENDER}
-    ARGS  --background ${DATA_SOURCE} --python osg/__init__.py -- --output="${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGET}" --enable-animation
+    ARGS  --background ${DATA_SOURCE} --python osg/__init__.py -- --output="${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGET}" "${flags}"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${EXPORTER}
     DEPENDS ${DATA_SOURCE}
     COMMENT "build data from ${DATA_SOURCE}"
