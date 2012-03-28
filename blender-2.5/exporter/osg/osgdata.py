@@ -769,9 +769,9 @@ class BlenderLightToLightSource(object):
         if self.lamp.type == 'POINT' or self.lamp.type == 'SPOT':
             # position light
             # Note DW - the distance may not be necessary anymore (blender 2.5)
-            light.position = (0,0,0,1) # put light to 0 it will inherit the position from parent transform
+            light.position = (0,0,0,1) # put light to vec3(0) it will inherit the position from parent transform
             light.linear_attenuation = self.lamp.linear_attenuation / self.lamp.distance
-            light.quadratic_attenuation = self.lamp.quadratic_attenuation / ( self.lamp.distance * self.lamp.distance )
+            light.quadratic_attenuation = self.lamp.quadratic_attenuation / self.lamp.distance
 
         elif self.lamp.type == 'SUN':
             light.position = (0,0,1,0) # put light to 0 it will inherit the position from parent transform
