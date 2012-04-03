@@ -110,6 +110,21 @@ class Writer(object):
             return obj.shadow_object.serialize(output)
         Writer.wrote_elements[obj] = True
         return obj.serialize(output)
+        
+    def writeMatrix(self, matrix):
+        txt = ""
+        if bpy.app.version[0] == 2 and bpy.app.version[1] <= 61:
+            # blender 2.61 and prior represents matrixes in column-major format 
+            #(column first, then row)
+            for i in range(0,4):
+                txt += "$##%s %s %s %s\n" % (STRFLT(matrix[i][0]), STRFLT(matrix[i][1]),STRFLT(matrix[i][2]), STRFLT(matrix[i][3]))
+        else:
+            # blender 2.62 now indexes matrices in row-major format
+            # (row first, then column; use the new column accessor here to eliminate ambiguity)
+            for i in range(0,4):
+                txt += "$##%s %s %s %s\n" % (STRFLT(matrix.col[i][0]), STRFLT(matrix.col[i][1]),STRFLT(matrix.col[i][2]), STRFLT(matrix.col[i][3]))
+        return txt
+
 
 class ShadowObject(Writer):
     def __init__(self, *args, **kwargs):
@@ -239,13 +254,9 @@ class StackedMatrixElement(Object):
         return None
 
     def printContent(self):
-        text = "$#Matrix {\n"
-        for i in range(0,4):
-            text += "$##%s %s %s %s\n" % (STRFLT(self.matrix[i][0]), STRFLT(self.matrix[i][1]),STRFLT(self.matrix[i][2]), STRFLT(self.matrix[i][3]))
-        text += "$#}\n"
+        text = "$#Matrix {\n" + self.writeMatrix(self.matrix) + "$#}\n"
         return text
-
-
+    
     def serialize(self, output):
         output.write(self.encode("$osgAnimation::%s {\n" % self.className()))
         Object.serializeContent(self, output)
@@ -254,10 +265,8 @@ class StackedMatrixElement(Object):
 
     def serializeContent(self, output):
         output.write(self.encode("$#Matrix {\n"))
-        for i in range(0,4):
-            output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(self.matrix[i][0]), STRFLT(self.matrix[i][1]),STRFLT(self.matrix[i][2]), STRFLT(self.matrix[i][3]))))
+        output.write(self.encode(self.writeMatrix(self.matrix)))
         output.write(self.encode("$#}\n"))
-
 
 class StackedTranslateElement(Object):
     def __init__(self, *args, **kwargs):
@@ -594,10 +603,7 @@ class MatrixTransform(Group):
         return text
 
     def printContent(self):
-        text = "$#Matrix {\n"
-        for i in range(0,4):
-            text += "$##%s %s %s %s\n" % (STRFLT(self.matrix[i][0]), STRFLT(self.matrix[i][1]),STRFLT(self.matrix[i][2]), STRFLT(self.matrix[i][3]))
-        text += "$#}\n"
+        text = "$#Matrix {\n" + self.writeMatrix(self.matrix) + "$#}\n"
         return text
 
     def serialize(self, output):
@@ -610,8 +616,7 @@ class MatrixTransform(Group):
 
     def serializeContent(self, output):
         output.write(self.encode("$#Matrix {\n"))
-        for i in range(0,4):
-            output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(self.matrix[i][0]), STRFLT(self.matrix[i][1]),STRFLT(self.matrix[i][2]), STRFLT(self.matrix[i][3]))))
+        output.write(self.encode(self.writeMatrix(self.matrix)))
         output.write(self.encode("$#}\n"))
 
 class StateAttribute(Object):
@@ -1273,10 +1278,7 @@ class Bone(MatrixTransform):
 
     def printContent(self):
         matrix = self.bone_inv_bind_matrix_skeleton.copy()
-        text = "$#InvBindMatrixInSkeletonSpace {\n"
-        for i in range(0,4):
-            text += "$##%s %s %s %s\n" % (STRFLT(matrix[i][0]), STRFLT(matrix[i][1]),STRFLT(matrix[i][2]), STRFLT(matrix[i][3]))
-        text += "$#}\n"
+        text = "$#InvBindMatrixInSkeletonSpace {\n" + self.writeMatrix(self.matrix) + "$#}\n"
         return text
 
     def serialize(self, output):
@@ -1291,8 +1293,7 @@ class Bone(MatrixTransform):
     def serializeContent(self, output):
         matrix = self.bone_inv_bind_matrix_skeleton.copy()
         output.write(self.encode("$#InvBindMatrixInSkeletonSpace {\n"))
-        for i in range(0,4):
-            output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(matrix[i][0]), STRFLT(matrix[i][1]),STRFLT(matrix[i][2]), STRFLT(matrix[i][3])) ) )
+        output.write(self.encode(self.writeMatrix(self.matrix)))
         output.write(self.encode("$#}\n") )
 
 class Skeleton(MatrixTransform):
