@@ -37,8 +37,6 @@ from . import osgconf
 from .osgconf import DEBUG
 from .osgconf import debug
 from . import osgbake
-# from osgbake import BakeIpoForMaterial, BakeIpoForObject, BakeAction
-# from osglog import log
 from . import osgobject
 from .osgobject import *
 
@@ -406,7 +404,10 @@ class Export(object):
                 
                 item.matrix = matrix.copy()
                 if self.config.zero_translations and parent == None:
-                    item.matrix[3].xyz = Vector()
+                    if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 62:
+                        print("zero_translations option has not been converted to blender 2.62")
+                    else:
+                        item.matrix[3].xyz = Vector()
                 
                 anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
                 
@@ -474,16 +475,6 @@ class Export(object):
             b.buildBoneChildren()
             skeleton.children.append(b)
         skeleton.collectBones()
-
-        # code need to be rewritten - does not work anymore
-        #if self.config.export_anim is True:
-            #if hasattr(obj, "animation_data") and hasattr(obj.animation_data, "nla_tracks") and len(obj.animation_data.nla_tracks) > 0:
-            #    for nla_track in obj.animation_data.nla_tracks:
-            #        action2animation = BlenderNLATrackToAnimation(track = nla_track, config = self.config)
-            #        anim = action2animation.createAnimationFromTrack()
-            #        if anim is not None:
-            #            self.animations[anim.name] = anim
-        
         return skeleton
 
     def process(self):
@@ -769,9 +760,9 @@ class BlenderLightToLightSource(object):
         if self.lamp.type == 'POINT' or self.lamp.type == 'SPOT':
             # position light
             # Note DW - the distance may not be necessary anymore (blender 2.5)
-            light.position = (0,0,0,1) # put light to 0 it will inherit the position from parent transform
+            light.position = (0,0,0,1) # put light to vec3(0) it will inherit the position from parent transform
             light.linear_attenuation = self.lamp.linear_attenuation / self.lamp.distance
-            light.quadratic_attenuation = self.lamp.quadratic_attenuation / ( self.lamp.distance * self.lamp.distance )
+            light.quadratic_attenuation = self.lamp.quadratic_attenuation / self.lamp.distance
 
         elif self.lamp.type == 'SUN':
             light.position = (0,0,1,0) # put light to 0 it will inherit the position from parent transform

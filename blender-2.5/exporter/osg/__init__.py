@@ -26,7 +26,7 @@ bl_info = {
     "name": "Export OSG format (.osg)",
     "author": "Jeremy Moles, Cedric Pinson, Peter Amstutz",
     "version": (0,11,0),
-    "blender": (2, 5, 9),
+    "blender": (2, 6, 2),
     "email": "jeremy@emperorlinux.com, cedric.pinson@plopbyte.com, peter.amstutz@tseboston.com",
     "api": 36339,
     "location": "File > Export > OSG Model (*.osg)",
