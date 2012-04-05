@@ -887,10 +887,13 @@ class BlenderObjectToGeometry(object):
                     s.modes["GL_BLEND"] = "ON"
 
                 ambient_factor = mat_source.ambient
-                m.ambient =((bpy.context.scene.world.ambient_color[0])*ambient_factor,
-                            (bpy.context.scene.world.ambient_color[1])*ambient_factor,
-                            (bpy.context.scene.world.ambient_color[2])*ambient_factor,
-                            1.0)
+                if bpy.context.scene.world:
+                    m.ambient =((bpy.context.scene.world.ambient_color[0])*ambient_factor,
+                                (bpy.context.scene.world.ambient_color[1])*ambient_factor,
+                                (bpy.context.scene.world.ambient_color[2])*ambient_factor,
+                                1.0)
+                else:
+                    m.ambient = (0, 0, 0, 1.0)
                 spec = mat_source.specular_intensity
                 m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
 
