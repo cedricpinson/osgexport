@@ -394,7 +394,7 @@ class Export(object):
                 item = self.createSkeleton(obj)
                 anims = createAnimationsSkeletonObject(item, obj, self.config, self.uniq_anims)
 
-            elif obj.type == "MESH" or obj.type == "EMPTY":
+            elif obj.type == "MESH" or obj.type == "EMPTY" or obj.type == "CAMERA":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
                 # matrix for our use. Not if an armature we force it to be in rest position to compute
                 # matrix in the good space
