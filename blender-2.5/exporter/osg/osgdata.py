@@ -39,6 +39,7 @@ from .osgconf import debug
 from . import osgbake
 from . import osgobject
 from .osgobject import *
+osgobject.VERSION = osg.__version__
 
 Vector     = mathutils.Vector
 Quaternion = mathutils.Quaternion
@@ -283,11 +284,11 @@ def createAnimationsSkeletonObject(osg_object, blender_object, config, uniq_anim
     if (config.export_anim is False) or (blender_object.animation_data == None) or (blender_object.animation_data.action == None):
         return None
 
-    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config, 
+    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config,
                                                    uniq_anims = uniq_anims)
     osglog.log("animations created for object '%s'" % (blender_object.name))
     
-    anims = []                                           
+    anims = []
     for (bname, bone) in osg_object.boneDict.items():
         anim = action2animation.createAnimation(target=bname, prefix=('pose.bones["%s"].' % (bname)))
         osglog.log("animations processed for armature %s bone %s" % (blender_object.name, bname))
@@ -587,7 +588,7 @@ class Export(object):
         osglog.log("write file to " + filename)
         with open(filename, "wb") as sfile:
         #sfile.write(str(self.root).encode('utf-8'))
-            self.root.write(sfile)
+            self.root.writeFile(sfile)
         
         nativePath = os.path.join(os.path.abspath(self.config.getFullPath()), self.config.texture_prefix)
         #blenderPath = bpy.path.relpath(nativePath)
@@ -1187,15 +1188,15 @@ class BlenderObjectToGeometry(object):
         for vertex in mapping_vertexes:
             vindex = vertex[0]
             coord = vertexes[vindex].co
-            osg_vertexes.array.append([coord[0], coord[1], coord[2] ])
+            osg_vertexes.getArray().append([coord[0], coord[1], coord[2] ])
 
             ncoord = normals[vindex]
-            osg_normals.array.append([ncoord[0], ncoord[1], ncoord[2]])
+            osg_normals.getArray().append([ncoord[0], ncoord[1], ncoord[2]])
 
             for name in uvs.keys():
                 if not name in osg_uvs.keys():
                     osg_uvs[name] = TexCoordArray()
-                osg_uvs[name].array.append(uvs[name][vindex])
+                osg_uvs[name].getArray().append(uvs[name][vindex])
 
         if (len(osg_uvs)):
             osglog.log("uvs channels %s - %s" % (len(osg_uvs), str(osg_uvs.keys())))
@@ -1228,7 +1229,7 @@ class BlenderObjectToGeometry(object):
         primitives = []
         if nlin > 0:
             lines = DrawElements()
-            lines.type = "LINES"
+            lines.type = "GL_LINES"
             nface=0
             for face in faces:
                 nv = len(face)
@@ -1240,7 +1241,7 @@ class BlenderObjectToGeometry(object):
 
         if ntri > 0:
             triangles = DrawElements()
-            triangles.type = "TRIANGLES"
+            triangles.type = "GL_TRIANGLES"
             nface=0
             for face in faces:
                 nv = len(face)
@@ -1253,7 +1254,7 @@ class BlenderObjectToGeometry(object):
 
         if nquad > 0:
             quads = DrawElements()
-            quads.type = "QUADS"
+            quads.type = "GL_QUADS"
             nface=0
             for face in faces:
                 nv = len(face)
