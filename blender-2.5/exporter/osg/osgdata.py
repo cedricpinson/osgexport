@@ -270,15 +270,18 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
     if (config.export_anim is False) or (update_callback is None):
         return None
 
-    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config, 
+    action_name = blender_object.animation_data.action.name
+    if action_name in uniq_anims:
+        return None
+
+    action2animation = BlenderAnimationToAnimation(object = blender_object, 
+                                                   config = config, 
                                                    uniq_anims = uniq_anims)
-    return action2animation.createAnimation()
-    
-def createAnimationsObjectAndSetCallback(osg_node, obj, config, uniq_anims):
-    return createAnimationsGenericObject(osg_node, obj, config, 
-                createAnimationUpdate(obj, UpdateMatrixTransform(name=obj.name), obj.rotation_mode), 
-                uniq_anims)
-    
+    anim = action2animation.createAnimation()
+    if len(anim) > 0:
+        osg_object.update_callbacks.append(update_callback)
+    return anim
+
 def createAnimationMaterialAndSetCallback(osg_node, obj, config, uniq_anims):
     osglog.log("WARNING update material animation not yet supported")
     return None
@@ -371,6 +374,11 @@ class Export(object):
         anims = action2animation.createAnimation()
         return anims
 
+    def createAnimationsObjectAndSetCallback(self, osg_object, blender_object):
+        return createAnimationsGenericObject(osg_object, blender_object, self.config, 
+                    createAnimationUpdate(blender_object, UpdateMatrixTransform(name=osg_object.name), blender_object.rotation_mode),
+                    self.uniq_anims)
+    
 
     def exportChildrenRecursively(self, obj, parent, rootItem):
         if self.isValidToExport(obj) == False:
@@ -404,7 +412,7 @@ class Export(object):
                     else:
                         item.matrix[3].xyz = Vector()
                 
-                anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
+                anims = self.createAnimationsObjectAndSetCallback(item, obj)
                 
                 if obj.type == "MESH":
                     objectItem = self.createGeodeFromObject(obj)
@@ -418,7 +426,7 @@ class Export(object):
                 item.setName(obj.name)
                 item.matrix = matrix
                 lightItem = self.createLight(obj)
-                anims = createAnimationsObjectAndSetCallback(item, obj, self.config, self.uniq_anims)
+                anims = self.createAnimationsObjectAndSetCallback(item, obj)
                 item.children.append(lightItem)
 
             else:
@@ -1354,92 +1362,7 @@ class BlenderAnimationToAnimation(object):
         anim = self.createAnimationFromAction(target, self.action_name, self.action)
         self.uniq_anims[self.action_name] = anim
         osglog.log("uniq_anims ".format(self.uniq_anims))
-
         return [anim]
-
-    def createAnimationOld(self, target=None, prefix=""):
-
-        # track could be interesting, to export multi animation but we would need to be able to associate different track to an animation. Why ?
-        # because track are used to compose an animation base on different action
-        # so it makes more sense to compose your animation with different track
-        # and then bake it into one Action
-
-        # for game export or more complex exporter. It's better to adjust the osgExport
-        # in python and merge your actions as you want. I did it for the game pokme,
-        # the osgExporter is able to be used by other scripts
-
-
-        # nla_tracks = []
-        # if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "nla_tracks"):
-        #     nla_tracks = self.object.animation_data.nla_tracks
-        #     if len(nla_tracks) == 0:
-        #         action = self.object.animation_data.action
-
-        # osglog.log("create animation for %s" % self.object.name)
-        # anims = []
-        # if len(nla_tracks) > 0:
-        #     osglog.log("found tracks %d" % (len(nla_tracks)))
-        #     for nla_track in nla_tracks:
-        #         osglog.log("found track %s" % str(nla_track))
-        #         anim = self.createAnimationFromTrack(self.object.name, nla_track)
-        #         anims.append(anim)
-        
-        osglog.log("Exporting animation on object " + str(self.object))
-        
-        if self.action == None:
-            need_bake = False
-            
-            if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action") and self.object.animation_data.action != None:
-                self.action_name = self.object.animation_data.action.name
-            
-            if hasattr(self.object, "constraints") and (len(self.object.constraints) > 0) and self.config.bake_constraints:
-                osglog.log("Baking constraints " + str(self.object.constraints))
-                need_bake = True
-            else:
-                if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
-                    self.action = self.object.animation_data.action
-                    for fcu in self.action.fcurves:
-                        for kf in fcu.keyframe_points:
-                            if kf.interpolation != 'LINEAR':
-                                need_bake = True
-                                
-            if need_bake:
-                self.action = osgbake.bake(self.config.scene,
-                         self.object,
-                         self.config.scene.frame_start, 
-                         self.config.scene.frame_end,
-                         self.config.bake_frame_step,
-                         False, #only_selected
-                         True,  #do_pose
-                         True,  #do_object
-                         False, #do_constraint_clear
-                         False) #to_quat
-
-        if self.action != None:
-            osglog.log("found action %s, prefix is %s" % (self.action.name, prefix))
-            
-            # Sharing animation channels isn't possible with the osg 2.8 file format reader
-            # so we have to export a separate channel for every object it applies to.
-            # Keeping the following code there for future reference, though.
-            #if self.action in self.uniq_anims:
-            #    return self.uniq_anims[self.action]
-            
-            if target == None:
-                target = self.object.name
-            
-            anim = self.createAnimationFromAction(target, self.action_name, self.action, prefix)
-
-            osglog.log("uniq_anims ".format(self.uniq_anims))
-            
-            if self.action in self.uniq_anims:
-                add_to_anim = self.uniq_anims[self.action]
-                add_to_anim.channels = add_to_anim.channels + anim.channels
-                return add_to_anim
-            else:
-                self.uniq_anims[self.action] = anim
-                return anim
-        else:
-            return None
 
     def createAnimationFromAction(self, target, name, action):
         animation = Animation()

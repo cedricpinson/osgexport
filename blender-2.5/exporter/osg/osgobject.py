@@ -365,13 +365,6 @@ class Node(Object):
     def className(self):
         return "Node"
 
-    def makeRef(self, refUniqueID):
-        self.uniqueID = refUniqueID
-
-    def makeNodeContents(self, name, uniqueID):
-        self.name = name
-        self.uniqueID = uniqueID
-
     def serialize(self, output):
         output.write(self.encode("$%s {\n" % (self.getNameSpaceClass())))
         Object.serializeContent(self, output)
