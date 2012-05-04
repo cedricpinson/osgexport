@@ -379,19 +379,18 @@ class Node(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        if self.stateset is not None:
-            output.write(self.encode("$#StateSet TRUE {\n"))
-            self.stateset.indent_level = self.indent_level + 1
-            self.stateset.write(output)
-            output.write(self.encode("$#}\n"))
-
         if len(self.update_callbacks) > 0:
             output.write(self.encode("$#UpdateCallback TRUE {\n"))
             for i in self.update_callbacks:
                 i.indent_level = self.indent_level + 2
                 i.write(output)
             output.write(self.encode("$#}\n"))
-            
+
+        if self.stateset is not None:
+            output.write(self.encode("$#StateSet TRUE {\n"))
+            self.stateset.indent_level = self.indent_level + 2
+            self.stateset.write(output)
+            output.write(self.encode("$#}\n"))
 
 class Geode(Node):
     def __init__(self, *args, **kwargs):
@@ -436,11 +435,12 @@ class Group(Node):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        output.write(self.encode("$#Children %d {\n" % (len(self.children))))
-        for i in self.children:
-            i.indent_level = self.indent_level + 2
-            i.write(output)
-        output.write(self.encode("$#}\n"))
+        if len(self.children) > 0:
+            output.write(self.encode("$#Children %d {\n" % (len(self.children))))
+            for i in self.children:
+                i.indent_level = self.indent_level + 2
+                i.write(output)
+            output.write(self.encode("$#}\n"))
 
 class MatrixTransform(Group):
     def __init__(self, *args, **kwargs):
@@ -483,14 +483,14 @@ class StateAttribute(Object):
 
 class StateTextureAttribute(StateAttribute):
     def __init__(self, *args, **kwargs):
-        Object.__init__(self, *args, **kwargs)
+        StateAttribute.__init__(self, *args, **kwargs)
         self.unit = 0
 
     def className(self):
         return "StateTextureAttribute"
 
     def serializeContent(self, output):
-        Object.serializeContent(self, output)
+        StateAttribute.serializeContent(self, output)
 
 class Light(StateAttribute):
     def __init__(self, *args, **kwargs):
@@ -510,16 +510,13 @@ class Light(StateAttribute):
     def className(self):
         return "Light"
 
-    def generateID(self):
-        return None
-
     def serialize(self, output):
         output.write(self.encode("$%s {\n" % (self.getNameSpaceClass())))
+        StateAttribute.serializeContent(self, output)
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        Object.serializeContent(self, output)
         output.write(self.encode("$#LightNum %s\n" % self.light_num))
         output.write(self.encode("$#Ambient %s %s %s %s\n" % (STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]))))
         output.write(self.encode("$#Diffuse %s %s %s %s\n" % (STRFLT(self.diffuse[0]), STRFLT(self.diffuse[1]), STRFLT(self.diffuse[2]), STRFLT(self.diffuse[3]))))
@@ -547,13 +544,13 @@ class LightSource(Group):
 
     def serialize(self, output):
         output.write(self.encode("$%s {\n" % (self.getNameSpaceClass())))
+        Object.serializeContent(self, output)
+        Node.serializeContent(self, output)
+        Group.serializeContent(self, output)
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        Object.serializeContent(self, output)
-        Node.serializeContent(self, output)
-        Group.serializeContent(self, output)
         if self.light is not None:
             output.write(self.encode("$#Light TRUE {\n"))
             self.light.indent_level = self.indent_level + 2
@@ -651,11 +648,11 @@ class LightModel(StateAttribute):
 
     def serialize(self, output):
         output.write(self.encode("$%s {\n" % (self.getNameSpaceClass())))
+        StateAttribute.serializeContent(self, output)
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        StateAttribute.serializeContent(self, output)
         output.write(self.encode("$#AmbientIntensity %s %s %s %s\n" % (STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]))))
         output.write(self.encode("$#ColorControl %s\n" % self.color_control))
         output.write(self.encode("$#LocalViewer %s\n" % self.local_viewer))

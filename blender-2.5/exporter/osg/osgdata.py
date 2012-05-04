@@ -272,12 +272,7 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
 
     action2animation = BlenderAnimationToAnimation(object = blender_object, config = config, 
                                                    uniq_anims = uniq_anims)
-    anim = action2animation.createAnimation()
-    osglog.log("animations created for object '%s'" % (blender_object.name))
-    if anim != None:
-        osglog.log("processed animation '%s'" % anim.name)
-        osg_object.update_callbacks.append(update_callback)
-    return [anim]
+    return action2animation.createAnimation()
     
 def createAnimationsObjectAndSetCallback(osg_node, obj, config, uniq_anims):
     return createAnimationsGenericObject(osg_node, obj, config, 
@@ -1455,11 +1450,10 @@ class BlenderAnimationToAnimation(object):
                 osglog.log("%s processing channels for bone %s" % (name, bname))
                 self.appendChannelsToAnimation(bname, animation, action, prefix=('pose.bones["%s"].' % (bname)))
         else:
-            self.appendChannelsToAnimation(target, animation, action, prefix)
-        self.animation = animation
+            self.appendChannelsToAnimation(target, animation, action)
         return animation
 
-    def appendChannelsToAnimation(self, target, anim, action, prefix):
+    def appendChannelsToAnimation(self, target, anim, action, prefix = ""):
         channels = exportActionsToKeyframeSplitRotationTranslationScale(target, action, self.config.anim_fps, prefix)
         for i in channels:
             anim.channels.append(i)
