@@ -156,11 +156,12 @@ class Object(Writer):
     def serializeContent(self, output):
         if self.uniqueID is not None:
             output.write(self.encode("$#UniqueID %d\n" % self.uniqueID))
-        if self.dataVariance is not "UNKNOWN":
-            output.write(self.encode("$#DataVariance " + self.dataVariance + "\n"))
+
         if self.name is not "None":
             output.write(self.encode("$#Name \"%s\"\n" % self.name))
 
+        if self.dataVariance is not "UNKNOWN":
+            output.write(self.encode("$#DataVariance " + self.dataVariance + "\n"))
 
 class UpdateMatrixTransform(Object):
     def __init__(self, *args, **kwargs):
@@ -1098,7 +1099,7 @@ class VertexGroup(Object):
 
     def serialize(self, output):
         self.setName(self.targetGroupName)
-        output.write(self.encode("$VertexInfluence \"%s\" %d {\n" % (self.targetGroupName, len(self.vertexes)) ) )
+        output.write(self.encode("$VertexInfluence %s %d {\n" % (self.targetGroupName, len(self.vertexes)) ) )
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
 
@@ -1150,8 +1151,8 @@ class Channel(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        output.write(self.encode("$#Name \"%s\"\n" % self.name))
-        output.write(self.encode("$#TargetName \"%s\"\n" % self.target))
+        output.write(self.encode("$#Name %s\n" % self.name))
+        output.write(self.encode("$#TargetName %s\n" % self.target))
         output.write(self.encode("$#KeyFrameContainer TRUE %d {\n" % (len(self.keys))))
         for i in self.keys:
             output.write(self.encode("$##"))

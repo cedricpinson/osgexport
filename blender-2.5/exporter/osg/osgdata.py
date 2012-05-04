@@ -279,25 +279,6 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
         osg_object.update_callbacks.append(update_callback)
     return [anim]
     
-def createAnimationsSkeletonObject(osg_object, blender_object, config, uniq_anims):
-    osglog.log("animation_data is %s %s" % (blender_object.name, blender_object.animation_data))
-    if (config.export_anim is False) or (blender_object.animation_data == None) or (blender_object.animation_data.action == None):
-        return None
-
-    action2animation = BlenderAnimationToAnimation(object = blender_object, config = config,
-                                                   uniq_anims = uniq_anims)
-    osglog.log("animations created for object '%s'" % (blender_object.name))
-    
-    anims = []
-    for (bname, bone) in osg_object.boneDict.items():
-        anim = action2animation.createAnimation(target=bname, prefix=('pose.bones["%s"].' % (bname)))
-        osglog.log("animations processed for armature %s bone %s" % (blender_object.name, bname))
-
-        if anim != None:
-            anims.append(anim)
-    
-    return anims
-
 def createAnimationsObjectAndSetCallback(osg_node, obj, config, uniq_anims):
     return createAnimationsGenericObject(osg_node, obj, config, 
                 createAnimationUpdate(obj, UpdateMatrixTransform(name=obj.name), obj.rotation_mode), 
@@ -378,6 +359,24 @@ class Export(object):
             return obj.name
         return "no name"
 
+    def createAnimationsSkeletonObject(self, osg_object, blender_object):
+
+        if (self.config.export_anim is False) or (blender_object.animation_data == None) or (blender_object.animation_data.action == None):
+            return None
+
+        action_name = blender_object.animation_data.action.name
+        if action_name in self.uniq_anims:
+            return None
+
+        osglog.log("animation_data is %s %s" % (blender_object.name, blender_object.animation_data))
+
+        action2animation = BlenderAnimationToAnimation(object = blender_object, config = self.config, uniq_anim = self.uniq_anims)
+        osglog.log("animations created for object '%s'" % (blender_object.name))
+
+        anims = action2animation.createAnimation()
+        return anims
+
+
     def exportChildrenRecursively(self, obj, parent, rootItem):
         if self.isValidToExport(obj) == False:
             return None
@@ -393,7 +392,7 @@ class Export(object):
             osglog.log("Type of " + obj.name + " is " + obj.type)
             if obj.type == "ARMATURE":
                 item = self.createSkeleton(obj)
-                anims = createAnimationsSkeletonObject(item, obj, self.config, self.uniq_anims)
+                anims = self.createAnimationsSkeletonObject(item, obj)
 
             elif obj.type == "MESH" or obj.type == "EMPTY" or obj.type == "CAMERA":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
@@ -501,6 +500,7 @@ class Export(object):
                 if (self.config.selected == "SELECTED_ONLY_WITH_CHILDREN" and obj.select) \
                             or (self.config.selected == "ALL" and obj.parent == None):
                         self.exportItemAndChildren(obj)
+
         finally:
             self.restoreArmaturePoseMode()
         
@@ -1319,7 +1319,50 @@ class BlenderAnimationToAnimation(object):
         self.action = None
         self.action_name = None
 
-    def createAnimation(self, target=None, prefix=""):
+    def handleAnimationBaking(self):
+        need_bake = False
+        if hasattr(self.object, "constraints") and (len(self.object.constraints) > 0) and self.config.bake_constraints:
+            osglog.log("Baking constraints " + str(self.object.constraints))
+            need_bake = True
+        else:
+            if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
+                self.action = self.object.animation_data.action
+                for fcu in self.action.fcurves:
+                    for kf in fcu.keyframe_points:
+                        if kf.interpolation != 'LINEAR':
+                            need_bake = True
+
+        if need_bake:
+            self.action = osgbake.bake(self.config.scene,
+                     self.object,
+                     self.config.scene.frame_start, 
+                     self.config.scene.frame_end,
+                     self.config.bake_frame_step,
+                     False, #only_selected
+                     True,  #do_pose
+                     True,  #do_object
+                     False, #do_constraint_clear
+                     False) #to_quat
+
+
+    def createAnimation(self, target = None):
+
+        osglog.log("Exporting animation on object " + str(self.object))
+        if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action") and self.object.animation_data.action != None:
+            self.action_name = self.object.animation_data.action.name
+
+        self.handleAnimationBaking()
+
+        if target == None:
+            target = self.object.name
+
+        anim = self.createAnimationFromAction(target, self.action_name, self.action)
+        self.uniq_anims[self.action_name] = anim
+        osglog.log("uniq_anims ".format(self.uniq_anims))
+
+        return [anim]
+
+    def createAnimationOld(self, target=None, prefix=""):
 
         # track could be interesting, to export multi animation but we would need to be able to associate different track to an animation. Why ?
         # because track are used to compose an animation base on different action
@@ -1403,27 +1446,20 @@ class BlenderAnimationToAnimation(object):
         else:
             return None
 
-    #def createAnimationFromTrack(self, name, track):
-    #    animation = Animation()
-    #    animation.setName(name)
-    #
-    #    actions = []
-    #    if track:
-    #        for strip in track.strips:
-    #            actions.append(strip.action)
-    #
-    #    self.convertActionsToAnimation(animation, actions)
-    #    self.animation = animation
-    #    return animation
-
-    def createAnimationFromAction(self, target, name, action, prefix):
+    def createAnimationFromAction(self, target, name, action):
         animation = Animation()
         animation.setName(name)
-        self.convertActionsToAnimation(target, animation, action, prefix)
+        if self.object.type == "ARMATURE":
+            for bone in self.object.data.bones:
+                bname = bone.name
+                osglog.log("%s processing channels for bone %s" % (name, bname))
+                self.appendChannelsToAnimation(bname, animation, action, prefix=('pose.bones["%s"].' % (bname)))
+        else:
+            self.appendChannelsToAnimation(target, animation, action, prefix)
         self.animation = animation
         return animation
 
-    def convertActionsToAnimation(self, target, anim, action, prefix):
+    def appendChannelsToAnimation(self, target, anim, action, prefix):
         channels = exportActionsToKeyframeSplitRotationTranslationScale(target, action, self.config.anim_fps, prefix)
         for i in channels:
             anim.channels.append(i)
