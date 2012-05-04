@@ -587,7 +587,7 @@ class Export(object):
                 self.config.closeLogfile()
             return
 
-        filename = self.config.getFullName("osg")
+        filename = self.config.getFullName("osgt")
         osglog.log("write file to " + filename)
         with open(filename, "wb") as sfile:
         #sfile.write(str(self.root).encode('utf-8'))
@@ -639,17 +639,17 @@ class Export(object):
                 except Exception  as e:
                     osglog.log("error while trying to copy file {} to {}: {}".format(imagename, nativePath, str(e)))
 
-        filetoview = self.config.getFullName("osg")
+        filetoview = self.config.getFullName("osgt")
         if self.config.osgconv_to_ive:
             if self.config.osgconv_embed_textures:
-                r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile", self.config.getFullName("osg"), self.config.getFullName("ive")]
+                r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile", self.config.getFullName("osgt"), self.config.getFullName("ive")]
             else:
-                r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile", self.config.getFullName("osg"), self.config.getFullName("ive")]
+                r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile", self.config.getFullName("osgt"), self.config.getFullName("ive")]
             try:
                 if subprocess.call(r) == 0:
                     filetoview = self.config.getFullName("ive")
                     if self.config.osgconv_cleanup:
-                        os.unlink(self.config.getFullName("osg"))
+                        os.unlink(self.config.getFullName("osgt"))
                         if self.config.osgconv_embed_textures:
                             for i in copied_images:
                                 os.unlink(i)
