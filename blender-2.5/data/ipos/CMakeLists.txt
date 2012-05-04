@@ -1,4 +1,4 @@
-# Copyright (C) 2008 Cedric Pinson
+# Copyright (C) 2012 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,22 +18,6 @@
 #  Cedric Pinson <cedric.pinson@plopbyte.com>
 
 
-MACRO(BUILD_DATA)
-
-  IF (${ARGC} EQUAL 1)
-    SET(flags "${ARGV0}")
-  ELSE (${ARGC} EQUAL 1)
-    SET(flags "--enable-animation")
-  ENDIF (${ARGC} EQUAL 1)
-
-  # need DATA_SOURCE and DATA_TARGET
-  SET(DATA_TARGETNAME ${DATA_TARGET}.osgt)
-  ADD_CUSTOM_COMMAND (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGETNAME}
-    COMMAND ${BLENDER}
-    ARGS  --background ${DATA_SOURCE} --python osg/__init__.py -- --output="${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGET}" "${flags}"
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${EXPORTER}
-    DEPENDS ${DATA_SOURCE}
-    COMMENT "build data from ${DATA_SOURCE}"
-    )
-  ADD_CUSTOM_TARGET (${DATA_TARGET} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGETNAME})
-ENDMACRO(BUILD_DATA)
+SET ( DATA_SOURCE ${PROJECT_SOURCE_DIR}/data/ipos/simple_anim.blend )
+SET ( DATA_TARGET  anim )
+BUILD_DATA()

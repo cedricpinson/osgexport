@@ -23,13 +23,13 @@ import bpy
 import pickle
 
 bl_info = {
-    "name": "Export OSG format (.osg)",
-    "author": "Jeremy Moles, Cedric Pinson, Peter Amstutz",
-    "version": (0,11,0),
+    "name": "Export OSG format (.osgt)",
+    "author": "Cedric Pinson, Jeremy Moles, Peter Amstutz",
+    "version": (0,12,0),
     "blender": (2, 6, 2),
     "email": "jeremy@emperorlinux.com, cedric.pinson@plopbyte.com, peter.amstutz@tseboston.com",
     "api": 36339,
-    "location": "File > Export > OSG Model (*.osg)",
+    "location": "File > Export > OSG Model (*.osgt)",
     "description": "Export models and animations for use in OpenSceneGraph",
     "warning": "",
     "wiki_url": "https://github.com/cedricpinson/osgexport/wiki",
@@ -104,7 +104,7 @@ def menu_export_osg_model(self, context):
     #default_path = os.path.splitext(bpy.data.filepath)[0] + "_" + bpy.context.scene.name
     #default_path = default_path.replace('.', '_')
     #self.layout.operator(OSGGUI.bl_idname, text="OSG Model(.osg)").filepath = default_path
-	self.layout.operator(OSGGUI.bl_idname, text="OSG Model(.osg)")
+	self.layout.operator(OSGGUI.bl_idname, text="OSG Model(.osgt)")
 
 def register():
     bpy.utils.register_module(__name__)
@@ -129,7 +129,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     bl_idname = "osg.export"
     bl_label = "OSG Model"
 
-    filename_ext = ".osg"
+    filename_ext = ".osgt"
 
     # List of operator properties, the attributes will be assigned
     # to the class instance from the operator settings before calling.
