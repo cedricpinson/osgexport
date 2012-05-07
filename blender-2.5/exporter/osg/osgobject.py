@@ -127,6 +127,7 @@ class Object(Writer):
         self.dataVariance = "UNKNOWN"
         self.name = kwargs.get('name', "None")
         self.uniqueID = None
+        self.userdata = None
 
     def generateID(self):
         self.uniqueID = Object.instance
@@ -140,6 +141,11 @@ class Object(Writer):
         output.write(self.encode("$%s {\n" % (self.getNameSpaceClass())))
         output.write(self.encode("$#UniqueID %d\n" % self.uniqueID))
         output.write(self.encode("$}\n"))
+
+    def getOrCreateUserData(self):
+        if self.userdata == None:
+            self.userdata = DefaultUserDataContainer()
+        return self.userdata
 
     def getNameSpaceClass(self):
         return "%s::%s" % (self.nameSpace(), self.className())
@@ -160,8 +166,59 @@ class Object(Writer):
         if self.name is not "None":
             output.write(self.encode("$#Name \"%s\"\n" % self.name))
 
+        if self.userdata is not None:
+            output.write(self.encode("$#UserDataContainer TRUE {\n"))
+            self.userdata.indent_level = self.indent_level + 2
+            self.userdata.write(output)
+            output.write(self.encode("$#}\n"))
+
         if self.dataVariance is not "UNKNOWN":
             output.write(self.encode("$#DataVariance " + self.dataVariance + "\n"))
+
+class StringValueObject(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self)
+        self.generateID()
+        self.key = args[0]
+        self.value = args[1]
+
+    def className(self):
+        return "StringValueObject"
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
+        Object.serializeContent(self, output)
+
+        output.write(self.encode("$#Name \"%s\"\n" % self.key))
+        output.write(self.encode("$#Value \"%s\"\n" % self.value))
+
+        output.write(self.encode("$}\n"))
+
+class DefaultUserDataContainer(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+        self.generateID()
+        self.value = []
+
+    def append(self, value):
+        self.value.append(value)
+
+    def className(self):
+        return "DefaultUserDataContainer"
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
+        Object.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        output.write(self.encode("$#UDC_UserObjects %d {\n" % len(self.value)))
+        for s in self.value:
+            s.indent_level = self.indent_level + 2
+            s.write(output)
+        output.write(self.encode("$#}\n"))
+        
 
 class UpdateMatrixTransform(Object):
     def __init__(self, *args, **kwargs):

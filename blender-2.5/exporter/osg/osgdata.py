@@ -266,26 +266,77 @@ def createAnimationUpdate(obj, callback, rotation_mode, prefix="", zero=False):
 
     return callback
 
-def createAnimationsGenericObject(osg_object, blender_object, config, update_callback, uniq_anims):
-    if (config.export_anim is False) or (update_callback is None):
+def createAnimationsGenericObject(osg_object, blender_object, config, update_callback, unique_objects):
+    if (config.export_anim is False) or (update_callback is None) or (blender_object.animation_data is None):
         return None
 
-    action_name = blender_object.animation_data.action.name
-    if action_name in uniq_anims:
+    if unique_objects.hasAnimation(blender_object.animation_data.action):
         return None
 
     action2animation = BlenderAnimationToAnimation(object = blender_object, 
                                                    config = config, 
-                                                   uniq_anims = uniq_anims)
+                                                   unique_objects = unique_objects)
     anim = action2animation.createAnimation()
     if len(anim) > 0:
         osg_object.update_callbacks.append(update_callback)
     return anim
 
-def createAnimationMaterialAndSetCallback(osg_node, obj, config, uniq_anims):
+def createAnimationMaterialAndSetCallback(osg_node, obj, config, unique_objects):
     osglog.log("WARNING update material animation not yet supported")
     return None
     #return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
+
+
+class UniqueObject(object):
+    def __init__(self):
+        self.statesets = {}
+        self.textures = {}
+        self.objects = {}
+        self.anims = {}
+
+    def hasAnimation(self, obj):
+        return obj in self.anims
+
+    def getAnimation(self, obj):
+        if self.hasAnimation(obj):
+            return self.anims[obj]
+        return None
+
+    def registerAnimation(self, obj, reg):
+        self.anims[obj] = reg
+
+    def hasObject(self, obj):
+        return obj in self.objects
+
+    def getObject(self, obj):
+        if self.hasObject(obj):
+            return self.objects[obj]
+        return None
+
+    def registerObject(self, obj, reg):
+        self.objects[obj] = reg
+
+    def hasTexture(self, obj):
+        return obj in self.textures
+
+    def getTexture(self, obj):
+        if self.hasTexture(obj):
+            return self.textures[obj]
+        return None
+
+    def registerTexture(self, obj, reg):
+        self.textures[obj] = reg
+
+    def hasStateSet(self, obj):
+        return obj in self.statesets
+
+    def getStateSet(self, obj):
+        if self.hasStateSet(obj):
+            return self.statesets[obj]
+        return None
+
+    def registerStateSet(self, obj, reg):
+        self.statesets[obj] = reg
 
 class Export(object):
     def __init__(self, config = None):
@@ -299,10 +350,7 @@ class Export(object):
         self.images = set()
         self.lights = {}
         self.root = None
-        self.uniq_objects = {}
-        self.uniq_stateset = {}
-        self.uniq_geodes = {}
-        self.uniq_anims = {}
+        self.unique_objects = UniqueObject()
 
     def isValidToExport(self, object):
         if object.name in self.config.exclude_objects:
@@ -362,13 +410,12 @@ class Export(object):
         if (self.config.export_anim is False) or (blender_object.animation_data == None) or (blender_object.animation_data.action == None):
             return None
 
-        action_name = blender_object.animation_data.action.name
-        if action_name in self.uniq_anims:
+        if self.unique_objects.hasAnimation(blender_object.animation_data.action):
             return None
 
         osglog.log("animation_data is %s %s" % (blender_object.name, blender_object.animation_data))
 
-        action2animation = BlenderAnimationToAnimation(object = blender_object, config = self.config, uniq_anim = self.uniq_anims)
+        action2animation = BlenderAnimationToAnimation(object = blender_object, config = self.config, unique_objects = self.unique_objects)
         osglog.log("animations created for object '%s'" % (blender_object.name))
 
         anims = action2animation.createAnimation()
@@ -377,7 +424,7 @@ class Export(object):
     def createAnimationsObjectAndSetCallback(self, osg_object, blender_object):
         return createAnimationsGenericObject(osg_object, blender_object, self.config, 
                     createAnimationUpdate(blender_object, UpdateMatrixTransform(name=osg_object.name), blender_object.rotation_mode),
-                    self.uniq_anims)
+                    self.unique_objects)
     
 
     def exportChildrenRecursively(self, obj, parent, rootItem):
@@ -388,9 +435,9 @@ class Export(object):
 
         anims = []
         item = None
-        if obj in self.uniq_objects:
+        if self.unique_objects.hasObject(obj):
             osglog.log(str("use referenced item for " + obj.name + " " + obj.type))
-            item = self.uniq_objects[obj]
+            item = self.unique_objects.getObject(obj)
         else:
             osglog.log("Type of " + obj.name + " is " + obj.type)
             if obj.type == "ARMATURE":
@@ -433,7 +480,7 @@ class Export(object):
                 osglog.log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
                 return None
             
-            self.uniq_objects[obj] = item
+            self.unique_objects.registerObject(obj, item)
         
         if anims != None:
             self.animations += [a for a in anims if a != None]
@@ -522,8 +569,8 @@ class Export(object):
             if geode.armature_modifier != None:
                 parent.children.remove(item)
                 
-                arm = self.uniq_objects[item.children[0].armature_modifier.object]
-                for (k, v) in self.uniq_objects.items():
+                arm = self.unique_objects.getObject(item.children[0].armature_modifier.object)
+                for (k, v) in self.unique_objects.objects.items():
                     if v == item:
                         meshobj = k
                 
@@ -575,9 +622,10 @@ class Export(object):
                 st.modes[key] = "ON"
                 light_num += 1
 
-        for key in self.uniq_stateset.keys():
-            if self.uniq_stateset[key] is not None: # register images to unpack them at the end
-                images = getImageFilesFromStateSet(self.uniq_stateset[key])
+        for key in self.unique_objects.statesets.keys():
+            stateset = self.unique_objects.statesets[key]
+            if stateset is not None: # register images to unpack them at the end
+                images = getImageFilesFromStateSet(stateset)
                 for i in images:
                     self.images.add(i)
 
@@ -698,8 +746,8 @@ class Export(object):
          
         osglog.log("mesh_object is " + mesh_object.name)
         
-        if mesh_object in self.uniq_geodes:
-            return self.uniq_geodes[mesh_object]
+        if self.unique_objects.hasObject(mesh_object):
+            return self.unique_objects.getObject(mesh_object)
 
         hasVertexGroup = False
         
@@ -711,7 +759,7 @@ class Export(object):
         geometries = []
         converter = BlenderObjectToGeometry(object = mesh, mesh = mesh_object,
                                             config = self.config, 
-                                            uniq_stateset = self.uniq_stateset)
+                                            unique_objects = self.unique_objects)
         sources_geometries = converter.convert()
 
         osglog.log("vertex groups %s %s " % (exportInfluence, hasVertexGroup))
@@ -735,8 +783,7 @@ class Export(object):
             for name in converter.material_animations.keys():
                 self.animations.append(converter.material_animations[name])
                 
-        self.uniq_geodes[mesh_object] = geode
-                
+        self.unique_objects.registerObject(mesh_object, geode)
         return geode
 
     def createLight(self, obj):
@@ -785,8 +832,7 @@ class BlenderObjectToGeometry(object):
         self.config = kwargs.get("config", None)
         if not self.config:
             self.config = osgconf.Config()
-        self.uniq_stateset = kwargs.get("uniq_stateset", {})
-        self.uniq_anims = kwargs.get("uniq_anims", {})
+        self.unique_objects = kwargs.get("unique_objects", {})
         self.geom_type = Geometry
         self.mesh = kwargs.get("mesh", None)
         
@@ -805,6 +851,10 @@ class BlenderObjectToGeometry(object):
         if image_object is None:
             osglog.log("WARNING the texture %s has no Image, skip it" % str(mtex))
             return None
+
+        if self.unique_objects.hasTexture(mtex.texture):
+            return self.unique_objects.getTexture(mtex.texture)
+
         texture = Texture2D()
         texture.name = mtex.texture.name
 
@@ -812,6 +862,7 @@ class BlenderObjectToGeometry(object):
         filename = createImageFilename(self.config.texture_prefix, image_object)
         texture.file = filename
         texture.source_image = image_object
+        self.unique_objects.registerTexture(mtex.texture, texture)
         return texture
 
     def adjustUVLayerFromMaterial(self, geom, material):
@@ -829,11 +880,12 @@ class BlenderObjectToGeometry(object):
             default_uv_key, default_uv = uvs.popitem()
 
         for i in range(0, len(texture_list)):
-            if texture_list[i] is not None:
-                uv_layer =  texture_list[i].uv_layer
-
+            texture_slot = texture_list[i]
+            if texture_slot is not None:
+                uv_layer =  texture_slot.uv_layer
+                
                 if len(uv_layer) > 0 and not uv_layer in uvs.keys():
-                    osglog.log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (material.name, texture_list[i], uv_layer, geom.name))
+                    osglog.log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (material.name, texture_slot, uv_layer, geom.name))
                 if len(uv_layer) > 0 and uv_layer in uvs.keys():
                     if DEBUG: osglog.log("texture %s use uv layer %s" % (i, uv_layer))
                     geom.uvs[i] = TexCoordArray()
@@ -856,76 +908,109 @@ class BlenderObjectToGeometry(object):
         return
 
     def createStateSet(self, index_material, mesh, geom):
+        if len(mesh.materials) == 0:
+            return None
+
+        mat_source = mesh.materials[index_material]
+        if self.unique_objects.hasStateSet(mat_source):
+            return self.unique_objects.getStateSet(mat_source)
+
+        if mat_source is None:
+            return None
+
         s = StateSet()
-        if len(mesh.materials) > 0:
-            mat_source = mesh.materials[index_material]
-            if mat_source in self.uniq_stateset.keys():
-                #s = ShadowObject(self.uniq_stateset[mat_source])
-                s = self.uniq_stateset[mat_source]
-                return s
+        self.unique_objects.registerStateSet(mat_source, s)
+        m = Material()
+        m.setName(mat_source.name)
+        s.setName(mat_source.name)
 
-            if mat_source is not None:
-                self.uniq_stateset[mat_source] = s
-                m = Material()
-                m.setName(mat_source.name)
-                s.setName(mat_source.name)
+        #bpy.ops.object.select_name(name=self.object.name)
+        anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config, self.unique_objects)
+        if anim :
+            self.material_animations[anim.name] = anim
 
-                #bpy.ops.object.select_name(name=self.object.name)
-                anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config, self.uniq_anims)
-                if anim :
-                    self.material_animations[anim.name] = anim
+        if mat_source.use_shadeless:
+            s.modes["GL_LIGHTING"] = "OFF"
 
-                if mat_source.use_shadeless:
-                    s.modes["GL_LIGHTING"] = "OFF"
+        alpha = 1.0
+        if mat_source.use_transparency:
+            alpha = 1.0 - mat_source.alpha
 
-                alpha = 1.0
-                if mat_source.use_transparency:
-                    alpha = 1.0 - mat_source.alpha
+        refl = mat_source.diffuse_intensity
+        m.diffuse = (mat_source.diffuse_color[0] * refl, mat_source.diffuse_color[1] * refl, mat_source.diffuse_color[2] * refl, alpha)
 
-                refl = mat_source.diffuse_intensity
-                m.diffuse = (mat_source.diffuse_color[0] * refl, mat_source.diffuse_color[1] * refl, mat_source.diffuse_color[2] * refl, alpha)
+        # if alpha not 1 then we set the blending mode on
+        if DEBUG: osglog.log("state material alpha %s" % str(alpha))
+        if alpha != 1.0:
+            s.modes["GL_BLEND"] = "ON"
 
-                # if alpha not 1 then we set the blending mode on
-                if DEBUG: osglog.log("state material alpha %s" % str(alpha))
-                if alpha != 1.0:
+        ambient_factor = mat_source.ambient
+        if bpy.context.scene.world:
+            m.ambient =((bpy.context.scene.world.ambient_color[0])*ambient_factor,
+                        (bpy.context.scene.world.ambient_color[1])*ambient_factor,
+                        (bpy.context.scene.world.ambient_color[2])*ambient_factor,
+                        1.0)
+        else:
+            m.ambient = (0, 0, 0, 1.0)
+        spec = mat_source.specular_intensity
+        m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
+
+        emissive_factor = mat_source.emit
+        m.emission = (mat_source.diffuse_color[0] * emissive_factor, mat_source.diffuse_color[1] * emissive_factor, mat_source.diffuse_color[2] * emissive_factor, 1)
+        m.shininess = (mat_source.specular_hardness / 512.0) * 128.0
+
+        s.attributes.append(m)
+
+        texture_list = mat_source.texture_slots
+        if DEBUG: osglog.log("texture list %s" % str(texture_list))
+
+        for i in range(0, len(texture_list)):
+            texture_slot = texture_list[i]
+            
+            if texture_slot is None:
+                continue
+
+            t = self.createTexture2D(texture_list[i])
+            if DEBUG: osglog.log("texture %s %s" % (i, texture_list[i]))
+            if t is None:
+                continue
+
+            userData = s.getOrCreateUserData()
+            # use texture as diffuse
+            if texture_slot.use_map_diffuse:
+                userData.append(StringValueObject("diffuse_unit", str(i)))
+                userData.append(StringValueObject("diffuse_factor", str(texture_slot.diffuse_factor)))
+
+            if texture_slot.use_map_color_diffuse:
+                userData.append(StringValueObject("color_diffuse_unit", str(i)))
+                userData.append(StringValueObject("color_diffuse_factor", str(texture_slot.diffuse_color_factor)))
+
+            # use texture as specular
+            if texture_slot.use_map_specular:
+                userData.append(StringValueObject("specular_unit", str(i)))
+                userData.append(StringValueObject("specular_factor", str(texture_slot.specular_factor)))
+
+            if texture_slot.use_map_color_spec:
+                userData.append(StringValueObject("color_specular_unit", str(i)))
+                userData.append(StringValueObject("color_specular_factor", str(texture_slot.specular_color_factor)))
+
+            # use texture as normalmap
+            if texture_slot.use_map_normal:
+                userData.append(StringValueObject("normal_unit", str(i)))
+                userData.append(StringValueObject("normal_factor", str(texture_slot.normal_factor)))
+
+            if not i in s.texture_attributes.keys():
+                s.texture_attributes[i] = []
+            s.texture_attributes[i].append(t)
+            try:
+                if t.source_image.getDepth() > 24: # there is an alpha
                     s.modes["GL_BLEND"] = "ON"
+            except:
+                pass
 
-                ambient_factor = mat_source.ambient
-                if bpy.context.scene.world:
-                    m.ambient =((bpy.context.scene.world.ambient_color[0])*ambient_factor,
-                                (bpy.context.scene.world.ambient_color[1])*ambient_factor,
-                                (bpy.context.scene.world.ambient_color[2])*ambient_factor,
-                                1.0)
-                else:
-                    m.ambient = (0, 0, 0, 1.0)
-                spec = mat_source.specular_intensity
-                m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
-
-                emissive_factor = mat_source.emit
-                m.emission = (mat_source.diffuse_color[0] * emissive_factor, mat_source.diffuse_color[1] * emissive_factor, mat_source.diffuse_color[2] * emissive_factor, 1)
-                m.shininess = (mat_source.specular_hardness / 512.0) * 128.0
-
-                s.attributes.append(m)
-
-                texture_list = mat_source.texture_slots
-                if DEBUG: osglog.log("texture list %s" % str(texture_list))
-
-                for i in range(0, len(texture_list)):
-                    if texture_list[i] is not None:
-                        t = self.createTexture2D(texture_list[i])
-                        if DEBUG: osglog.log("texture %s %s" % (i, texture_list[i]))
-                        if t is not None:
-                            if not i in s.texture_attributes.keys():
-                                s.texture_attributes[i] = []
-                            s.texture_attributes[i].append(t)
-                            try:
-                                if t.source_image.getDepth() > 24: # there is an alpha
-                                    s.modes["GL_BLEND"] = "ON"
-                            except:
-                                pass
-                                # happens for all generated textures
-                                #log("can't read the source image file for texture %s" % t.name)
-                #if DEBUG: osglog.log("state set %s" % str(s))
+                    # happens for all generated textures
+                    #log("can't read the source image file for texture %s" % t.name)
+        #if DEBUG: osglog.log("state set %s" % str(s))
         return s
 
     def createGeomForMaterialIndex(self, material_index, mesh):
@@ -1275,7 +1360,9 @@ class BlenderObjectToGeometry(object):
         geom.normals = osg_normals
         geom.primitives = primitives
         geom.setName(self.object.name)
-        geom.stateset = self.createStateSet(material_index, mesh, geom)
+        stateset = self.createStateSet(material_index, mesh, geom)
+        if stateset is not None:
+            geom.stateset = stateset
 
         if len(mesh.materials) > 0 and mesh.materials[material_index] is not None:
             self.adjustUVLayerFromMaterial(geom, mesh.materials[material_index])
@@ -1317,7 +1404,7 @@ class BlenderAnimationToAnimation(object):
     def __init__(self, *args, **kwargs):
         self.config = kwargs["config"]
         self.object = kwargs.get("object", None)
-        self.uniq_anims = kwargs.get("uniq_anims", {})
+        self.unique_objects = kwargs.get("unique_objects", {})
         self.animations = None
         self.action = None
         self.action_name = None
@@ -1360,8 +1447,7 @@ class BlenderAnimationToAnimation(object):
             target = self.object.name
 
         anim = self.createAnimationFromAction(target, self.action_name, self.action)
-        self.uniq_anims[self.action_name] = anim
-        osglog.log("uniq_anims ".format(self.uniq_anims))
+        self.unique_objects.registerAnimation(self.action, anim)
         return [anim]
 
     def createAnimationFromAction(self, target, name, action):
