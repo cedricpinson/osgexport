@@ -804,8 +804,34 @@ class BlenderLightToLightSource(object):
         light = ls.light
         energy = self.lamp.energy
         light.ambient = (1.0, 1.0, 1.0, 1.0)
-        light.diffuse = (self.lamp.color[0] * energy, self.lamp.color[1]* energy, self.lamp.color[2] * energy,1.0) # put light to 0 it will inherit the position from parent transform
-        light.specular = (energy, energy, energy, 1.0) #light.diffuse
+
+        if self.lamp.use_diffuse:
+            light.diffuse = (self.lamp.color[0] * energy, self.lamp.color[1]* energy, self.lamp.color[2] * energy,1.0)
+        else:
+            light.diffuse = (0, 0, 0, 1.0)
+
+        if self.lamp.use_specular:
+            light.specular = (energy, energy, energy, 1.0) #light.diffuse
+        else:
+            light.specular = (0, 0, 0, 1.0)
+
+        light.getOrCreateUserData().append(StringValueObject("source", "blender"))
+        light.getOrCreateUserData().append(StringValueObject("Energy", str(energy)))
+        light.getOrCreateUserData().append(StringValueObject("Color", "[ %f, %f, %f ]" % (self.lamp.color[0], self.lamp.color[1], self.lamp.color[2])))
+
+        if self.lamp.use_diffuse:
+            light.getOrCreateUserData().append(StringValueObject("UseDiffuse", "true"))
+        else:
+            light.getOrCreateUserData().append(StringValueObject("UseDiffuse", "false"))
+
+        if self.lamp.use_specular:
+            light.getOrCreateUserData().append(StringValueObject("UseSpecular", "true"))
+        else:
+            light.getOrCreateUserData().append(StringValueObject("UseSpecular", "false"))
+
+        light.getOrCreateUserData().append(StringValueObject("Distance", str(self.lamp.distance)))
+        light.getOrCreateUserData().append(StringValueObject("FalloffType", str(self.lamp.falloff_type)))
+        light.getOrCreateUserData().append(StringValueObject("Type", str(self.lamp.type)))
 
         # Lamp', 'Sun', 'Spot', 'Hemi', 'Area', or 'Photon
         if self.lamp.type == 'POINT' or self.lamp.type == 'SPOT':
@@ -815,6 +841,18 @@ class BlenderLightToLightSource(object):
             light.linear_attenuation = self.lamp.linear_attenuation / self.lamp.distance
             light.quadratic_attenuation = self.lamp.quadratic_attenuation / self.lamp.distance
 
+            if self.lamp.falloff_type == 'CONSTANT':
+                light.quadratic_attenuation = 0
+                light.linear_attenuation = 0
+
+            if self.lamp.falloff_type == 'INVERSE_SQUARE':
+                light.constant_attenuation = 0
+                light.linear_attenuation = 0
+
+            if self.lamp.falloff_type == 'INVERSE_LINEAR':
+                light.constant_attenuation = 0
+                light.quadratic_attenuation = 0
+
         elif self.lamp.type == 'SUN':
             light.position = (0,0,1,0) # put light to 0 it will inherit the position from parent transform
 
@@ -823,7 +861,10 @@ class BlenderLightToLightSource(object):
             if light.spot_cutoff > 90:
                 light.spot_cutoff = 180
             light.spot_exponent = 128.0 * self.lamp.spot_blend
-            
+
+            light.getOrCreateUserData().append(StringValueObject("SpotSize", str(self.lamp.spot_size)))
+            light.getOrCreateUserData().append(StringValueObject("SpotBlend", str(self.lamp.spot_blend)))
+
         return ls
 
 class BlenderObjectToGeometry(object):
@@ -937,7 +978,25 @@ class BlenderObjectToGeometry(object):
             alpha = 1.0 - mat_source.alpha
 
         refl = mat_source.diffuse_intensity
+        # we premultiply color with intensity to have rendering near blender for opengl fixed pipeline
         m.diffuse = (mat_source.diffuse_color[0] * refl, mat_source.diffuse_color[1] * refl, mat_source.diffuse_color[2] * refl, alpha)
+
+        m.getOrCreateUserData().append(StringValueObject("source", "blender"))
+        m.getOrCreateUserData().append(StringValueObject("DiffuseIntensity", str(mat_source.diffuse_intensity)))
+        m.getOrCreateUserData().append(StringValueObject("DiffuseColor", "[ %f, %f, %f ]" % (mat_source.diffuse_color[0], mat_source.diffuse_color[1], mat_source.diffuse_color[2])))
+
+
+        m.getOrCreateUserData().append(StringValueObject("SpecularIntensity", str(mat_source.specular_intensity)))
+        m.getOrCreateUserData().append(StringValueObject("SpecularColor", "[ %f, %f, %f ]" % (mat_source.specular_color[0], mat_source.specular_color[1], mat_source.specular_color[2])))
+
+        m.getOrCreateUserData().append(StringValueObject("SpecularHardness", str(mat_source.specular_hardness)))
+
+        if mat_source.use_shadeless:
+            m.getOrCreateUserData().append(StringValueObject("Shadeless", "true"))
+        else:
+            m.getOrCreateUserData().append(StringValueObject("Emit", str(mat_source.emit)))
+            m.getOrCreateUserData().append(StringValueObject("Ambient", str(mat_source.ambient)))
+        m.getOrCreateUserData().append(StringValueObject("Translucency", str(mat_source.translucency)))
 
         # if alpha not 1 then we set the blending mode on
         if DEBUG: osglog.log("state material alpha %s" % str(alpha))
@@ -952,6 +1011,8 @@ class BlenderObjectToGeometry(object):
                         1.0)
         else:
             m.ambient = (0, 0, 0, 1.0)
+
+        # we premultiply color with intensity to have rendering near blender for opengl fixed pipeline
         spec = mat_source.specular_intensity
         m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
 
@@ -963,6 +1024,10 @@ class BlenderObjectToGeometry(object):
 
         texture_list = mat_source.texture_slots
         if DEBUG: osglog.log("texture list %s" % str(texture_list))
+
+        if len(texture_list) > 0:
+            userData = s.getOrCreateUserData()
+            userData.append(StringValueObject("source", "blender"))
 
         for i in range(0, len(texture_list)):
             texture_slot = texture_list[i]
@@ -978,26 +1043,41 @@ class BlenderObjectToGeometry(object):
             userData = s.getOrCreateUserData()
             # use texture as diffuse
             if texture_slot.use_map_diffuse:
-                userData.append(StringValueObject("diffuse_unit", str(i)))
-                userData.append(StringValueObject("diffuse_factor", str(texture_slot.diffuse_factor)))
+                userData.append(StringValueObject("%02d_DiffuseIntensity" % i, str(texture_slot.diffuse_factor)))
 
             if texture_slot.use_map_color_diffuse:
-                userData.append(StringValueObject("color_diffuse_unit", str(i)))
-                userData.append(StringValueObject("color_diffuse_factor", str(texture_slot.diffuse_color_factor)))
+                userData.append(StringValueObject("%02d_DiffuseColor" % i, str(texture_slot.diffuse_color_factor)))
+
+            if texture_slot.use_map_alpha:
+                userData.append(StringValueObject("%02d_Alpha" % i, str(texture_slot.alpha_factor)))
+
+            if texture_slot.use_map_translucency:
+                userData.append(StringValueObject("%02d_Translucency" % i, str(texture_slot.translucency_factor)))
 
             # use texture as specular
             if texture_slot.use_map_specular:
-                userData.append(StringValueObject("specular_unit", str(i)))
-                userData.append(StringValueObject("specular_factor", str(texture_slot.specular_factor)))
+                userData.append(StringValueObject("%02d_SpecularIntensity" % i, str(texture_slot.specular_factor)))
 
             if texture_slot.use_map_color_spec:
-                userData.append(StringValueObject("color_specular_unit", str(i)))
-                userData.append(StringValueObject("color_specular_factor", str(texture_slot.specular_color_factor)))
+                userData.append(StringValueObject("%02d_SpecularColor" % i, str(texture_slot.specular_color_factor)))
+
+
+            # mirror
+            if texture_slot.use_map_mirror:
+                userData.append(StringValueObject("%02d_Mirror" % i, str(texture_slot.mirror_factor)))
 
             # use texture as normalmap
             if texture_slot.use_map_normal:
-                userData.append(StringValueObject("normal_unit", str(i)))
-                userData.append(StringValueObject("normal_factor", str(texture_slot.normal_factor)))
+                userData.append(StringValueObject("%02d_Normal" % i, str(texture_slot.normal_factor)))
+
+            if texture_slot.use_map_ambient:
+                userData.append(StringValueObject("%02d_Ambient" % i, str(texture_slot.ambient_factor)))
+
+            if texture_slot.use_map_emit:
+                userData.append(StringValueObject("%02d_Emit" % i, str(texture_slot.emit_factor)))
+
+            # use blend
+            userData.append(StringValueObject("%02d_BlendType" % i, str(texture_slot.blend_type)))
 
             if not i in s.texture_attributes.keys():
                 s.texture_attributes[i] = []
