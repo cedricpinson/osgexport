@@ -830,7 +830,9 @@ class BlenderLightToLightSource(object):
             light.getOrCreateUserData().append(StringValueObject("UseSpecular", "false"))
 
         light.getOrCreateUserData().append(StringValueObject("Distance", str(self.lamp.distance)))
-        light.getOrCreateUserData().append(StringValueObject("FalloffType", str(self.lamp.falloff_type)))
+        if self.lamp.type == 'POINT' or self.lamp.type == "SPOT":
+            light.getOrCreateUserData().append(StringValueObject("FalloffType", str(self.lamp.falloff_type)))
+
         light.getOrCreateUserData().append(StringValueObject("Type", str(self.lamp.type)))
 
         # Lamp', 'Sun', 'Spot', 'Hemi', 'Area', or 'Photon
@@ -997,6 +999,18 @@ class BlenderObjectToGeometry(object):
             m.getOrCreateUserData().append(StringValueObject("Emit", str(mat_source.emit)))
             m.getOrCreateUserData().append(StringValueObject("Ambient", str(mat_source.ambient)))
         m.getOrCreateUserData().append(StringValueObject("Translucency", str(mat_source.translucency)))
+        m.getOrCreateUserData().append(StringValueObject("DiffuseShader", str(mat_source.diffuse_shader)))
+        m.getOrCreateUserData().append(StringValueObject("SpecularShader", str(mat_source.specular_shader)))
+        if mat_source.use_transparency:
+            m.getOrCreateUserData().append(StringValueObject("Transparency", str("true")))
+            m.getOrCreateUserData().append(StringValueObject("TransparencyMethod", str(mat_source.transparency_method)))
+
+        if mat_source.diffuse_shader == "TOON":
+            m.getOrCreateUserData().append(StringValueObject("DiffuseToonSize", str(mat_source.diffuse_toon_size)))
+            m.getOrCreateUserData().append(StringValueObject("DiffuseToonSmooth", str(mat_source.diffuse_toon_smooth)))
+        if mat_source.specular_shader == "TOON":
+            m.getOrCreateUserData().append(StringValueObject("SpecularToonSize", str(mat_source.specular_toon_size)))
+            m.getOrCreateUserData().append(StringValueObject("SpecularToonSmooth", str(mat_source.specular_toon_smooth)))
 
         # if alpha not 1 then we set the blending mode on
         if DEBUG: osglog.log("state material alpha %s" % str(alpha))
