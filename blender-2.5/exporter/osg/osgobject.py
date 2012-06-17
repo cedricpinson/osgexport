@@ -163,8 +163,12 @@ class Object(Writer):
         if self.uniqueID is not None:
             output.write(self.encode("$#UniqueID %d\n" % self.uniqueID))
 
+
         if self.name is not "None":
             output.write(self.encode("$#Name \"%s\"\n" % self.name))
+
+        if self.dataVariance is not "UNKNOWN":
+            output.write(self.encode("$#DataVariance " + self.dataVariance + "\n"))
 
         if self.userdata is not None:
             output.write(self.encode("$#UserDataContainer TRUE {\n"))
@@ -172,8 +176,6 @@ class Object(Writer):
             self.userdata.write(output)
             output.write(self.encode("$#}\n"))
 
-        if self.dataVariance is not "UNKNOWN":
-            output.write(self.encode("$#DataVariance " + self.dataVariance + "\n"))
 
 class StringValueObject(Object):
     def __init__(self, *args, **kwargs):

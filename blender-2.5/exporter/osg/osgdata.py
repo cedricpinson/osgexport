@@ -568,8 +568,11 @@ class Export(object):
             osglog.log("geode {}".format(geode.name))
             if geode.armature_modifier != None:
                 parent.children.remove(item)
-                
-                arm = self.unique_objects.getObject(item.children[0].armature_modifier.object)
+           
+                modifier_object = item.children[0].armature_modifier.object
+                osglog.log("mo {}".format(modifier_object.name))
+
+                arm = self.unique_objects.getObject(modifier_object)
                 for (k, v) in self.unique_objects.objects.items():
                     if v == item:
                         meshobj = k
@@ -832,8 +835,9 @@ class BlenderLightToLightSource(object):
         light.getOrCreateUserData().append(StringValueObject("Distance", str(self.lamp.distance)))
         if self.lamp.type == 'POINT' or self.lamp.type == "SPOT":
             light.getOrCreateUserData().append(StringValueObject("FalloffType", str(self.lamp.falloff_type)))
+            light.getOrCreateUserData().append(StringValueObject("UseSphere", (str(self.lamp.use_sphere)).lower()))
 
-        light.getOrCreateUserData().append(StringValueObject("Type", str(self.lamp.type)))
+        light.getOrCreateUserData().append(StringValueObject("Type", (str(self.lamp.type))))
 
         # Lamp', 'Sun', 'Spot', 'Hemi', 'Area', or 'Photon
         if self.lamp.type == 'POINT' or self.lamp.type == 'SPOT':
@@ -962,8 +966,10 @@ class BlenderObjectToGeometry(object):
             return None
 
         s = StateSet()
+        s.dataVariance = "DYNAMIC"
         self.unique_objects.registerStateSet(mat_source, s)
         m = Material()
+        m.dataVariance = "DYNAMIC"
         m.setName(mat_source.name)
         s.setName(mat_source.name)
 
@@ -989,6 +995,7 @@ class BlenderObjectToGeometry(object):
 
 
         m.getOrCreateUserData().append(StringValueObject("SpecularIntensity", str(mat_source.specular_intensity)))
+        #print ("%s SpecularIntensity %s" % (m.name, str(mat_source.specular_intensity)))
         m.getOrCreateUserData().append(StringValueObject("SpecularColor", "[ %f, %f, %f ]" % (mat_source.specular_color[0], mat_source.specular_color[1], mat_source.specular_color[2])))
 
         m.getOrCreateUserData().append(StringValueObject("SpecularHardness", str(mat_source.specular_hardness)))
@@ -1008,9 +1015,27 @@ class BlenderObjectToGeometry(object):
         if mat_source.diffuse_shader == "TOON":
             m.getOrCreateUserData().append(StringValueObject("DiffuseToonSize", str(mat_source.diffuse_toon_size)))
             m.getOrCreateUserData().append(StringValueObject("DiffuseToonSmooth", str(mat_source.diffuse_toon_smooth)))
+
+        if mat_source.diffuse_shader == "OREN_NAYAR":
+            m.getOrCreateUserData().append(StringValueObject("Roughness", str(mat_source.roughness)))
+
+        if mat_source.diffuse_shader == "MINNAERT":
+            m.getOrCreateUserData().append(StringValueObject("Darkness", str(mat_source.roughness)))
+
+        if mat_source.diffuse_shader == "FRESNEL":
+            m.getOrCreateUserData().append(StringValueObject("DiffuseFresnel", str(mat_source.diffuse_fresnel)))
+            m.getOrCreateUserData().append(StringValueObject("DiffuseFresnelFactor", str(mat_source.diffuse_fresnel_factor)))
+
+        # specular
         if mat_source.specular_shader == "TOON":
             m.getOrCreateUserData().append(StringValueObject("SpecularToonSize", str(mat_source.specular_toon_size)))
             m.getOrCreateUserData().append(StringValueObject("SpecularToonSmooth", str(mat_source.specular_toon_smooth)))
+
+        if mat_source.specular_shader == "WARDISO":
+            m.getOrCreateUserData().append(StringValueObject("SpecularSlope", str(mat_source.specular_slope)))
+
+        if mat_source.specular_shader == "BLINN":
+            m.getOrCreateUserData().append(StringValueObject("SpecularIor", str(mat_source.specular_ior)))
 
         # if alpha not 1 then we set the blending mode on
         if DEBUG: osglog.log("state material alpha %s" % str(alpha))
@@ -1110,7 +1135,14 @@ class BlenderObjectToGeometry(object):
     def createGeomForMaterialIndex(self, material_index, mesh):
         geom = Geometry()
         geom.groups = {}
-        if (len(mesh.faces) == 0):
+        
+        
+        if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
+            faces = mesh.tessfaces
+        else:
+            faces = mesh.faces
+
+        if (len(faces) == 0):
             osglog.log("object %s has no faces, so no materials" % self.object.name)
             return None
         if len(mesh.materials) and mesh.materials[material_index] != None:
@@ -1122,7 +1154,7 @@ class BlenderObjectToGeometry(object):
 
         vertexes = []
         collected_faces = []
-        for face in mesh.faces:
+        for face in faces:
             if face.material_index != material_index:
                 continue
             f = []
@@ -1157,27 +1189,34 @@ class BlenderObjectToGeometry(object):
         #     mesh.activeColorLayer = backup_name
         #     mesh.update()
         colors = {}
-        if mesh.vertex_colors:
+
+        vertex_colors = None
+        if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
+            vertex_colors = mesh.tessface_vertex_colors
+        else:
+            vertex_colors = mesh.vertex_colors
+        
+        if vertex_colors:
             backupColor = None
-            for colorLayer in mesh.vertex_colors:
+            for colorLayer in vertex_colors:
                 if colorLayer.active:
                     backupColor = colorLayer
-            for colorLayer in mesh.vertex_colors:
+            for colorLayer in vertex_colors:
                 idx = 0
                 colorLayer.active= True
-                mesh.update()
+                #mesh.update()
                 color_array = []
                 for data in colorLayer.data:
                     color_array.append(data.color1)
                     color_array.append(data.color2)
                     color_array.append(data.color3)
                     # DW - how to tell if this is a tri or a quad?
-                    if len(mesh.faces[idx].vertices) > 3:
+                    if len(faces[idx].vertices) > 3:
                         color_array.append(data.color4)
                     idx += 1
                 colors[colorLayer.name] = color_array
             backupColor.active = True
-            mesh.update()
+            #mesh.update()
 
         # uvs = {}
         # if mesh.faceUV:
@@ -1193,17 +1232,23 @@ class BlenderObjectToGeometry(object):
         #         uvs[name] = uv_array
         #     mesh.activeUVLayer = backup_name
         #     mesh.update()
+
+        uv_textures = None
+        if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
+            uv_textures = mesh.tessface_uv_textures
+        else:
+            uv_textures = mesh.uv_textures
+
         uvs = {}
-        if mesh.uv_textures:
+        if uv_textures:
             backup_texture = None
-            for textureLayer in mesh.uv_textures:
+            for textureLayer in uv_textures:
                 if textureLayer.active:
                     backup_texture = textureLayer
 
-
-            for textureLayer in mesh.uv_textures:
+            for textureLayer in uv_textures:
                 textureLayer.active = True
-                mesh.update()
+                #mesh.update()
                 uv_array = []
 
                 for face,f in collected_faces:
@@ -1215,7 +1260,7 @@ class BlenderObjectToGeometry(object):
                         uv_array.append(data.uv4)
                 uvs[textureLayer.name] = uv_array
             backup_texture.active = True
-            mesh.update()
+            #mesh.update()
 
         normals = []
         for face,f in collected_faces:
@@ -1466,6 +1511,9 @@ class BlenderObjectToGeometry(object):
         return geom
 
     def process(self, mesh):
+        if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
+            mesh.update(calc_tessface=True)
+
         geometry_list = []
         material_index = 0
         if len(mesh.materials) == 0:
