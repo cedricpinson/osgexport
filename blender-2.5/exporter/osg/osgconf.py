@@ -90,7 +90,7 @@ class Config(object):
         logfilename = self.getFullName( "log")
         osglog.LOGFILE = None
         if self.log:
-            self.log_file = open(logfilename, "w")
+            self.log_file = open(logfilename, "w", encoding='utf-8')
             osglog.LOGFILE = self.log_file
             #print("log %s %s" % (logfilename, osglog.LOGFILE))
         if self.export_anim is False:
