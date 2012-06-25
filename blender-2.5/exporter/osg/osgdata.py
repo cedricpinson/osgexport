@@ -566,11 +566,12 @@ class Export(object):
                 and not isinstance(parent, Skeleton):
             geode = item.children[0]
             osglog.log("geode {}".format(geode.name))
-            if geode.armature_modifier != None:
+
+            # some blend files has a armature_modifier but a None object
+            # so we have to test armature_modifier and armature_modifier.object
+            if geode.armature_modifier != None and geode.armature_modifier.object:
                 parent.children.remove(item)
-           
                 modifier_object = item.children[0].armature_modifier.object
-                osglog.log("mo {}".format(modifier_object.name))
 
                 arm = self.unique_objects.getObject(modifier_object)
                 for (k, v) in self.unique_objects.objects.items():
