@@ -47,7 +47,7 @@ Matrix     = mathutils.Matrix
 Euler      = mathutils.Euler
 
 def createImageFilename(texturePath, image):
-    fn = bpy.path.basename(image.filepath)
+    fn = bpy.path.basename(bpy.path.display_name_from_filepath(image.filepath))
     i = fn.rfind(".")
     if i != -1:
         name = fn[0:i]
@@ -57,6 +57,8 @@ def createImageFilename(texturePath, image):
     #print("format " + image.file_format)
     if image.file_format == 'PNG':
         ext = "png"
+    elif image.file_format == 'HDR':
+        ext = "hdr"
     elif image.file_format == 'JPEG':
         ext = "jpg"
     elif image.file_format == 'TARGA' or image.file_format == 'TARGA_RAW':
