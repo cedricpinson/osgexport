@@ -1148,7 +1148,7 @@ class VertexGroup(Object):
 
     def serialize(self, output):
         self.setName(self.targetGroupName)
-        output.write(self.encode("$VertexInfluence %s %d {\n" % (self.targetGroupName, len(self.vertexes)) ) )
+        output.write(self.encode("$VertexInfluence \"%s\" %d {\n" % (self.targetGroupName, len(self.vertexes)) ) )
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
 
