@@ -124,6 +124,9 @@ except:
     #print("Use new import path")
 
 
+# Property subtype constant changed with r50938
+FILE_NAME = "FILE_NAME" if bpy.app.build_revision >= b'50938' else "FILENAME"
+
 class OSGGUI(bpy.types.Operator, ExportHelper):
     '''Export model data to an OpenSceneGraph file'''
     bl_idname = "osg.export"
@@ -131,9 +134,6 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
 
     filename_ext = ".osgt"
     
-    # Property subtype constant changed with r50938
-    FILE_NAME = "FILE_NAME" if bpy.app.build_revision >= b'50938' else "FILENAME"
-
     # List of operator properties, the attributes will be assigned
     # to the class instance from the operator settings before calling.
     
