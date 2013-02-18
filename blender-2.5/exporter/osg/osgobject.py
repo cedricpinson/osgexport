@@ -869,7 +869,7 @@ class DrawElements(Object):
     def getSizeArray(self):
         # dont waste time here
         # return max drawElements
-        return "DrawElementsUInt"
+        # return "DrawElementsUInt"
         element = "DrawElementsUByte"
         for i in self.indexes:
             if i > 255 and element == "DrawElementsUByte":
