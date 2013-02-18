@@ -25,7 +25,7 @@ import pickle
 bl_info = {
     "name": "Export OSG format (.osgt)",
     "author": "Cedric Pinson, Jeremy Moles, Peter Amstutz",
-    "version": (0,13,0),
+    "version": (0,14,0),
     "blender": (2, 6, 3),
     "email": "jeremy@emperorlinux.com, cedric.pinson@plopbyte.com, peter.amstutz@tseboston.com",
     "api": 36339,
@@ -124,13 +124,16 @@ except:
     #print("Use new import path")
 
 
+# Property subtype constant changed with r50938
+FILE_NAME = "FILE_NAME" if bpy.app.build_revision >= b'50938' else "FILENAME"
+
 class OSGGUI(bpy.types.Operator, ExportHelper):
     '''Export model data to an OpenSceneGraph file'''
     bl_idname = "osg.export"
     bl_label = "OSG Model"
 
     filename_ext = ".osgt"
-
+    
     # List of operator properties, the attributes will be assigned
     # to the class instance from the operator settings before calling.
     
@@ -148,9 +151,9 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     OSGCONV_TO_IVE = BoolProperty(name="Convert to IVE (uses osgconv)", description="Use osgconv to convert to IVE", default=False)
     OSGCONV_EMBED_TEXTURES = BoolProperty(name="Embed textures in IVE", default=False)
     OSGCONV_CLEANUP = BoolProperty(name="Cleanup after conversion", default=False)
-    OSGCONV_PATH = StringProperty(name="osgconv path", subtype="FILENAME", default="")
+    OSGCONV_PATH = StringProperty(name="osgconv path", subtype=FILE_NAME, default="")
     RUN_VIEWER = BoolProperty(name="Run viewer (viewer path)", description="Run viewer after export", default=False)
-    VIEWER_PATH = StringProperty(name="viewer path", subtype="FILENAME", default="")
+    VIEWER_PATH = StringProperty(name="viewer path", subtype=FILE_NAME, default="")
     TEXTURE_PREFIX = StringProperty(name="texture prefix", default="")
     EXPORT_ALL_SCENES = BoolProperty(name="Export all scenes", default=False)
     ZERO_TRANSLATIONS = BoolProperty(name="Zero world translations", default=False)

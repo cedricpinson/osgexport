@@ -869,7 +869,7 @@ class DrawElements(Object):
     def getSizeArray(self):
         # dont waste time here
         # return max drawElements
-        return "DrawElementsUInt"
+        # return "DrawElementsUInt"
         element = "DrawElementsUByte"
         for i in self.indexes:
             if i > 255 and element == "DrawElementsUByte":
@@ -1148,7 +1148,7 @@ class VertexGroup(Object):
 
     def serialize(self, output):
         self.setName(self.targetGroupName)
-        output.write(self.encode("$VertexInfluence %s %d {\n" % (self.targetGroupName, len(self.vertexes)) ) )
+        output.write(self.encode("$VertexInfluence \"%s\" %d {\n" % (self.targetGroupName, len(self.vertexes)) ) )
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
 

@@ -1,4 +1,5 @@
 # -*- python-indent: 4; mode: python -*-
+# -*- coding: UTF-8 -*-
 #
 # Copyright (C) 2008-2012 Cedric Pinson
 #
@@ -47,7 +48,7 @@ Matrix     = mathutils.Matrix
 Euler      = mathutils.Euler
 
 def createImageFilename(texturePath, image):
-    fn = bpy.path.basename(image.filepath)
+    fn = bpy.path.basename(bpy.path.display_name_from_filepath(image.filepath))
     i = fn.rfind(".")
     if i != -1:
         name = fn[0:i]
@@ -57,6 +58,8 @@ def createImageFilename(texturePath, image):
     #print("format " + image.file_format)
     if image.file_format == 'PNG':
         ext = "png"
+    elif image.file_format == 'HDR':
+        ext = "hdr"
     elif image.file_format == 'JPEG':
         ext = "jpg"
     elif image.file_format == 'TARGA' or image.file_format == 'TARGA_RAW':
@@ -913,25 +916,35 @@ class BlenderObjectToGeometry(object):
         self.unique_objects.registerTexture(mtex.texture, texture)
         return texture
 
-    def adjustUVLayerFromMaterial(self, geom, material):
+    def adjustUVLayerFromMaterial(self, geom, material, mesh_uv_textures):
+
         uvs = geom.uvs
         if DEBUG: osglog.log("geometry uvs %s" % (str(uvs)))
         geom.uvs = {}
 
         texture_list = material.texture_slots
-        if DEBUG: osglog.log("texture list %s" % str(texture_list))
+        if DEBUG: osglog.log("texture list %d - %s" % (len(texture_list), str(texture_list)))
 
         # find a default channel if exist uv
         default_uv = None
         default_uv_key = None
-        if (len(uvs)) == 1:
-            default_uv_key, default_uv = uvs.popitem()
+        if (len(mesh_uv_textures)) > 0:
+            default_uv_key = mesh_uv_textures[0].name
+            
+            default_uv = uvs[default_uv_key]
+            #default_uv_key, default_uv = uvs.popitem()
+
+        if DEBUG: osglog.log("default uv key %s" % str(default_uv_key))
+
+
 
         for i in range(0, len(texture_list)):
             texture_slot = texture_list[i]
             if texture_slot is not None:
                 uv_layer =  texture_slot.uv_layer
                 
+                if DEBUG: osglog.log("uv layer %s" % str(uv_layer))
+
                 if len(uv_layer) > 0 and not uv_layer in uvs.keys():
                     osglog.log("WARNING your material '%s' with texture '%s' use an uv layer '%s' that does not exist on the mesh '%s', use the first uv channel as fallback" % (material.name, texture_slot, uv_layer, geom.name))
                 if len(uv_layer) > 0 and uv_layer in uvs.keys():
@@ -1080,40 +1093,72 @@ class BlenderObjectToGeometry(object):
             if t is None:
                 continue
 
+            def premultAlpha(texture_slot, i, userData):
+                if texture_slot.texture and texture_slot.texture.image and texture_slot.texture.image.use_premultiply:
+                    v = "false"
+                    if texture_slot.texture.image.use_premultiply:
+                        v = "true"
+                    userData.append(StringValueObject("%02d_UsePremultiplyAlpha" % i, v))
+
+            def useAlpha(texture_slot, i, userData):
+                if texture_slot.texture and texture_slot.texture.use_alpha:
+                    v = "true"
+                    userData.append(StringValueObject("%02d_UseAlpha" % i, v))
+
             userData = s.getOrCreateUserData()
             # use texture as diffuse
             if texture_slot.use_map_diffuse:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_DiffuseIntensity" % i, str(texture_slot.diffuse_factor)))
 
             if texture_slot.use_map_color_diffuse:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_DiffuseColor" % i, str(texture_slot.diffuse_color_factor)))
 
             if texture_slot.use_map_alpha:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_Alpha" % i, str(texture_slot.alpha_factor)))
 
             if texture_slot.use_map_translucency:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_Translucency" % i, str(texture_slot.translucency_factor)))
 
             # use texture as specular
             if texture_slot.use_map_specular:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_SpecularIntensity" % i, str(texture_slot.specular_factor)))
 
             if texture_slot.use_map_color_spec:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_SpecularColor" % i, str(texture_slot.specular_color_factor)))
 
 
             # mirror
             if texture_slot.use_map_mirror:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_Mirror" % i, str(texture_slot.mirror_factor)))
 
             # use texture as normalmap
             if texture_slot.use_map_normal:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_Normal" % i, str(texture_slot.normal_factor)))
 
             if texture_slot.use_map_ambient:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_Ambient" % i, str(texture_slot.ambient_factor)))
 
             if texture_slot.use_map_emit:
+                premultAlpha(texture_slot, i, userData)
+                useAlpha(texture_slot, i, userData)
                 userData.append(StringValueObject("%02d_Emit" % i, str(texture_slot.emit_factor)))
 
             # use blend
@@ -1505,7 +1550,7 @@ class BlenderObjectToGeometry(object):
             geom.stateset = stateset
 
         if len(mesh.materials) > 0 and mesh.materials[material_index] is not None:
-            self.adjustUVLayerFromMaterial(geom, mesh.materials[material_index])
+            self.adjustUVLayerFromMaterial(geom, mesh.materials[material_index], uv_textures)
 
         end_title = '-' * len(title)
         osglog.log(end_title)
