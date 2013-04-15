@@ -20,6 +20,7 @@
 # Authors:
 #  Cedric Pinson <cedric.pinson@plopbyte.com>
 #  Jeremy Moles <jeremy@emperorlinux.com>
+#  Peter Amstutz <tetron@interreality.org>
 
 import bpy
 import mathutils
@@ -151,49 +152,21 @@ def findArmatureObjectForTrack(track):
                 return 0
     return None
 
-#def findObjectForIpo(ipo):
-#    index = ipo.name.rfind('-')
-#    if index != -1:
-#        objname = ipo.name[index+1:]
-#        try:
-#            obj = self.config.scene.objects[objname]
-#            log("bake ipo %s to object %s" % (ipo.name, objname))
-#            return obj
-#        except:
-#            return None
-#
-#    for o in self.config.scene.objects:
-#        if o.getIpo() == ipo:
-#            log("bake ipo %s to object %s" % (ipo.name, o.name))
-#            return o
-#    return None
-#
-#def findMaterialForIpo(ipo):
-#    index = ipo.name.rfind('-')
-#    if index != -1:
-#        objname = ipo.name[index+1:]
-#        try:
-#            obj = bpy.data.materials[objname]
-#            log("bake ipo %s to material %s" % (ipo.name, objname))
-#            return obj
-#        except:
-#            return None
-#
-#    for o in bpy.data.materials:
-#        if o.getIpo() == ipo:
-#            log("bake ipo %s to material %s" % (ipo.name, o.name))
-#            return o
-#    return None
-
 def createAnimationUpdate(obj, callback, rotation_mode, prefix="", zero=False):
     has_location_keys = False
     has_scale_keys = False
     has_rotation_keys = False
         
     if obj.animation_data:
-        action = obj.animation_data.action
+        actions = []
+        if obj.animation_data.action:
+            actions = [obj.animation_data.action]
+        elif len(obj.animation_data.nla_tracks) > 0:
+            for track in obj.animation_data.nla_tracks:
+                for strip in track.strips:
+                    actions.append(strip.action)
         
-        if action:
+        for action in actions:
             for curve in action.fcurves:
                 datapath = curve.data_path[len(prefix):]
                 osglog.log("curve.data_path " + curve.data_path + " " + str(curve.array_index) + " " + datapath)
@@ -211,69 +184,62 @@ def createAnimationUpdate(obj, callback, rotation_mode, prefix="", zero=False):
     
     if zero:
         if has_location_keys:
-            tr = StackedTranslateElement()
-            tr.translate = Vector()
-            callback.stacked_transforms.append(tr)
+            callback.stacked_transforms.append(StackedTranslateElement())
             
-            if has_rotation_keys:
-                if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
-                    rotation_keys = [StackedRotateAxisElement(name = "euler_x", axis = Vector((1,0,0)), angle = 0),
-                                     StackedRotateAxisElement(name = "euler_y", axis = Vector((0,1,0)), angle = 0),
-                                     StackedRotateAxisElement(name = "euler_z", axis = Vector((0,0,1)), angle = 0)]
-                
-                    callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[2]) - ord('X')])
-                    callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[1]) - ord('X')])
-                    callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[0]) - ord('X')])
-                
-                if rotation_mode == "QUATERNION":
-                    q = StackedQuaternionElement()
-                    q.quaternion = Quaternion()
-                    callback.stacked_transforms.append(q)
-                
-                if rotation_mode == "AXIS_ANGLE":
-                    callback.stacked_transforms.append(StackedRotateAxisElement(name = "axis_angle", 
-                                                        axis = Vector((1, 0, 0)), 
-                                                        angle = 0))
+        if has_rotation_keys:
+            if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
+                rotation_keys = [StackedRotateAxisElement(name = "euler_x", axis = Vector((1,0,0)), angle = 0),
+                                 StackedRotateAxisElement(name = "euler_y", axis = Vector((0,1,0)), angle = 0),
+                                 StackedRotateAxisElement(name = "euler_z", axis = Vector((0,0,1)), angle = 0)]
+            
+                callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[2]) - ord('X')])
+                callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[1]) - ord('X')])
+                callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[0]) - ord('X')])
+            
+            if rotation_mode == "QUATERNION":
+                callback.stacked_transforms.append(StackedQuaternionElement())
+            
+            if rotation_mode == "AXIS_ANGLE":
+                callback.stacked_transforms.append(StackedRotateAxisElement(name = "axis_angle"))
+        
         if has_scale_keys:
-            sc = StackedScaleElement()
-            sc.scale = Vector(obj.scale)
+            sc = StackedScaleElement(scale = Vector(obj.scale))
             callback.stacked_transforms.append(sc)
             
     else:
-        tr = StackedTranslateElement()
-        tr.translate = Vector(obj.location)
-        callback.stacked_transforms.append(tr)
+        callback.stacked_transforms.append(StackedTranslateElement(translate = Vector(obj.location)))
         
         if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
-            rotation_keys = [StackedRotateAxisElement(name = "euler_x", axis = Vector((1,0,0)), angle = obj.rotation_euler[0]),
-                             StackedRotateAxisElement(name = "euler_y", axis = Vector((0,1,0)), angle = obj.rotation_euler[1]),
-                             StackedRotateAxisElement(name = "euler_z", axis = Vector((0,0,1)), angle = obj.rotation_euler[2])]
+            rotation_keys = [StackedRotateAxisElement(name = "euler_x", axis = Vector((1,0,0)), angle = obj.rotation_euler.x),
+                             StackedRotateAxisElement(name = "euler_y", axis = Vector((0,1,0)), angle = obj.rotation_euler.y),
+                             StackedRotateAxisElement(name = "euler_z", axis = Vector((0,0,1)), angle = obj.rotation_euler.z)]
         
-            callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[2]) - ord('X')])
-            callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[1]) - ord('X')])
-            callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[0]) - ord('X')])
+            callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[2]) - ord('X')])
+            callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[1]) - ord('X')])
+            callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[0]) - ord('X')])
             
-        if rotation_mode == "QUATERNION":
-            q = StackedQuaternionElement()
-            q.quaternion = obj.rotation_quaternion
-            callback.stacked_transforms.append(q)
+        if rotation_mode == "QUATERNION": 
+            callback.stacked_transforms.append(StackedQuaternionElement(quaternion = obj.rotation_quaternion))
         
         if rotation_mode == "AXIS_ANGLE":
             callback.stacked_transforms.append(StackedRotateAxisElement(name = "axis_angle", 
                                                 axis = Vector(obj.rotation_axis_angle[0:2]), 
                                                 angle = obj.rotation_axis_angle[3]))
         
-        sc = StackedScaleElement()
-        sc.scale = Vector(obj.scale)
-        callback.stacked_transforms.append(sc)
-
+        callback.stacked_transforms.append(StackedScaleElement(scale = Vector(obj.scale)))
     return callback
 
+def hasConstraints(config, object):
+    return (hasattr(object, "constraints") and (len(object.constraints) > 0) and config.bake_constraints)
+    
 def createAnimationsGenericObject(osg_object, blender_object, config, update_callback, unique_objects):
-    if (config.export_anim is False) or (update_callback is None) or (blender_object.animation_data is None):
+    osglog.log("animation_data is {} {} {} {}".format(blender_object.name, blender_object.animation_data, config.export_anim, update_callback))
+    if (config.export_anim is False) \
+        or (update_callback is None) \
+        or (blender_object.animation_data is None and not hasConstraints(config, blender_object)):
         return None
 
-    if unique_objects.hasAnimation(blender_object.animation_data.action):
+    if blender_object.animation_data != None and unique_objects.hasAnimation(blender_object.animation_data.action):
         return None
 
     action2animation = BlenderAnimationToAnimation(object = blender_object, 
@@ -359,13 +325,14 @@ class Export(object):
         if object.name in self.config.exclude_objects:
             return False
         
-        if self.config.only_visible:
-            if object.is_visible(self.config.scene):
-                return True
-        else:
+        if object.type == 'ARMATURE':
             return True
-
-        return False
+        
+        if self.config.only_visible:
+            return object.is_visible(self.config.scene)
+        else:
+            osglog.log("object {} hide_render {}".format(object.name, object.hide_render))
+            return not object.hide_render
         
     def setArmatureInRestMode(self):
         for arm in bpy.data.objects:
@@ -409,12 +376,15 @@ class Export(object):
         return "no name"
 
     def createAnimationsSkeletonObject(self, osg_object, blender_object):
-
-        if (self.config.export_anim is False) or (blender_object.animation_data == None) or (blender_object.animation_data.action == None):
+        
+        if (self.config.export_anim is False) \
+            or (blender_object.animation_data == None) \
+            or (blender_object.animation_data.action == None \
+                and len(blender_object.animation_data.nla_tracks) == 0):
             return None
 
-        if self.unique_objects.hasAnimation(blender_object.animation_data.action):
-            return None
+        #if self.unique_objects.hasAnimation(blender_object.animation_data.action):
+        #    return None
 
         osglog.log("animation_data is %s %s" % (blender_object.name, blender_object.animation_data))
 
@@ -574,7 +544,7 @@ class Export(object):
             # so we have to test armature_modifier and armature_modifier.object
             if geode.armature_modifier != None and geode.armature_modifier.object:
                 parent.children.remove(item)
-                modifier_object = item.children[0].armature_modifier.object
+                modifier_object = geode.armature_modifier.object
 
                 arm = self.unique_objects.getObject(modifier_object)
                 for (k, v) in self.unique_objects.objects.items():
@@ -588,7 +558,68 @@ class Export(object):
         if hasattr(item, "children"):
             for c in list(item.children):
                 self.reparentRiggedGeodes(c, item)
-        
+
+    def findBone(self, item, bonename):
+        if isinstance(item, Skeleton) or isinstance(item, Bone):
+            if item.name == bonename:
+                return item
+            for c in list(item.children):
+                n = self.findBone(c, bonename)
+                if n != None:
+                    return n
+        return None
+    
+    def reparentNonDeformedGeodes(self, item, parent):
+        if     isinstance(item, MatrixTransform) \
+                and len(item.children) == 1 \
+                and isinstance(item.children[0], Geode) \
+                and isinstance(parent, Skeleton):
+            geode = item.children[0]
+            osglog.log("optimizing armature influence on geode {}".format(geode.name))
+            if geode.armature_modifier != None:
+                singleBoneInfluence = True
+                target = None
+                for d in geode.drawables:
+                    if isinstance(d, RigGeometry):
+                        infcount = 0
+                        for g in d.groups:
+                            if g in geode.armature_modifier.object.data.bones:
+                                infcount += 1
+                        if infcount != 1:
+                            osglog.log("must have exactly one bone influence, can't optimize")
+                            singleBoneInfluence = False
+                            break
+                        
+                        for name, grp in d.groups.items():
+                            if name in geode.armature_modifier.object.data.bones:
+                                if len(grp.vertexes) != len(d.vertexes.array.array):
+                                    osglog.log("bone does not influence every vertex, can't optimize")
+                                    singleBoneInfluence = False
+                                    break
+                                for vtx in grp.vertexes:
+                                    if vtx[1] != 1.0:
+                                        osglog.log("vertex has less than 1.0 weight, can't optimize")
+                                        singleBoneInfluence = False
+                                        break
+                                target = name
+                
+                if singleBoneInfluence and target != None:
+                    geode.drawables = [(d.sourcegeometry if isinstance(d, RigGeometry) else d) for d in geode.drawables]
+                    parent.children.remove(item)
+                    blendbone = geode.armature_modifier.object.data.bones[target]
+                    blendbone_matrix = blendbone.matrix_local
+                   
+                    osgbone = self.findBone(parent, target)
+                    for (k, v) in self.unique_objects.objects.items():
+                        if v == item:
+                            meshobj = k
+                    
+                    item.matrix = getDeltaMatrixFromMatrix(geode.armature_modifier.object.matrix_world * blendbone_matrix, meshobj.matrix_world)
+                    osgbone.children.append(item)
+                    osglog.log("NOTICE: Reparenting {} to {}".format(geode.name, osgbone.name))
+        if hasattr(item, "children"):
+            for c in list(item.children):
+                self.reparentNonDeformedGeodes(c, item)
 
     def postProcess(self):
         # set only one root to the scene
@@ -602,7 +633,9 @@ class Export(object):
             self.root.update_callbacks.append(animation_manager)
             
         self.reparentRiggedGeodes(self.root, None)
-
+        if self.config.optimize_influence:
+            self.reparentNonDeformedGeodes(self.root, None)
+        
         # index light num for opengl use and enable them in a stateset
         if len(self.lights) > 0:
             st = StateSet()
@@ -694,22 +727,25 @@ class Export(object):
                 except Exception  as e:
                     osglog.log("error while trying to copy file {} to {}: {}".format(imagename, nativePath, str(e)))
 
-        filetoview = self.config.getFullName("osgt")
-        if self.config.osgconv_to_ive:
+        filetoview = filename
+        
+        if self.config.run_osgconv:
+            convertedFile = self.config.getFullName(self.config.osgconv_ext)
             if self.config.osgconv_embed_textures:
-                r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile", self.config.getFullName("osgt"), self.config.getFullName("ive")]
+                r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile", filename, convertedFile]
             else:
-                r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile", self.config.getFullName("osgt"), self.config.getFullName("ive")]
+                r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile", filename, convertedFile]
             try:
+                osglog.log("Executing osgconv: " + str(r))
                 if subprocess.call(r) == 0:
-                    filetoview = self.config.getFullName("ive")
                     if self.config.osgconv_cleanup:
-                        os.unlink(self.config.getFullName("osgt"))
+                        os.unlink(filename)
                         if self.config.osgconv_embed_textures:
                             for i in copied_images:
                                 os.unlink(i)
+                filetoview = convertedFile
             except Exception as e:
-                print("Error running " + str(r))
+                print("Error running osgconv")
                 print(repr(e))
             
         if self.config.run_viewer:
@@ -753,7 +789,7 @@ class Export(object):
          
         osglog.log("mesh_object is " + mesh_object.name)
         
-        if self.unique_objects.hasObject(mesh_object):
+        if armature_modifier == None and self.unique_objects.hasObject(mesh_object):
             return self.unique_objects.getObject(mesh_object)
 
         hasVertexGroup = False
@@ -774,7 +810,7 @@ class Export(object):
             for geom in sources_geometries:
                 rig_geom = RigGeometry()
                 rig_geom.sourcegeometry = geom
-                rig_geom.copyFrom(geom)
+                #rig_geom.copyFrom(geom)
                 rig_geom.groups = geom.groups
                 geometries.append(rig_geom)
         else:
@@ -1593,54 +1629,121 @@ class BlenderAnimationToAnimation(object):
         self.config = kwargs["config"]
         self.object = kwargs.get("object", None)
         self.unique_objects = kwargs.get("unique_objects", {})
-        self.animations = None
-        self.action = None
-        self.action_name = None
-
-    def handleAnimationBaking(self):
-        need_bake = False
-        if hasattr(self.object, "constraints") and (len(self.object.constraints) > 0) and self.config.bake_constraints:
-            osglog.log("Baking constraints " + str(self.object.constraints))
-            need_bake = True
-        else:
-            if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action"):
-                self.action = self.object.animation_data.action
-                for fcu in self.action.fcurves:
-                    for kf in fcu.keyframe_points:
-                        if kf.interpolation != 'LINEAR':
-                            need_bake = True
-
-        if need_bake:
-            self.action = osgbake.bake(self.config.scene,
+        self.blenderanimations = {}
+        self.needbake = {}
+    
+    def needBake(self, action):
+        for fcu in action.fcurves:
+            if len(fcu.keyframe_points) > 1:
+                for kf in fcu.keyframe_points:
+                    if kf.interpolation != 'LINEAR':
+                        return True
+        return False
+    
+    def bakeAnimation(self, action):
+        if self.needBake(action):
+            action = osgbake.bake(self.config.scene,
                      self.object,
-                     self.config.scene.frame_start, 
-                     self.config.scene.frame_end,
+                     action.frame_range[0], 
+                     action.frame_range[1],
                      self.config.bake_frame_step,
                      False, #only_selected
                      True,  #do_pose
                      True,  #do_object
                      False, #do_constraint_clear
                      False) #to_quat
+        
+        return action
 
-
+    def findApplicableAnimations(self, obj, bake):
+        if hasattr(obj, "constraints") and self.config.bake_constraints:
+            for c in obj.constraints:
+                self.findApplicableAnimations(c, True)
+                if hasattr(c, "target"):
+                    self.findApplicableAnimations(c.target, True)
+        
+        if hasattr(obj, "data") and obj.data != None:
+            self.findApplicableAnimations(obj.data, bake)
+        
+        if hasattr(obj, "animation_data") and obj.animation_data != None:       
+            if obj.animation_data.action != None:
+                name = obj.animation_data.action.name
+                if name not in self.blenderanimations:
+                    self.blenderanimations[name] = []
+                self.blenderanimations[name].append(obj.animation_data.action)
+                if bake or self.needBake(obj.animation_data.action):
+                    self.needbake[name] = True
+            
+            if obj.animation_data.nla_tracks != None:
+                for n in obj.animation_data.nla_tracks:
+                    if n.name not in self.blenderanimations:
+                        self.blenderanimations[n.name] = []
+                    self.blenderanimations[n.name].append(n)
+                    for strip in n.strips:
+                        if bake or self.needBake(strip.action):
+                            self.needbake[n.name] = True  
+    
     def createAnimation(self, target = None):
-
         osglog.log("Exporting animation on object " + str(self.object))
-        if hasattr(self.object, "animation_data") and hasattr(self.object.animation_data, "action") and self.object.animation_data.action != None:
-            self.action_name = self.object.animation_data.action.name
-
-        self.handleAnimationBaking()
-
+        
         if target == None:
             target = self.object.name
 
-        anim = self.createAnimationFromAction(target, self.action_name, self.action)
-        self.unique_objects.registerAnimation(self.action, anim)
-        return [anim]
+        self.findApplicableAnimations(self.object, False)
+        osglog.log("Found animations {}".format(self.blenderanimations))
+        osglog.log("needbake {}".format(self.needbake))
+        
+        anims = []
+        for (a, b) in self.blenderanimations.items():
+            animation = Animation()
+            animation.setName(a)
+            
+            start = 1000000
+            end = -1000000
+            for tr in b:
+                if isinstance(tr, bpy.types.NlaTrack):
+                    tr.is_solo = True
+                    for strip in tr.strips:
+                        if strip.frame_start < start:
+                            start = strip.frame_start
+                        if strip.frame_end > end:
+                            end = strip.frame_end
+                else:
+                    if tr.frame_range[0] < start:
+                        start = tr.frame_range[0]
+                    if tr.frame_range[1] > end:
+                        end = tr.frame_range[1]
+            osglog.log("{} frame range {} {}".format(a, start, end))
+            if a in self.needbake and self.needbake[a]:
+                action = osgbake.bake(self.config.scene,
+                     self.object,
+                     start, 
+                     end,
+                     self.config.bake_frame_step,
+                     False, #only_selected
+                     True,  #do_pose
+                     True,  #do_object
+                     False, #do_constraint_clear
+                     False) #to_quat
+                self.createAnimationFromAction(target, a, action, animation)
+            else:
+                for tr in b:
+                    if isinstance(tr, bpy.types.NlaTrack):
+                        for strip in tr.strips:
+                            self.createAnimationFromAction(target, a, strip.action, animation)
+                    else:
+                        self.createAnimationFromAction(target, a, tr, animation)
+            if len(animation.channels) > 0:
+                anims.append(animation)
+        
+        #anims = []
+        #anims += self.createAnimationsFromNLAtracks(target)
+        #anims += self.createAnimationsFromObjectAction(target)
+        #anims += self.createAnimationFromConstraintTarget(target)
+        
+        return anims
 
-    def createAnimationFromAction(self, target, name, action):
-        animation = Animation()
-        animation.setName(name)
+    def createAnimationFromAction(self, target, name, action, animation):
         if self.object.type == "ARMATURE":
             for bone in self.object.data.bones:
                 bname = bone.name
@@ -1648,13 +1751,11 @@ class BlenderAnimationToAnimation(object):
                 self.appendChannelsToAnimation(bname, animation, action, prefix=('pose.bones["%s"].' % (bname)))
         else:
             self.appendChannelsToAnimation(target, animation, action)
-        return animation
 
     def appendChannelsToAnimation(self, target, anim, action, prefix = ""):
         channels = exportActionsToKeyframeSplitRotationTranslationScale(target, action, self.config.anim_fps, prefix)
         for i in channels:
             anim.channels.append(i)
-
 
 def getChannel(target, action, fps, data_path, array_indexes):
     times = []
@@ -1692,9 +1793,10 @@ def getChannel(target, action, fps, data_path, array_indexes):
     
     times.sort()
     
+    #osglog.log("fcurves array_indexes is {}".format(array_indexes))
+    
     for time in times:
         realtime = (time) / fps
-        osglog.log("time {} {} {}".format(time, realtime, fps))
 
         # realtime = time
         if realtime > duration:
@@ -1702,8 +1804,16 @@ def getChannel(target, action, fps, data_path, array_indexes):
 
         value = [realtime]
         for fcurve in fcurves:
-            value.append(fcurve.evaluate(time))
+            v = fcurve.evaluate(time)
+            #osglog.log("time {} {} {}".format(fcurve.data_path, time, v))
+            value.append(v)
         channel.keys.append(value)
+    
+    # osg needs to have at least two keyframes
+    if len(channel.keys) == 1:
+        c = list(channel.keys[0])
+        c[0] = c[0] + .01
+        channel.keys.append(c)
     
     return channel
 
@@ -1718,7 +1828,7 @@ def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps, pr
 
     euler = []
     eulerName = [ "euler_x", "euler_y", "euler_z"]
-    for i in range(0,3):
+    for i in [0, 1, 2]:
         c = getChannel(target, action, fps, prefix+"rotation_euler", [i])
         if c:
             c.setName(eulerName[i])

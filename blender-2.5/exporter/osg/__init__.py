@@ -148,8 +148,9 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     LOG = BoolProperty(name="Write log", description="Write log file yes/no", default=False)
     BAKE_CONSTRAINTS = BoolProperty(name="Bake Constraints", description="Bake constraints into actions", default=True)
     BAKE_FRAME_STEP = IntProperty(name="Bake frame step", description="Frame step when baking actions", default=1, min=1, max=30)
-    OSGCONV_TO_IVE = BoolProperty(name="Convert to IVE (uses osgconv)", description="Use osgconv to convert to IVE", default=False)
-    OSGCONV_EMBED_TEXTURES = BoolProperty(name="Embed textures in IVE", default=False)
+    RUN_OSGCONV = BoolProperty(name="Run osgconv", description="Use osgconv to convert file", default=False)
+    OSGCONV_EXT = StringProperty(name="Convert to", description="File type to ask osgconv convert to (ive, osgb, ...)", default="ive")
+    OSGCONV_EMBED_TEXTURES = BoolProperty(name="Embed textures", default=False)
     OSGCONV_CLEANUP = BoolProperty(name="Cleanup after conversion", default=False)
     OSGCONV_PATH = StringProperty(name="osgconv path", subtype=FILE_NAME, default="")
     RUN_VIEWER = BoolProperty(name="Run viewer (viewer path)", description="Run viewer after export", default=False)
@@ -157,6 +158,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     TEXTURE_PREFIX = StringProperty(name="texture prefix", default="")
     EXPORT_ALL_SCENES = BoolProperty(name="Export all scenes", default=False)
     ZERO_TRANSLATIONS = BoolProperty(name="Zero world translations", default=False)
+    OPTIMIZE_INFLUENCE = BoolProperty(name="Optimize bone influences", default=False)
    
     def draw(self, context):
         layout = self.layout
@@ -171,13 +173,15 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         layout.row(align=True).prop(self, "BAKE_CONSTRAINTS")
         layout.row(align=True).prop(self, "LOG")
         layout.row(align=True).prop(self, "ZERO_TRANSLATIONS")
+        layout.row(align=True).prop(self, "OPTIMIZE_INFLUENCE")
         layout.row(align=True).prop(self, "ANIMFPS")
         layout.row(align=True).prop(self, "BAKE_FRAME_STEP")
         layout.row(align=True).prop(self, "FLOATPRE")
         layout.row(align=True).prop(self, "INDENT")
         layout.row(align=True).label("Texture Prefix:")
         layout.row(align=True).prop(self, "TEXTURE_PREFIX", text="")
-        layout.row(align=True).prop(self, "OSGCONV_TO_IVE")
+        layout.row(align=True).prop(self, "RUN_OSGCONV")
+        layout.row(align=True).prop(self, "OSGCONV_EXT")
         layout.row(align=True).prop(self, "OSGCONV_EMBED_TEXTURES")
         layout.row(align=True).prop(self, "OSGCONV_CLEANUP")
         layout.row(align=True).prop(self, "OSGCONV_PATH", text="")
@@ -200,6 +204,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
             
         self.SELECTED = (self.config.selected == "SELECTED_ONLY_WITH_CHILDREN")
         self.ONLY_VISIBLE = self.config.only_visible
+        self.OPTIMIZE_INFLUENCE = self.config.optimize_influence
         self.INDENT = self.config.indent
         self.FLOATPRE = self.config.float_precision
         self.ANIMFPS = context.scene.render.fps
@@ -210,7 +215,8 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.LOG = self.config.log
         self.BAKE_CONSTRAINTS = self.config.bake_constraints
         self.BAKE_FRAME_STEP = self.config.bake_frame_step
-        self.OSGCONV_TO_IVE = self.config.osgconv_to_ive
+        self.RUN_OSGCONV = self.config.run_osgconv
+        self.OSGCONV_EXT = self.config.osgconv_ext
         self.OSGCONV_EMBED_TEXTURES = self.config.osgconv_embed_textures
         self.OSGCONV_PATH = self.config.osgconv_path
         self.OSGCONV_CLEANUP = self.config.osgconv_cleanup
@@ -247,7 +253,8 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.config.zero_translations = self.ZERO_TRANSLATIONS
         self.config.bake_constraints = self.BAKE_CONSTRAINTS
         self.config.bake_frame_step = self.BAKE_FRAME_STEP
-        self.config.osgconv_to_ive = self.OSGCONV_TO_IVE
+        self.config.run_osgconv = self.RUN_OSGCONV
+        self.config.osgconv_ext = self.OSGCONV_EXT
         self.config.osgconv_path = self.OSGCONV_PATH
         self.config.run_viewer = self.RUN_VIEWER
         self.config.viewer_path = self.VIEWER_PATH
@@ -255,6 +262,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.config.osgconv_embed_textures = self.OSGCONV_EMBED_TEXTURES
         self.config.export_all_scenes = self.EXPORT_ALL_SCENES
         self.config.osgconv_cleanup = self.OSGCONV_CLEANUP
+        self.config.optimize_influence = self.OPTIMIZE_INFLUENCE
         
         try:
             cfg = os.path.join(bpy.utils.user_resource('CONFIG'), "osgExport.cfg")
@@ -262,6 +270,8 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
                 pickle.dump(self.config, f)
         except Exception:
             pass
+        
+        bpy.ops.object.mode_set(mode='OBJECT')
         
         if self.config.export_all_scenes:
             for scene in bpy.data.scenes:

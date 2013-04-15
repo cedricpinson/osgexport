@@ -293,7 +293,7 @@ class StackedTranslateElement(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
-        self.translate = Vector((0,0,0))
+        self.translate = kwargs.get('translate', Vector((0,0,0)))
         self.name = "translate"
 
     def className(self):
@@ -316,7 +316,7 @@ class StackedScaleElement(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
-        self.scale = Vector((1,1,1))
+        self.scale = kwargs.get('scale', Vector((1,1,1)))
         self.name = "scale"
 
     def className(self):
@@ -363,7 +363,7 @@ class StackedQuaternionElement(Object):
         self.generateID()
         m = Matrix().to_4x4()
         m.identity()
-        self.quaternion = m.to_quaternion()
+        self.quaternion = kwargs.get('quaternion',  m.to_quaternion())
         self.name = "quaternion"
 
     def className(self):
@@ -992,9 +992,35 @@ class Bone(MatrixTransform):
 
         # add bind matrix in localspace callback
         update_callback.stacked_transforms.append(StackedMatrixElement(name = "bindmatrix", matrix = bone_matrix))
-        update_callback.stacked_transforms.append(StackedTranslateElement())
-        update_callback.stacked_transforms.append(StackedQuaternionElement())
-        update_callback.stacked_transforms.append(StackedScaleElement())
+        # initialize the bone position to the current pose
+        self.skeleton.data.pose_position = 'POSE'
+        posebone = self.skeleton.pose.bones[self.bone.name]
+        pmat = posebone.matrix_basis.copy()
+        
+        update_callback.stacked_transforms.append(StackedTranslateElement(translate = pmat.to_translation()))
+        
+        rotation_mode = posebone.rotation_mode
+        if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
+            euler = pmat.to_euler(rotation_mode)
+            rotation_keys = [StackedRotateAxisElement(name = "euler_x", axis = Vector((1,0,0)), angle = euler.x),
+                             StackedRotateAxisElement(name = "euler_y", axis = Vector((0,1,0)), angle = euler.y),
+                             StackedRotateAxisElement(name = "euler_z", axis = Vector((0,0,1)), angle = euler.z)]
+        
+            update_callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[2]) - ord('X')])
+            update_callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[1]) - ord('X')])
+            update_callback.stacked_transforms.append(rotation_keys[ord(rotation_mode[0]) - ord('X')])
+                
+        if rotation_mode == "QUATERNION":
+            update_callback.stacked_transforms.append(StackedQuaternionElement(quaternion = pmat.to_quaternion()))
+        
+        if rotation_mode == "AXIS_ANGLE":
+            update_callback.stacked_transforms.append(StackedRotateAxisElement(name = "axis_angle", 
+                                                 axis = pmat.to_quaternion().to_axis_angle[0], 
+                                                 angle = pmat.to_quaternion().to_axis_angle[1]))
+        
+        update_callback.stacked_transforms.append(StackedScaleElement(scale = pmat.to_scale()))
+        
+        self.skeleton.data.pose_position = 'REST'
 
         self.bone_inv_bind_matrix_skeleton = self.bone.matrix_local.copy().inverted()
         if not self.bone.children:

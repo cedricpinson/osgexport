@@ -43,7 +43,12 @@ def bakedTransforms(scene,
     pose_info = []
     obj_info = []
 
-    frame_range = range(frame_start, frame_end + 1, step)
+    f = frame_start
+    frame_range = []
+    while f <= frame_end:
+        frame_range.append(f)
+        f += step
+    #frame_range = range(frame_start, frame_end + 1, step)
     
     if obj.type == "ARMATURE":
         original_pose_position = obj.data.pose_position
@@ -187,7 +192,7 @@ def bake(scene,
         fc = make_fcurves(action, pbone.rotation_mode, "pose.bones[\"%s\"]." % (pbone.name))
 
         for f in frame_range:
-            matrix = pose_info[(f - frame_start) // step][name]
+            matrix = pose_info[int((f - frame_start) // step)][name]
             set_keys(fc, f, matrix, pbone.rotation_mode)
 
             # pbone.location = matrix.to_translation()
@@ -216,7 +221,7 @@ def bake(scene,
         fc = make_fcurves(action, obj.rotation_mode)
 
         for f in frame_range:
-            matrix = obj_info[(f - frame_start) // step]
+            matrix = obj_info[int((f - frame_start) // step)]
             set_keys(fc, f, matrix, obj.rotation_mode)
             
     # Eliminate duplicate keyframe entries.
