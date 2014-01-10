@@ -3,11 +3,11 @@ Follow instruction from github to get the repository
 https://github.com/cedricpinson/osgexport
 
 Blender 2.5+
-To install last version of the exporter go in user preference, then 'install addons' with the zip file inside blender-2.5/build/
+To install last version of the exporter go in user preference, then 'install addons' with the zip from https://github.com/cedricpinson/osgexport/tree/master/blender-2.5/build
 
 
 How to report a bug:
-send a minimal blender file that produce the problem, and the result osg file.
+send a minimal blender file that produce the problem, https://github.com/cedricpinson/osgexport/issues
 
 
 To execute test you will need to install twisted
@@ -15,8 +15,8 @@ To execute test you will need to install twisted
 Test blender 2.5
 mkdir build-2.5
 cd build-2.5
-cmake ../blender-2.5 -DTEST=ON -DBLENDER="blender2.5"
-ctest -V
+cmake ../blender-2.5 -DBLENDER="blender2.5"
+make
 
 
 Cedric
