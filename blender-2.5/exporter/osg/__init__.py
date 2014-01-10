@@ -25,9 +25,9 @@ import pickle
 bl_info = {
     "name": "Export OSG format (.osgt)",
     "author": "Cedric Pinson, Jeremy Moles, Peter Amstutz",
-    "version": (0,14,0),
+    "version": (0,14,1),
     "blender": (2, 6, 3),
-    "email": "jeremy@emperorlinux.com, cedric.pinson@plopbyte.com, peter.amstutz@tseboston.com",
+    "email": "trigrou@gmail.com, jeremy@emperorlinux.com, peter.amstutz@tseboston.com",
     "api": 36339,
     "location": "File > Export > OSG Model (*.osgt)",
     "description": "Export models and animations for use in OpenSceneGraph",
@@ -35,7 +35,7 @@ bl_info = {
     "wiki_url": "https://github.com/cedricpinson/osgexport/wiki",
     "tracker_url": "http://github.com/cedricpinson/osgexport",
     "category": "Import-Export"}
-    
+
 __version__ = bl_info["version"]
 __author__  = bl_info["author"]
 __email__   = bl_info["email"]
@@ -133,10 +133,10 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     bl_label = "OSG Model"
 
     filename_ext = ".osgt"
-    
+
     # List of operator properties, the attributes will be assigned
     # to the class instance from the operator settings before calling.
-    
+
     AUTHOR = StringProperty(name="Author", description="Name of the Author of this model", default="")
     SELECTED = BoolProperty(name="Only Export Selected", description="Only export the selected model", default=False)
     ONLY_VISIBLE = BoolProperty(name="Only Export Visible", description="Only export the visible models", default=False)
@@ -157,10 +157,10 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     TEXTURE_PREFIX = StringProperty(name="texture prefix", default="")
     EXPORT_ALL_SCENES = BoolProperty(name="Export all scenes", default=False)
     ZERO_TRANSLATIONS = BoolProperty(name="Zero world translations", default=False)
-   
+
     def draw(self, context):
         layout = self.layout
-        
+
         layout.row(align=True).label("Author:")
         layout.row(align=True).prop(self, "AUTHOR", text="")
         layout.row(align=True).prop(self, "SELECTED")
@@ -183,11 +183,11 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         layout.row(align=True).prop(self, "OSGCONV_PATH", text="")
         layout.row(align=True).prop(self, "RUN_VIEWER")
         layout.row(align=True).prop(self, "VIEWER_PATH", text="")
-        
+
     def invoke(self, context, event):
         print("config is " + bpy.utils.user_resource('CONFIG'))
         self.config = osgconf.Config()
-        
+
         try:
             cfg = os.path.join(bpy.utils.user_resource('CONFIG'), "osgExport.cfg")
             if os.path.exists(cfg):
@@ -195,15 +195,15 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
                     self.config = pickle.load(f)
         except Exception:
             pass
-        
+
         self.config.activate()
-            
+
         self.SELECTED = (self.config.selected == "SELECTED_ONLY_WITH_CHILDREN")
         self.ONLY_VISIBLE = self.config.only_visible
         self.INDENT = self.config.indent
         self.FLOATPRE = self.config.float_precision
         self.ANIMFPS = context.scene.render.fps
-        
+
         self.EXPORTANIM = self.config.export_anim
         self.APPLYMODIFIERS = self.config.apply_modifiers
         self.ZERO_TRANSLATIONS = self.config.zero_translations
@@ -214,25 +214,25 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.OSGCONV_EMBED_TEXTURES = self.config.osgconv_embed_textures
         self.OSGCONV_PATH = self.config.osgconv_path
         self.OSGCONV_CLEANUP = self.config.osgconv_cleanup
-        
+
         self.RUN_VIEWER = self.config.run_viewer
         self.VIEWER_PATH = self.config.viewer_path
         self.TEXTURE_PREFIX = self.config.texture_prefix
         self.EXPORT_ALL_SCENES = self.config.export_all_scenes
-        
+
         if bpy.data.filepath in self.config.history:
             self.filepath = self.config.history[bpy.data.filepath]
-        
+
         return super(OSGGUI, self).invoke(context, event)
-    
+
     def execute(self, context):
         if not self.filepath:
             raise Exception("filepath not set")
 
         self.config.initFilePaths(self.filepath)
-        
+
         self.config.history[bpy.data.filepath] = self.filepath
-        
+
         if self.SELECTED:
             self.config.selected = "SELECTED_ONLY_WITH_CHILDREN"
         else:
@@ -255,14 +255,14 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.config.osgconv_embed_textures = self.OSGCONV_EMBED_TEXTURES
         self.config.export_all_scenes = self.EXPORT_ALL_SCENES
         self.config.osgconv_cleanup = self.OSGCONV_CLEANUP
-        
+
         try:
             cfg = os.path.join(bpy.utils.user_resource('CONFIG'), "osgExport.cfg")
             with open(cfg, 'wb') as f:
                 pickle.dump(self.config, f)
         except Exception:
             pass
-        
+
         if self.config.export_all_scenes:
             for scene in bpy.data.scenes:
                 self.config.scene = scene
@@ -275,5 +275,5 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
             print("FILENAME:" + repr(self.config.filename))
             self.config.scene = bpy.context.scene
             OpenSceneGraphExport(self.config)
-            
+
         return {'FINISHED'}
