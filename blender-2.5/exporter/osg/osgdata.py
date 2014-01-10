@@ -18,7 +18,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.com>
+#  Cedric Pinson <cedric@plopbyte.com>
 #  Jeremy Moles <jeremy@emperorlinux.com>
 
 import bpy
@@ -550,10 +550,10 @@ class Export(object):
                     raise
 
             for obj in self.config.scene.objects:
+                osglog.log("obj %s" % (obj.name))
                 if (self.config.selected == "SELECTED_ONLY_WITH_CHILDREN" and obj.select) \
                             or (self.config.selected == "ALL" and obj.parent == None):
                         self.exportItemAndChildren(obj)
-
         finally:
             self.restoreArmaturePoseMode()
         
