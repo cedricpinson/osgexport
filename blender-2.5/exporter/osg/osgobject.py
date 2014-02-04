@@ -86,7 +86,7 @@ class Writer(object):
 
     def write(self, output):
         Writer.serializeInstanceOrUseIt(self, output)
-        
+
     def encode(self, string):
         text = string.replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
         return text.encode('utf-8')
@@ -220,7 +220,7 @@ class DefaultUserDataContainer(Object):
             s.indent_level = self.indent_level + 2
             s.write(output)
         output.write(self.encode("$#}\n"))
-        
+
 
 class UpdateMatrixTransform(Object):
     def __init__(self, *args, **kwargs):
@@ -364,7 +364,7 @@ class StackedQuaternionElement(Object):
         m = Matrix().to_4x4()
         m.identity()
         self.quaternion = m.to_quaternion()
-        self.name = "quaternion"
+        self.name = "rotate"
 
     def className(self):
         return "StackedQuaternionElement"
@@ -499,7 +499,7 @@ class MatrixTransform(Group):
         Group.__init__(self, *args, **kwargs)
         self.matrix = Matrix().to_4x4()
         self.matrix.identity()
-    
+
     def className(self):
         return "MatrixTransform"
 
@@ -652,7 +652,7 @@ class Image(Object):
         Object.serializeContent(self, output)
         output.write(self.encode("$#FileName \"%s\"\n" % self.filename))
         output.write(self.encode("$#WriteHint 0 2\n"))
-    
+
 
 class Material(StateAttribute):
     def __init__(self, *args, **kwargs):
@@ -734,7 +734,7 @@ class StateSet(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        
+
         if len(self.modes) > 0:
             output.write(self.encode("$#ModeList %d {\n" % (len(self.modes))))
             for i in self.modes.items():
@@ -899,7 +899,7 @@ class DrawElements(Object):
             output.write(self.encode("\n") )
         output.write(self.encode("$#}\n"))
 
-    
+
 class Geometry(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -978,7 +978,7 @@ class Bone(MatrixTransform):
     def buildBoneChildren(self):
         if self.skeleton is None or self.bone is None:
             return
-        
+
         self.setName(self.bone.name)
         update_callback = UpdateBone()
         update_callback.setName(self.name)
@@ -991,10 +991,19 @@ class Bone(MatrixTransform):
             bone_matrix = parent_matrix.inverted() * bone_matrix
 
         # add bind matrix in localspace callback
-        update_callback.stacked_transforms.append(StackedMatrixElement(name = "bindmatrix", matrix = bone_matrix))
-        update_callback.stacked_transforms.append(StackedTranslateElement())
-        update_callback.stacked_transforms.append(StackedQuaternionElement())
-        update_callback.stacked_transforms.append(StackedScaleElement())
+        #update_callback.stacked_transforms.append(StackedMatrixElement(name = "bindmatrix", matrix = bone_matrix))
+
+        t = StackedTranslateElement()
+        t.translate = bone_matrix.to_translation()
+        update_callback.stacked_transforms.append(t)
+
+        q = StackedQuaternionElement()
+        q.quaternion = bone_matrix.to_quaternion()
+        update_callback.stacked_transforms.append(q)
+
+        s = StackedScaleElement()
+        s.scale = bone_matrix.to_scale()
+        update_callback.stacked_transforms.append(s)
 
         self.bone_inv_bind_matrix_skeleton = self.bone.matrix_local.copy().inverted()
         if not self.bone.children:
@@ -1161,7 +1170,7 @@ class Animation(Object):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
         self.channels = []
-    
+
     def className(self):
         return "Animation"
 
@@ -1190,7 +1199,7 @@ class Channel(Object):
 
     def generateID(self):
         return None
-    
+
     def className(self):
         return "Channel"
 
