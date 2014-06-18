@@ -25,7 +25,7 @@ import pickle
 bl_info = {
     "name": "Export OSG format (.osgt)",
     "author": "Cedric Pinson, Jeremy Moles, Peter Amstutz",
-    "version": (0,14,1),
+    "version": (0,14,2),
     "blender": (2, 6, 3),
     "email": "trigrou@gmail.com, jeremy@emperorlinux.com, peter.amstutz@tseboston.com",
     "api": 36339,
@@ -124,8 +124,14 @@ except:
     #print("Use new import path")
 
 
+build = 'unknown'
+if hasattr(bpy.app, 'build_hash'):
+    build = bpy.app.build_hash
+else:
+    build = bpy.app.build_revision
+
 # Property subtype constant changed with r50938
-FILE_NAME = "FILE_NAME" if bpy.app.build_revision >= b'50938' else "FILENAME"
+FILE_NAME = "FILE_NAME" if build >= b'50938' else "FILENAME"
 
 class OSGGUI(bpy.types.Operator, ExportHelper):
     '''Export model data to an OpenSceneGraph file'''
