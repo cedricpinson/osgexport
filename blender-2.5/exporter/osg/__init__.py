@@ -25,7 +25,7 @@ import pickle
 bl_info = {
     "name": "Export OSG format (.osgt)",
     "author": "Cedric Pinson, Jeremy Moles, Peter Amstutz",
-    "version": (0,14,1),
+    "version": (0,14,2),
     "blender": (2, 6, 3),
     "email": "trigrou@gmail.com, jeremy@emperorlinux.com, peter.amstutz@tseboston.com",
     "api": 36339,
