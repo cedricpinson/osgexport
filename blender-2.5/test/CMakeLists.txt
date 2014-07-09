@@ -60,4 +60,9 @@ CONFIGURE_FILE(
   )
 #ADD_TEST("test-bake_ipo" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-baked_ipo.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
-
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-bug_uvnan.py.in 
+  ${CMAKE_CURRENT_BINARY_DIR}/test-bug_uvnan.py
+  IMMEDIATE @ONLY
+  )
+##ADD_TEST("test-bug_uvnan" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-bug_uvnan.py)
