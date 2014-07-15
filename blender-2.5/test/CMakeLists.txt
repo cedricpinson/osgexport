@@ -35,14 +35,14 @@ CONFIGURE_FILE(
   ${CMAKE_CURRENT_BINARY_DIR}/test-bug_multimaterial.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-bug_multimaterial" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-bug_multimaterial.py)
+##ADD_TEST("test-bug_multimaterial" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-bug_multimaterial.py)
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-geometry_and_material.py.in 
   ${CMAKE_CURRENT_BINARY_DIR}/test-geometry_and_material.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-geometry_and_material" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-geometry_and_material.py)
+#ADD_TEST("test-geometry_and_material" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-geometry_and_material.py)
 
 
 CONFIGURE_FILE(
@@ -50,7 +50,7 @@ CONFIGURE_FILE(
   ${CMAKE_CURRENT_BINARY_DIR}/test-exporter.py
   IMMEDIATE @ONLY
   )
-ADD_TEST("test-exporter" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-exporter.py)
+#ADD_TEST("test-exporter" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-exporter.py)
 
 
 CONFIGURE_FILE(
@@ -60,4 +60,9 @@ CONFIGURE_FILE(
   )
 #ADD_TEST("test-bake_ipo" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-baked_ipo.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
 
-
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-bug_uvnan.py.in 
+  ${CMAKE_CURRENT_BINARY_DIR}/test-bug_uvnan.py
+  IMMEDIATE @ONLY
+  )
+##ADD_TEST("test-bug_uvnan" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-bug_uvnan.py)
