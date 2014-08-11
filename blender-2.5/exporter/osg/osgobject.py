@@ -21,6 +21,7 @@
 
 
 import bpy
+import json
 import mathutils
 import os
 from . import osglog
@@ -191,8 +192,8 @@ class StringValueObject(Object):
         output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
         Object.serializeContent(self, output)
 
-        output.write(self.encode("$#Name \"%s\"\n" % self.key))
-        output.write(self.encode("$#Value \"%s\"\n" % self.value))
+        output.write(self.encode("$#Name %s\n" % json.dumps(self.key)))
+        output.write(self.encode("$#Value %s\n" % json.dumps(self.value)))
 
         output.write(self.encode("$}\n"))
 
