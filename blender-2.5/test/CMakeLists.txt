@@ -21,6 +21,9 @@ ADD_CUSTOM_TARGET( copy_blender_testfile ALL
   cmake -E copy_if_different ${PROJECT_SOURCE_DIR}/test/test.blend ${CMAKE_CURRENT_BINARY_DIR}
   )
 
+ADD_CUSTOM_TARGET( copy_blender_testshadernodefile ALL
+  cmake -E copy_if_different ${PROJECT_SOURCE_DIR}/test/test-shadernode.blend ${CMAKE_CURRENT_BINARY_DIR}
+  )
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-armature.py.in 
@@ -65,4 +68,11 @@ CONFIGURE_FILE(
   ${CMAKE_CURRENT_BINARY_DIR}/test-bug_uvnan.py
   IMMEDIATE @ONLY
   )
-##ADD_TEST("test-bug_uvnan" ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-bug_uvnan.py)
+ADD_TEST("test-bug_uvnan" ${BLENDER} --background "${CMAKE_CURRENT_BINARY_DIR}/test.blend" --python "${CMAKE_CURRENT_BINARY_DIR}/test-bug_uvnan.py")
+
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-shadernode.py.in
+  ${CMAKE_CURRENT_BINARY_DIR}/test-shadernode.py
+  IMMEDIATE @ONLY
+  )
+ADD_TEST("test-shadernode" ${BLENDER} --background "${CMAKE_CURRENT_BINARY_DIR}/test-shadernode.blend" --python "${CMAKE_CURRENT_BINARY_DIR}/test-shadernode.py")
