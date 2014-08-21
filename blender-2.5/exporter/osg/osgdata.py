@@ -25,6 +25,7 @@ import bpy
 import mathutils
 from   mathutils import *
 import bpy
+import json
 import sys
 import math
 import os
@@ -968,6 +969,68 @@ class BlenderObjectToGeometry(object):
             geom.uvs = uvs
         return
 
+    """
+    converts a blender shadernode into a raw hash set format
+    """
+    def createNodeTree(self, material):
+        source_tree = material.node_tree
+
+        def createSocket(source_socket):
+            socket = {
+                "name": source_socket.name,
+                "type": source_socket.type,
+                "enabled": source_socket.enabled,
+                "links": []
+            }
+            for source_link in source_socket.links:
+                socket['links'].append({
+                    "from_node": source_link.from_node.name,
+                    "from_socket": source_link.from_socket.name,
+                    "to_node": source_link.to_node.name,
+                    "to_socket": source_link.to_socket.name
+                })
+
+            if hasattr(source_socket, 'default_value'):
+                value = source_socket.default_value
+                if isinstance(value, Vector) or str(type(value)) in ["<class 'bpy_prop_array'>", "<class 'mathutils.Color'>", ]:
+                    socket['default_value'] = [v for v in value]
+                else:
+                    socket['default_value'] = value
+
+            return socket
+
+        tree = {
+            "nodes": {}
+        }
+        for source_node in source_tree.nodes:
+            node = {
+                "name": source_node.name,
+                "type": source_node.type,
+                "inputs": [createSocket(source_input) for source_input in source_node.inputs],
+                "outputs": [createSocket(source_output) for source_output in source_node.outputs]
+            }
+
+            if source_node.type == "TEX_IMAGE":
+                node["texture_mapping"] = {
+                    "mapping": source_node.texture_mapping.mapping
+                }
+                node["image"] = {
+                    "filepath_raw": source_node.image.filepath_raw,
+                    "use_alpha": source_node.image.use_alpha,
+                    "colorspace": source_node.image.colorspace_settings.name,
+                    "channels": source_node.image.channels
+                }
+
+            tree['nodes'][source_node.name] = node
+
+        return tree
+
+    """
+    converts a blender shadernode into userdata format
+    """
+    def createNodeTreeUserData(self, material):
+        return json.dumps(self.createNodeTree(material))
+
     def createStateSet(self, index_material, mesh, geom):
         if len(mesh.materials) == 0:
             return None
@@ -1050,6 +1113,9 @@ class BlenderObjectToGeometry(object):
 
         if mat_source.specular_shader == "BLINN":
             m.getOrCreateUserData().append(StringValueObject("SpecularIor", str(mat_source.specular_ior)))
+
+        if mat_source.use_nodes is True:
+            m.getOrCreateUserData().append(StringValueObject("NodeTree", self.createNodeTreeUserData(mat_source)))
 
         # if alpha not 1 then we set the blending mode on
         if DEBUG: osglog.log("state material alpha %s" % str(alpha))
