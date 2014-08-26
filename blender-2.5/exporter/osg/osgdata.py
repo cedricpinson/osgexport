@@ -1299,12 +1299,6 @@ class BlenderObjectToGeometry(object):
             for attribute, value in texture_slot.items():
                 userData.append(StringValueObject("{:02}_{}".format(i, attribute), toUserData(value)))
 
-    def createStateSetShaderNode(self, index_material, mesh, geom, mat_source, s, m):
-        if self.config.json_materials:
-            m.getOrCreateUserData().append(StringValueObject("NodeTree", json.dumps(self.createNodeTree(mat_source))))
-        else:
-            self.createStateSetShaderNodeBlenderMaterial(index_material, mesh, geom, mat_source, s, m)
-
     def createGeomForMaterialIndex(self, material_index, mesh):
         geom = Geometry()
         geom.groups = {}
