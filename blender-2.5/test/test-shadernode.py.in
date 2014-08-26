@@ -1,7 +1,7 @@
 import unittest
 
 import sys
-sys.path.insert(0, "/home/wiz/dev/osgexport/blender-2.5/exporter/")
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
 
 import bpy
 from osg.osgdata import BlenderObjectToGeometry
