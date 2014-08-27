@@ -124,14 +124,13 @@ except:
     #print("Use new import path")
 
 
-build = 'unknown'
-if hasattr(bpy.app, 'build_hash'):
-    build = bpy.app.build_hash
-else:
-    build = bpy.app.build_revision
-
 # Property subtype constant changed with r50938
-FILE_NAME = "FILE_NAME" if build >= b'50938' else "FILENAME"
+if "FILE_PATH" in bpy.types.Property.bl_rna.properties['subtype'].enum_items.keys():
+    FILE_NAME = "FILE_PATH"
+elif "FILE_NAME" in bpy.types.Property.bl_rna.properties['subtype'].enum_items.keys():
+    FILE_NAME = "FILE_NAME"
+else:
+    FILE_NAME = "FILENAME"
 
 class OSGGUI(bpy.types.Operator, ExportHelper):
     '''Export model data to an OpenSceneGraph file'''
