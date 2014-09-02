@@ -1,0 +1,41 @@
+import unittest
+
+import sys
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
+
+import bpy
+from osg.osgdata import BlenderObjectToGeometry
+from osg.osgobject import StateSet
+
+
+class Exporter(unittest.TestCase):
+    def testTextured(self):
+        botg = BlenderObjectToGeometry(object=None)
+        stateSet = StateSet()
+        blenderMaterial = botg.createBlenderMaterial(bpy.data.materials["FloorCenter"], stateSet)
+
+        self.assertEquals(len(blenderMaterial["SpecularColor"]), 3)
+        self.assertAlmostEqual(blenderMaterial["SpecularColor"][0], 1)
+        self.assertAlmostEqual(blenderMaterial["SpecularColor"][1], 1)
+        self.assertAlmostEqual(blenderMaterial["SpecularColor"][2], 1)
+
+        self.assertTrue(blenderMaterial["Shaderless"][2], 1)
+        self.assertAlmostEqual(blenderMaterial["Translucency"][2], 0)
+
+        self.assertEquals(len(blenderMaterial["TextureSlots"]), 2, "Two texture slots")
+
+        tex0 = blenderMaterial["TextureSlots"]["0"]
+        self.assertTrue(tex0["UseAlpha"])
+        self.assertEquals(tex0["BlendType"], "MULTIPLY")
+        self.assertNotEquals(tex0["UsePremultiplyAlpha"])
+        self.assertAlmostEqual(tex0["DiffuseColor"])
+
+        tex1 = blenderMaterial["TextureSlots"]["1"]
+        self.assertTrue(tex1["UseAlpha"])
+        self.assertEquals(tex1["BlendType"], "MULTIPLY")
+        self.assertNotEquals(tex1["UsePremultiplyAlpha"])
+        self.assertAlmostEqual(tex1["DiffuseColor"])
+
+if __name__ == '__main__':
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).failures) + len(unittest.TextTestRunner(verbosity=2).run(suite).errors))
