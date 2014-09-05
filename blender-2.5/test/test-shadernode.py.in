@@ -1,0 +1,87 @@
+import unittest
+
+import sys
+sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
+
+import bpy
+from osg.osgdata import BlenderObjectToGeometry
+
+
+class Exporter(unittest.TestCase):
+    """
+    test a basic shader node composed of two nodes : one bsdf connected to a material output
+    """
+    def testBasicTree(self):
+        botg = BlenderObjectToGeometry(object=None)
+        tree = botg.createNodeTree(bpy.data.materials["Material.001"])
+        self.assertEquals(len(tree["nodes"]), 2)
+
+        # test node output
+        nodeOut = tree["nodes"]["Material Output"]
+        self.assertEquals(nodeOut["type"], "OUTPUT_MATERIAL")
+        self.assertEquals(len(nodeOut["outputs"]), 0)
+        self.assertEquals(len(nodeOut["inputs"]), 3)
+
+        nodeOutin0 = nodeOut["inputs"][0]
+        self.assertEquals(nodeOutin0["type"], "SHADER")
+        self.assertEquals(nodeOutin0["name"], "Surface")
+        self.assertEquals(len(nodeOutin0["links"]), 1)
+        self.assertEquals(nodeOutin0["links"][0]["from_node"], "Diffuse BSDF")
+        self.assertEquals(nodeOutin0["links"][0]["from_socket"], "BSDF")
+
+        # test node diffuse
+        nodeDiffuse = tree["nodes"]["Diffuse BSDF"]
+        self.assertEquals(nodeDiffuse["type"], "BSDF_DIFFUSE")
+        self.assertEquals(len(nodeDiffuse["outputs"]), 1)
+        self.assertEquals(len(nodeDiffuse["inputs"]), 3)
+
+        nodeDiffuseout0 = nodeDiffuse["outputs"][0]
+        self.assertEquals(nodeDiffuseout0["type"], "SHADER")
+        self.assertEquals(nodeDiffuseout0["name"], "BSDF")
+        self.assertEquals(len(nodeDiffuseout0["links"]), 1)
+        self.assertEquals(nodeDiffuseout0["links"][0]["to_node"], "Material Output")
+        self.assertEquals(nodeDiffuseout0["links"][0]["to_socket"], "Surface")
+
+        nodeDiffusein0 = nodeDiffuse["inputs"][0]
+        self.assertEquals(nodeDiffusein0["type"], "RGBA")
+        self.assertEquals(nodeDiffusein0["name"], "Color")
+        self.assertEquals(len(nodeDiffusein0["links"]), 0)
+        self.assertEquals(len(nodeDiffusein0["default_value"]), 4)
+
+        nodeDiffusein1 = nodeDiffuse["inputs"][1]
+        self.assertEquals(nodeDiffusein1["type"], "VALUE")
+        self.assertEquals(nodeDiffusein1["name"], "Roughness")
+        self.assertEquals(len(nodeDiffusein1["links"]), 0)
+        self.assertEquals(nodeDiffusein1["default_value"], 0)
+
+    """
+    test a more complex shader node
+    """
+    def testComplexTree(self):
+        botg = BlenderObjectToGeometry(object=None)
+        tree = botg.createNodeTree(bpy.data.materials["Material.008"])
+        self.assertEquals(len(tree["nodes"]), 9)
+
+        nodeAdd = tree["nodes"]["Add Shader"]
+        self.assertEquals(nodeAdd["type"], "ADD_SHADER")
+        self.assertEquals(nodeAdd["inputs"][0]["links"][0]["from_node"], "Glossy BSDF")
+        self.assertEquals(nodeAdd["inputs"][1]["links"][0]["from_node"], "Subsurface Scattering")
+
+        nodeGlossy = tree["nodes"]["Glossy BSDF"]
+        self.assertEquals(nodeGlossy["type"], "BSDF_GLOSSY")
+        self.assertEquals(nodeGlossy["inputs"][0]["links"][0]["from_node"], "Image Texture")
+        self.assertAlmostEqual(nodeGlossy["inputs"][1]["default_value"], 0.8)  # Roughness
+        self.assertEquals(len(nodeGlossy["inputs"][2]["links"]), 0)  # Normal
+
+        nodeTrans = tree["nodes"]["Translucent BSDF"]
+        self.assertEquals(nodeTrans["type"], "BSDF_TRANSLUCENT")
+        self.assertEquals(len(nodeTrans["inputs"][1]["links"]), 0)  # Normal
+
+        nodeTex = tree["nodes"]["Image Texture"]
+        self.assertEquals(nodeTex["type"], "TEX_IMAGE")
+        self.assertEquals(nodeTex["image"]["filepath_raw"], "//Tileable seamless human skin texture (8).jpg")
+        self.assertEquals(nodeTex["texture_mapping"]["mapping"], "FLAT")
+
+if __name__ == '__main__':
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).failures) + len(unittest.TextTestRunner(verbosity=2).run(suite).errors))
