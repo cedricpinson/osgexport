@@ -131,7 +131,10 @@ else:
     build = bpy.app.build_revision
 
 # Property subtype constant changed with r50938
-FILE_NAME = "FILE_NAME" if build >= b'50938' else "FILENAME"
+if type(build) is str:
+    FILE_NAME = "FILE_NAME"
+else:
+    FILE_NAME = "FILE_NAME" if build >= b'50938' else "FILENAME"
 
 class OSGGUI(bpy.types.Operator, ExportHelper):
     '''Export model data to an OpenSceneGraph file'''
