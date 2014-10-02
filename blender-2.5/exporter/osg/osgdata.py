@@ -989,6 +989,7 @@ class BlenderObjectToGeometry(object):
         s.setName(mat_source.name)
         s.attributes.append(m)
         m.getOrCreateUserData().append(StringValueObject("source", "blender"))
+        s.getOrCreateUserData().append(StringValueObject("source", "blender"))
 
         if mat_source.use_nodes is True:
             self.createStateSetShaderNode(index_material, mesh, geom, mat_source, s, m)
