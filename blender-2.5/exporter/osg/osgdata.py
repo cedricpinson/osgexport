@@ -917,6 +917,29 @@ class BlenderObjectToGeometry(object):
         self.unique_objects.registerTexture(mtex.texture, texture)
         return texture
 
+    def createTexture2DFromNode(self, node):
+        image_object = None
+        try:
+            image_object = node.image
+        except:
+            image_object = None
+        if image_object is None:
+            osglog.log("WARNING the texture node %s has no Image, skip it" % str(node))
+            return None
+
+        if self.unique_objects.hasTexture(node):
+            return self.unique_objects.getTexture(node)
+
+        texture = Texture2D()
+        texture.name = node.image.name
+
+        # reference texture relative to export path
+        filename = createImageFilename(self.config.texture_prefix, image_object)
+        texture.file = filename
+        texture.source_image = image_object
+        self.unique_objects.registerTexture(node, texture)
+        return texture
+
     def adjustUVLayerFromMaterial(self, geom, material, mesh_uv_textures):
 
         uvs = geom.uvs
@@ -1003,14 +1026,14 @@ class BlenderObjectToGeometry(object):
     """
     def createStateSetShaderNode(self, index_material, mesh, geom, mat_source, s, m):
         if self.config.json_materials:
-            m.getOrCreateUserData().append(StringValueObject("NodeTree", json.dumps(self.createNodeTree(mat_source))))
+            m.getOrCreateUserData().append(StringValueObject("NodeTree", json.dumps(self.createNodeTree(mat_source, s, m))))
         else:
             self.createStateSetShaderNodeBlenderMaterial(index_material, mesh, geom, mat_source, s, m)
 
     """
     converts a blender shadernode into a raw hash set format
     """
-    def createNodeTree(self, material):
+    def createNodeTree(self, material, s, m):
         source_tree = material.node_tree
 
         def createSocket(source_socket):
@@ -1041,6 +1064,7 @@ class BlenderObjectToGeometry(object):
         tree = {
             "nodes": {}
         }
+        texture_slot_id = 0
         for source_node in source_tree.nodes:
             node = {
                 "name": source_node.name,
@@ -1059,6 +1083,13 @@ class BlenderObjectToGeometry(object):
                     "colorspace": source_node.image.colorspace_settings.name,
                     "channels": source_node.image.channels
                 }
+                node["texture_slot"] = texture_slot_id
+                t = self.createTexture2DFromNode(source_node)
+
+                if texture_slot_id not in s.texture_attributes.keys():
+                    s.texture_attributes[texture_slot_id] = []
+                s.texture_attributes[texture_slot_id].append(t)
+                texture_slot_id += 1
 
             tree['nodes'][source_node.name] = node
 
