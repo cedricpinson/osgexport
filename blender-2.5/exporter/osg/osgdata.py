@@ -1073,7 +1073,7 @@ class BlenderObjectToGeometry(object):
                 "outputs": [createSocket(source_output) for source_output in source_node.outputs]
             }
 
-            if source_node.type == "TEX_IMAGE":
+            if source_node.type == "TEX_IMAGE" and source_node.image is not None:
                 node["texture_mapping"] = {
                     "mapping": source_node.texture_mapping.mapping
                 }
