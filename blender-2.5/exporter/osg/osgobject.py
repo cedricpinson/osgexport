@@ -1049,7 +1049,7 @@ class Geometry(Object):
                     i.indent_level = self.indent_level + 2
                     i.write(output)
                 else:
-                    emptyTexCoord = TexCoordData()
+                    emptyTexCoord = TexCoordArray()
                     emptyTexCoord.indent_level = self.indent_level + 2
                     emptyTexCoord.write(output)
             output.write(self.encode("$#}\n"))
