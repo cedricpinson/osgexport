@@ -18,6 +18,8 @@
 #  Cedric Pinson <cedric.pinson@plopbyte.com>
 
 LOGFILE = None
+
+
 def log(message):
         print("osg:", message)
         global LOGFILE

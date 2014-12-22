@@ -16,16 +16,17 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-import imp
 import sys
 import os
 import bpy
 import pickle
+import argparse
+
 
 bl_info = {
     "name": "Export OSG format (.osgt)",
     "author": "Cedric Pinson, Jeremy Moles, Peter Amstutz",
-    "version": (0,14,2),
+    "version": (0, 14, 2),
     "blender": (2, 6, 3),
     "email": "trigrou@gmail.com, jeremy@emperorlinux.com, peter.amstutz@tseboston.com",
     "api": 36339,
@@ -36,21 +37,23 @@ bl_info = {
     "tracker_url": "http://github.com/cedricpinson/osgexport",
     "category": "Import-Export"}
 
+__url__ = bl_info["wiki_url"]
+__email__ = bl_info["email"]
+__author__ = bl_info["author"]
+__bpydoc__ = bl_info["description"]
 __version__ = bl_info["version"]
-__author__  = bl_info["author"]
-__email__   = bl_info["email"]
-__url__     = bl_info["wiki_url"]
-__bpydoc__  = bl_info["description"]
 
 sys.path.insert(0, "./")
-BlenderExporterDir = os.getenv("BlenderExporter", os.path.join(bpy.context.user_preferences.filepaths.script_directory,"blenderExporter"))
+BlenderExporterDir = os.getenv("BlenderExporter",
+                               os.path.join(bpy.context.user_preferences.filepaths.script_directory,
+                                            "blenderExporter"))
 print("BlenderExporter directory ", BlenderExporterDir)
-sys.path.insert(0,BlenderExporterDir)
+sys.path.insert(0, BlenderExporterDir)
 
-import bpy
 import osg
 from osg import osgdata
 from osg import osgconf
+
 
 def OpenSceneGraphExport(config=None):
     export = osg.osgdata.Export(config)
@@ -58,10 +61,8 @@ def OpenSceneGraphExport(config=None):
     export.process()
     export.write()
 
-def main():
-    import sys       # to get command line args
-    import argparse  # to parse options for us and print a nice help message
 
+def main():
     # get the args passed to blender after "--", all of which are ignored by
     # blender so scripts may receive their own arguments
     argv = sys.argv
@@ -72,22 +73,25 @@ def main():
         argv = argv[argv.index("--") + 1:]  # get all args after "--"
 
     # When --help or no args are given, print this help
-    usage_text = \
-    "Run blender in background mode with this script:"
-    "  blender --background --python " + __file__ + " -- [options]"
+    usage_text = "Run blender in background mode with this script:" \
+                 "blender --background --python {} -- [options]".format(__file__)
 
     parser = argparse.ArgumentParser(description=usage_text)
 
     # Example utility, add some text and renders or saves it (with options)
     # Possible types are: string, int, long, choice, float and complex.
-    parser.add_argument("-o", "--output", dest="save_path", metavar='FILE|PATH', help="Save the generated file to the specified path")
-    parser.add_argument("-a", "--enable-animation", dest="enable_animation", action="store_const", const=True, default=False, help="Enable saving of animations")
-    parser.add_argument("-m", "--apply-modifiers", dest="apply_modifiers", action="store_const", const=True, default=False, help="Apply modifiers before exporting")
-    parser.add_argument("-j", "--json-materials", dest="json_materials", action="store_const", const=True, default=False, help="Store materials into JSON format")
+    parser.add_argument("-o", "--output", dest="save_path", metavar='FILE|PATH',
+                        help="Save the generated file to the specified path")
+    parser.add_argument("-a", "--enable-animation", dest="enable_animation", action="store_true", default=False,
+                        help="Enable saving of animations")
+    parser.add_argument("-m", "--apply-modifiers", dest="apply_modifiers", action="store_true", default=False,
+                        help="Apply modifiers before exporting")
+    parser.add_argument("-j", "--json-materials", dest="json_materials", action="store_true", default=False,
+                        help="Store materials into JSON format")
 
     args = parser.parse_args(argv)  # In this example we wont use the args
 
-    if args.save_path == None:
+    if args.save_path is None:
         print("\n*** No output filename specified (use -o)")
     else:
         config = osgconf.Config()
@@ -101,16 +105,19 @@ def main():
 if __name__ == "__main__":
     main()
 
+
 def menu_export_osg_model(self, context):
-    #import os
-    #default_path = os.path.splitext(bpy.data.filepath)[0] + "_" + bpy.context.scene.name
-    #default_path = default_path.replace('.', '_')
-    #self.layout.operator(OSGGUI.bl_idname, text="OSG Model(.osg)").filepath = default_path
-	self.layout.operator(OSGGUI.bl_idname, text="OSG Model(.osgt)")
+    # import os
+    # default_path = os.path.splitext(bpy.data.filepath)[0] + "_" + bpy.context.scene.name
+    # default_path = default_path.replace('.', '_')
+    # self.layout.operator(OSGGUI.bl_idname, text="OSG Model(.osg)").filepath = default_path
+    self.layout.operator(OSGGUI.bl_idname, text="OSG Model(.osgt)")
+
 
 def register():
     bpy.utils.register_module(__name__)
     bpy.types.INFO_MT_file_export.append(menu_export_osg_model)
+
 
 def unregister():
     bpy.utils.unregister_module(__name__)
@@ -123,7 +130,7 @@ try:
     print("Use old import path - your blender is not the latest version")
 except:
     from bpy_extras.io_utils import ExportHelper
-    #print("Use new import path")
+    # print("Use new import path")
 
 
 # Property subtype constant changed with r50938
@@ -133,6 +140,7 @@ elif "FILE_NAME" in bpy.types.Property.bl_rna.properties['subtype'].enum_items.k
     FILE_NAME = "FILE_NAME"
 else:
     FILE_NAME = "FILENAME"
+
 
 class OSGGUI(bpy.types.Operator, ExportHelper):
     '''Export model data to an OpenSceneGraph file'''
@@ -249,7 +257,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
             self.config.selected = "ALL"
         self.config.indent = self.INDENT
         self.config.only_visible = self.ONLY_VISIBLE
-        self.config.float_precision =  self.FLOATPRE
+        self.config.float_precision = self.FLOATPRE
         self.config.anim_fps = self.ANIMFPS
         self.config.export_anim = self.EXPORTANIM
         self.config.apply_modifiers = self.APPLYMODIFIERS
