@@ -355,17 +355,8 @@ class Export(object):
         self.root = None
         self.unique_objects = UniqueObject()
 
-    def isValidToExport(self, object):
-        if object.name in self.config.exclude_objects:
-            return False
-
-        if self.config.only_visible:
-            if object.is_visible(self.config.scene):
-                return True
-        else:
-            return True
-
-        return False
+    def isExcluded(self, obj):
+        return obj.name in self.config.exclude_objects
 
     def setArmatureInRestMode(self):
         for arm in bpy.data.objects:
@@ -429,11 +420,19 @@ class Export(object):
                     createAnimationUpdate(blender_object, UpdateMatrixTransform(name=osg_object.name), blender_object.rotation_mode),
                     self.unique_objects)
 
+    def isObjectVisible(self, obj):
+        return obj.is_visible(self.config.scene) or not self.config.only_visible
 
     def exportChildrenRecursively(self, obj, parent, rootItem):
-        if self.isValidToExport(obj) == False:
+
+        # We skip the object if it is in the excluded objects list
+        if self.isExcluded(obj):
             return None
 
+        # Check if the object is visible. The visibility will be used for meshes and lights
+        # to determine if we keep it or not. Other objects have to be taken into account even if they
+        # are not visible as they can be used as modifiers (avoiding some crashs during the export)
+        is_visible = self.isObjectVisible(obj)
         osglog.log("")
 
         anims = []
@@ -464,13 +463,14 @@ class Export(object):
 
                 anims = self.createAnimationsObjectAndSetCallback(item, obj)
 
-                if obj.type == "MESH":
-                    objectItem = self.createGeodeFromObject(obj)
-                    item.children.append(objectItem)
-                else:
-                    self.evaluateGroup(obj, item, rootItem)
+                if is_visible:
+                    if obj.type == "MESH":
+                        objectItem = self.createGeodeFromObject(obj)
+                        item.children.append(objectItem)
+                    else:
+                        self.evaluateGroup(obj, item, rootItem)
 
-            elif obj.type == "LAMP":
+            elif obj.type == "LAMP" and is_visible:
                 matrix = getDeltaMatrixFrom(obj.parent, obj)
                 item = MatrixTransform()
                 item.setName(obj.name)
