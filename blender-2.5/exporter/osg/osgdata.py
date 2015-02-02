@@ -1109,6 +1109,14 @@ class BlenderObjectToGeometry(object):
 
             tree['nodes'][source_node.name] = node
 
+        # safely delete unused nodes
+        nodes = tree['nodes']
+        for name in list(nodes.keys()):
+            node = nodes[name]
+            if all(map(lambda socket: len(socket['links']) == 0, node['inputs'])) and \
+               all(map(lambda socket: len(socket['links']) == 0, node['outputs'])):
+                del nodes[name]
+
         return tree
 
     """
