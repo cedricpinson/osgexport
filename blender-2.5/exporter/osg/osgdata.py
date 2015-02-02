@@ -1170,17 +1170,18 @@ class BlenderObjectToGeometry(object):
         m.shininess = (mat_source.specular_hardness / 512.0) * 128.0
 
         if self.config.json_materials:
-            m.getOrCreateUserData().append(StringValueObject("BlenderMaterial", json.dumps(self.createStateSetBlenderMaterialJson(mat_source, s, m))))
+            m.getOrCreateUserData().append(StringValueObject("BlenderMaterial",
+                                           json.dumps(self.createStateSetBlenderMaterialJson(mat_source, s, m))))
         else:
             self.createStateSetBlenderMaterialUserData(mat_source, s, m)
 
         # if DEBUG: osglog.log("state set {}".format(s))
         return s
 
-    """
-    reads a blender material into an osg stateset/material json userdata
-    """
     def createStateSetBlenderMaterialJson(self, material, s, m):
+        """
+        Reads a blender material into an osg stateset/material json userdata
+        """
         data = {}
 
         data["DiffuseIntensity"] = material.diffuse_intensity
@@ -1233,19 +1234,17 @@ class BlenderObjectToGeometry(object):
         if DEBUG:
             osglog.log("texture list {}".format(texture_list))
 
-        for i in range(0, len(texture_list)):
-            texture_slot = texture_list[i]
-
+        for i, texture_slot in enumerate(texture_list):
             if texture_slot is None:
                 continue
 
-            t = self.createTexture2D(texture_list[i])
+            t = self.createTexture2D(texture_slot)
             if DEBUG:
-                osglog.log("texture {} {}".format(i, texture_list[i]))
+                osglog.log("texture {} {}".format(i, texture_slot))
             if t is None:
                 continue
 
-            data_texture_slot = data["TextureSlots"][i] = {}
+            data_texture_slot = data["TextureSlots"].setdefault(i, {})
 
             def premultAlpha(texture_slot, i, data_texture_slot):
                 if texture_slot.texture and texture_slot.texture.image:
