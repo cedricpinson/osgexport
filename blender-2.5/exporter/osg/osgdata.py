@@ -46,6 +46,11 @@ Quaternion = mathutils.Quaternion
 
 def createImageFilename(texturePath, image):
     fn = bpy.path.basename(bpy.path.display_name_from_filepath(image.filepath))
+
+    # for packed file, fallback to image name
+    if not fn:
+        fn = image.name
+
     i = fn.rfind(".")
     if i != -1:
         name = fn[0:i]
