@@ -11,30 +11,30 @@ from osg.osgobject import StateSet
 class Exporter(unittest.TestCase):
     def testTextured(self):
         botg = BlenderObjectToGeometry(object=None)
-        stateSet = StateSet()
-        blenderMaterial = botg.createBlenderMaterial(bpy.data.materials["FloorCenter"], stateSet)
+        stateset = StateSet()
+        blenderMaterial = botg.createStateSetMaterialData(bpy.data.materials["FloorCenter"], stateset)
 
         self.assertEquals(len(blenderMaterial["SpecularColor"]), 3)
         self.assertAlmostEqual(blenderMaterial["SpecularColor"][0], 1)
         self.assertAlmostEqual(blenderMaterial["SpecularColor"][1], 1)
         self.assertAlmostEqual(blenderMaterial["SpecularColor"][2], 1)
 
-        self.assertTrue(blenderMaterial["Shaderless"][2], 1)
-        self.assertAlmostEqual(blenderMaterial["Translucency"][2], 0)
+        self.assertTrue(blenderMaterial["Shadeless"])
+        self.assertAlmostEqual(blenderMaterial["Translucency"], 0)
 
         self.assertEquals(len(blenderMaterial["TextureSlots"]), 2, "Two texture slots")
 
-        tex0 = blenderMaterial["TextureSlots"]["0"]
+        tex0 = blenderMaterial["TextureSlots"][0]
         self.assertTrue(tex0["UseAlpha"])
         self.assertEquals(tex0["BlendType"], "MULTIPLY")
-        self.assertNotEquals(tex0["UsePremultiplyAlpha"])
-        self.assertAlmostEqual(tex0["DiffuseColor"])
+        self.assertFalse(tex0["UsePremultiplyAlpha"])
+        self.assertAlmostEqual(tex0["DiffuseColor"], 1.0)
 
-        tex1 = blenderMaterial["TextureSlots"]["1"]
+        tex1 = blenderMaterial["TextureSlots"][1]
         self.assertTrue(tex1["UseAlpha"])
         self.assertEquals(tex1["BlendType"], "MULTIPLY")
-        self.assertNotEquals(tex1["UsePremultiplyAlpha"])
-        self.assertAlmostEqual(tex1["DiffuseColor"])
+        self.assertFalse(tex1["UsePremultiplyAlpha"])
+        self.assertAlmostEqual(tex1["DiffuseColor"], 1.0)
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)

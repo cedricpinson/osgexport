@@ -1019,38 +1019,37 @@ class BlenderObjectToGeometry(object):
         if mat_source is None:
             return None
 
-        s = StateSet()
-        s.dataVariance = "DYNAMIC"
-        self.unique_objects.registerStateSet(mat_source, s)
-        m = Material()
-        m.dataVariance = "DYNAMIC"
-        m.setName(mat_source.name)
-        s.setName(mat_source.name)
-        s.attributes.append(m)
-        m.getOrCreateUserData().append(StringValueObject("source", "blender"))
-        s.getOrCreateUserData().append(StringValueObject("source", "blender"))
+        stateset = StateSet()
+        self.unique_objects.registerStateSet(mat_source, stateset)
+        material = Material()
+        stateset.attributes.append(material)
+
+        for osg_object in (stateset, material):
+            osg_object.dataVariance = "DYNAMIC"
+            osg_object.setName(mat_source.name)
+            osg_object.getOrCreateUserData().append(StringValueObject("source", "blender"))
 
         if mat_source.use_nodes is True:
-            self.createStateSetShaderNode(index_material, mesh, geom, mat_source, s, m)
+            self.createStateSetShaderNode(mat_source, stateset, material)
         else:
-            self.createStateSetBlenderMaterial(index_material, mesh, geom, mat_source, s, m)
+            self.createStateSetMaterial(mat_source, stateset, material)
 
-        return s
+        return stateset
 
-    """
-    reads a shadernode to an osg stateset/material
-    """
-    def createStateSetShaderNode(self, index_material, mesh, geom, mat_source, s, m):
+    def createStateSetShaderNode(self, mat_source, stateset, material):
+        """
+        Reads a shadernode to an osg stateset/material
+        """
         if self.config.json_materials:
-            m.getOrCreateUserData().append(StringValueObject("NodeTree", json.dumps(self.createNodeTree(mat_source, s, m))))
+            self.createStateSetShaderNodeJSON(mat_source, stateset, material)
         else:
-            self.createStateSetShaderNodeBlenderMaterial(index_material, mesh, geom, mat_source, s, m)
+            self.createStateSetShaderNodeUserData(mat_source, material)
 
-    """
-    converts a blender shadernode into a raw hash set format
-    """
-    def createNodeTree(self, material, s, m):
-        source_tree = material.node_tree
+    def createStateSetShaderNodeJSON(self, mat_source, stateset, material):
+        """
+         Serializes a blender shadernode into a JSON object
+        """
+        source_tree = mat_source.node_tree
 
         def createSocket(source_socket):
             socket = {
@@ -1100,11 +1099,9 @@ class BlenderObjectToGeometry(object):
                     "channels": source_node.image.channels
                 }
                 node["texture_slot"] = texture_slot_id
-                t = self.createTexture2DFromNode(source_node)
 
-                if texture_slot_id not in s.texture_attributes.keys():
-                    s.texture_attributes[texture_slot_id] = []
-                s.texture_attributes[texture_slot_id].append(t)
+                texture = self.createTexture2DFromNode(source_node)
+                stateset.texture_attributes.setdefault(texture_slot_id, []).append(texture)
                 texture_slot_id += 1
 
             tree['nodes'][source_node.name] = node
@@ -1117,36 +1114,39 @@ class BlenderObjectToGeometry(object):
                all(map(lambda socket: len(socket['links']) == 0, node['outputs'])):
                 del nodes[name]
 
-        return tree
+        material.getOrCreateUserData().append(StringValueObject("NodeTree", json.dumps(tree)))
 
-    """
-    reads a shadernode to a basic material
-    """
-    def createStateSetShaderNodeBlenderMaterial(self, index_material, mesh, geom, mat_source, s, m):
-        userData = m.getOrCreateUserData()
+    def createStateSetShaderNodeUserData(self, mat_source, material):
+        """
+        reads a shadernode to a basic material
+        """
+        userData = material.getOrCreateUserData()
         for node in mat_source.node_tree.nodes:
             if node.type == "BSDF_DIFFUSE":
                 if not node.inputs["Color"].is_linked:
                     value = node.inputs["Color"].default_value
                     userData.append(StringValueObject("DiffuseColor",
-                                                      "[ {}, {}, {} ]".format(value[0], value[1], value[2])))
+                                                      "[{}, {}, {}]".format(value[0],
+                                                                            value[1],
+                                                                            value[2])))
             elif node.type == "BSDF_GLOSSY":
                 if not node.inputs["Color"].is_linked:
                     value = node.inputs["Color"].default_value
                     userData.append(StringValueObject("SpecularColor",
-                                                      "[ {}, {}, {} ]".format(value[0], value[1], value[2])))
+                                                      "[{}, {}, {}]".format(value[0],
+                                                                            value[1],
+                                                                            value[2])))
 
-    """
-    reads a blender material into an osg stateset/material
-    """
-    def createStateSetBlenderMaterial(self, index_material, mesh, geom, mat_source, s, m):
-        # bpy.ops.object.select_name(name=self.object.name)
-        anim = createAnimationMaterialAndSetCallback(m, mat_source, self.config, self.unique_objects)
+    def createStateSetMaterial(self, mat_source, stateset, material):
+        """
+        Reads a blender material into an osg stateset/material
+        """
+        anim = createAnimationMaterialAndSetCallback(material, mat_source, self.config, self.unique_objects)
         if anim:
             self.material_animations[anim.name] = anim
 
         if mat_source.use_shadeless:
-            s.modes["GL_LIGHTING"] = "OFF"
+            stateset.modes["GL_LIGHTING"] = "OFF"
 
         alpha = 1.0
         if mat_source.use_transparency:
@@ -1154,96 +1154,114 @@ class BlenderObjectToGeometry(object):
 
         refl = mat_source.diffuse_intensity
         # we premultiply color with intensity to have rendering near blender for opengl fixed pipeline
-        m.diffuse = (mat_source.diffuse_color[0] * refl,
-                     mat_source.diffuse_color[1] * refl,
-                     mat_source.diffuse_color[2] * refl,
-                     alpha)
+        material.diffuse = (mat_source.diffuse_color[0] * refl,
+                            mat_source.diffuse_color[1] * refl,
+                            mat_source.diffuse_color[2] * refl,
+                            alpha)
 
         # if alpha not 1 then we set the blending mode on
         if DEBUG:
             osglog.log("state material alpha {}".format(alpha))
         if alpha != 1.0:
-            s.modes["GL_BLEND"] = "ON"
+            stateset.modes["GL_BLEND"] = "ON"
 
         ambient_factor = mat_source.ambient
         if bpy.context.scene.world:
-            m.ambient = ((bpy.context.scene.world.ambient_color[0]) * ambient_factor,
-                         (bpy.context.scene.world.ambient_color[1]) * ambient_factor,
-                         (bpy.context.scene.world.ambient_color[2]) * ambient_factor,
-                         1.0)
+            material.ambient = ((bpy.context.scene.world.ambient_color[0]) * ambient_factor,
+                                (bpy.context.scene.world.ambient_color[1]) * ambient_factor,
+                                (bpy.context.scene.world.ambient_color[2]) * ambient_factor,
+                                1.0)
         else:
-            m.ambient = (0, 0, 0, 1.0)
+            material.ambient = (0, 0, 0, 1.0)
 
         # we premultiply color with intensity to have rendering near blender for opengl fixed pipeline
         spec = mat_source.specular_intensity
-        m.specular = (mat_source.specular_color[0] * spec, mat_source.specular_color[1] * spec, mat_source.specular_color[2] * spec, 1)
+        material.specular = (mat_source.specular_color[0] * spec,
+                             mat_source.specular_color[1] * spec,
+                             mat_source.specular_color[2] * spec,
+                             1)
 
         emissive_factor = mat_source.emit
-        m.emission = (mat_source.diffuse_color[0] * emissive_factor, mat_source.diffuse_color[1] * emissive_factor, mat_source.diffuse_color[2] * emissive_factor, 1)
-        m.shininess = (mat_source.specular_hardness / 512.0) * 128.0
+        material.emission = (mat_source.diffuse_color[0] * emissive_factor,
+                             mat_source.diffuse_color[1] * emissive_factor,
+                             mat_source.diffuse_color[2] * emissive_factor,
+                             1)
+        material.shininess = (mat_source.specular_hardness / 512.0) * 128.0
+
+        material_data = self.createStateSetMaterialData(mat_source, stateset)
 
         if self.config.json_materials:
-            m.getOrCreateUserData().append(StringValueObject("BlenderMaterial",
-                                           json.dumps(self.createStateSetBlenderMaterialJson(mat_source, s, m))))
+            self.createStateSetMaterialJson(material_data, stateset)
         else:
-            self.createStateSetBlenderMaterialUserData(mat_source, s, m)
+            self.createStateSetMaterialUserData(material_data, stateset, material)
 
-        # if DEBUG: osglog.log("state set {}".format(s))
-        return s
+        return stateset
 
-    def createStateSetBlenderMaterialJson(self, material, s, m):
+    def createStateSetMaterialData(self, mat_source, stateset):
         """
         Reads a blender material into an osg stateset/material json userdata
         """
+        def premultAlpha(slot, data):
+            if slot.texture and slot.texture.image:
+                data["UsePremultiplyAlpha"] = slot.texture.image.alpha_mode == 'PREMULT'
+
+        def useAlpha(slot, data):
+            if slot.texture and slot.texture.use_alpha:
+                data["UseAlpha"] = True
+
         data = {}
 
-        data["DiffuseIntensity"] = material.diffuse_intensity
-        data["DiffuseColor"] = [material.diffuse_color[0], material.diffuse_color[1], material.diffuse_color[2]]
+        data["DiffuseIntensity"] = mat_source.diffuse_intensity
+        data["DiffuseColor"] = [mat_source.diffuse_color[0],
+                                mat_source.diffuse_color[1],
+                                mat_source.diffuse_color[2]]
 
-        data["SpecularIntensity"] = material.specular_intensity
-        data["SpecularColor"] = [material.specular_color[0], material.specular_color[1], material.specular_color[2]]
+        data["SpecularIntensity"] = mat_source.specular_intensity
+        data["SpecularColor"] = [mat_source.specular_color[0],
+                                 mat_source.specular_color[1],
+                                 mat_source.specular_color[2]]
 
-        data["SpecularHardness"] = material.specular_hardness
+        data["SpecularHardness"] = mat_source.specular_hardness
 
-        if material.use_shadeless:
-            data["Shadeless"] = "true"
+        if mat_source.use_shadeless:
+            data["Shadeless"] = True
         else:
-            data["Emit"] = material.emit
-            data["Ambient"] = material.ambient
-        data["Translucency"] = material.translucency
-        data["DiffuseShader"] = material.diffuse_shader
-        data["SpecularShader"] = material.specular_shader
-        if material.use_transparency:
+            data["Emit"] = mat_source.emit
+            data["Ambient"] = mat_source.ambient
+        data["Translucency"] = mat_source.translucency
+        data["DiffuseShader"] = mat_source.diffuse_shader
+        data["SpecularShader"] = mat_source.specular_shader
+        if mat_source.use_transparency:
             data["Transparency"] = True
-            data["TransparencyMethod"] = material.transparency_method
+            data["TransparencyMethod"] = mat_source.transparency_method
 
-        if material.diffuse_shader == "TOON":
-            data["DiffuseToonSize"] = material.diffuse_toon_size
-            data["DiffuseToonSmooth"] = material.diffuse_toon_smooth
+        if mat_source.diffuse_shader == "TOON":
+            data["DiffuseToonSize"] = mat_source.diffuse_toon_size
+            data["DiffuseToonSmooth"] = mat_source.diffuse_toon_smooth
 
-        if material.diffuse_shader == "OREN_NAYAR":
-            data["Roughness"] = material.roughness
+        if mat_source.diffuse_shader == "OREN_NAYAR":
+            data["Roughness"] = mat_source.roughness
 
-        if material.diffuse_shader == "MINNAERT":
-            data["Darkness"] = material.roughness
+        if mat_source.diffuse_shader == "MINNAERT":
+            data["Darkness"] = mat_source.roughness
 
-        if material.diffuse_shader == "FRESNEL":
-            data["DiffuseFresnel"] = material.diffuse_fresnel
-            data["DiffuseFresnelFactor"] = material.diffuse_fresnel_factor
+        if mat_source.diffuse_shader == "FRESNEL":
+            data["DiffuseFresnel"] = mat_source.diffuse_fresnel
+            data["DiffuseFresnelFactor"] = mat_source.diffuse_fresnel_factor
 
         # specular
-        if material.specular_shader == "TOON":
-            data["SpecularToonSize"] = material.specular_toon_size
-            data["SpecularToonSmooth"] = material.specular_toon_smooth
+        if mat_source.specular_shader == "TOON":
+            data["SpecularToonSize"] = mat_source.specular_toon_size
+            data["SpecularToonSmooth"] = mat_source.specular_toon_smooth
 
-        if material.specular_shader == "WARDISO":
-            data["SpecularSlope"] = material.specular_slope
+        if mat_source.specular_shader == "WARDISO":
+            data["SpecularSlope"] = mat_source.specular_slope
 
-        if material.specular_shader == "BLINN":
-            data["SpecularIor"] = material.specular_ior
+        if mat_source.specular_shader == "BLINN":
+            data["SpecularIor"] = mat_source.specular_ior
 
         data["TextureSlots"] = {}
-        texture_list = material.texture_slots
+        texture_list = mat_source.texture_slots
         if DEBUG:
             osglog.log("texture list {}".format(texture_list))
 
@@ -1251,111 +1269,76 @@ class BlenderObjectToGeometry(object):
             if texture_slot is None:
                 continue
 
-            t = self.createTexture2D(texture_slot)
+            texture = self.createTexture2D(texture_slot)
             if DEBUG:
                 osglog.log("texture {} {}".format(i, texture_slot))
-            if t is None:
+            if texture is None:
                 continue
 
             data_texture_slot = data["TextureSlots"].setdefault(i, {})
 
-            def premultAlpha(texture_slot, i, data_texture_slot):
-                if texture_slot.texture and texture_slot.texture.image:
-                    data_texture_slot["UsePremultiplyAlpha"] = texture_slot.texture.image.alpha_mode == 'PREMULT'
-
-            def useAlpha(texture_slot, i, data_texture_slot):
-                if texture_slot.texture and texture_slot.texture.use_alpha:
-                    data_texture_slot["UseAlpha"] = True
-
-            # use texture as diffuse
-            if texture_slot.use_map_diffuse:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["DiffuseIntensity"] = texture_slot.diffuse_factor
-
-            if texture_slot.use_map_color_diffuse:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["DiffuseColor"] = texture_slot.diffuse_color_factor
-
-            if texture_slot.use_map_alpha:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["Alpha"] = texture_slot.alpha_factor
-
-            if texture_slot.use_map_translucency:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["Translucency"] = texture_slot.translucency_factor
-
-            # use texture as specular
-            if texture_slot.use_map_specular:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["SpecularIntensity"] = texture_slot.specular_factor
-
-            if texture_slot.use_map_color_spec:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["SpecularColor"] = texture_slot.specular_color_factor
-
-            # mirror
-            if texture_slot.use_map_mirror:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["Mirror"] = texture_slot.mirror_factor
-
-            # use texture as normalmap
-            if texture_slot.use_map_normal:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["Normal"] = texture_slot.normal_factor
-
-            if texture_slot.use_map_ambient:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["Ambient"] = texture_slot.ambient_factor
-
-            if texture_slot.use_map_emit:
-                premultAlpha(texture_slot, i, data_texture_slot)
-                useAlpha(texture_slot, i, data_texture_slot)
-                data_texture_slot["Emit"] = texture_slot.emit_factor
+            for (use_map, name, factor) in (('use_map_diffuse', 'DiffuseIntensity', 'diffuse_factor'),
+                                            ('use_map_color_diffuse', 'DiffuseColor', 'diffuse_color_factor'),
+                                            ('use_map_alpha', 'Alpha', 'alpha_factor'),
+                                            ('use_map_translucency', 'Translucency', 'translucency_factor'),
+                                            ('use_map_specular', 'SpecularIntensity', 'specular_factor'),
+                                            ('use_map_color_spec', 'SpecularColor', 'specular_color_factor'),
+                                            ('use_map_mirror', 'Mirror', 'mirror_factor'),
+                                            ('use_map_normal', 'Normal', 'normal_factor'),
+                                            ('use_map_ambient', 'Ambient', 'ambient_factor'),
+                                            ('use_map_emit', 'Emit', 'emit_factor')):
+                if getattr(texture_slot, use_map):
+                    premultAlpha(texture_slot, data_texture_slot)
+                    useAlpha(texture_slot, data_texture_slot)
+                    data_texture_slot[name] = getattr(texture_slot, factor)
 
             # use blend
             data_texture_slot["BlendType"] = texture_slot.blend_type
 
-            if i not in s.texture_attributes.keys():
-                s.texture_attributes[i] = []
-            s.texture_attributes[i].append(t)
+            stateset.texture_attributes.setdefault(i, []).append(texture)
+
             try:
                 if t.source_image.getDepth() > 24:  # there is an alpha
-                    s.modes["GL_BLEND"] = "ON"
+                    stateset.modes["GL_BLEND"] = "ON"
             except:
                 pass
 
         return data
 
-    """
-    reads a blender material into an osg stateset/material json userdata
-    """
-    def createStateSetBlenderMaterialUserData(self, mat_source, s, m):
+    def createStateSetMaterialJson(self, data, stateset):
+        """
+        Serialize blender material data into stateset as a JSON user data
+        """
+        stateset.getOrCreateUserData().append(StringValueObject("BlenderMaterial",
+                                                                json.dumps(data)))
+
+    def createStateSetMaterialUserData(self, data, stateset, material):
+        """
+        Serialize blender material data into material as a collection of string user data
+        """
         def toUserData(value):
-            if type(value) is dict:
-                return "[ {} ]".format(", ".join(str(x) for x in value))
-            elif type(value) is int or type(value) is float or type(value) is str:
-                return str(value)
-            elif type(value) is bool:
-                return str(value).lower()
+            # dict-like values are *not* serialized
+            if isinstance(value, (list, tuple)):
+                return "[{}]".format(", ".join(toUserData(x) for x in value))
+            elif isinstance(value, (int, float, bool)):
+                return json.dumps(value)
+            elif isinstance(value, str):
+                return value
+            return None
 
-        userData = m.getOrCreateUserData()
+        userData = material.getOrCreateUserData()
 
-        data = self.createStateSetBlenderMaterialJson(mat_source, s, m)
         for key, value in data.items():
-            userData.append(StringValueObject(key, toUserData(value)))
+            userdata = toUserData(value)
+            if userdata is not None:
+                userData.append(StringValueObject(key, userdata))
 
-        for i, texture_slot in data["TextureSlots"].items():
-            for attribute, value in texture_slot.items():
-                userData.append(StringValueObject("{:02}_{}".format(i, attribute), toUserData(value)))
+        slot_name = lambda index, label: "{:02}_{}".format(index, label)
+
+        userData = stateset.getOrCreateUserData()
+        for index, slot in data["TextureSlots"].items():
+            for key, value in slot.items():
+                userData.append(StringValueObject(slot_name(index, key), toUserData(value)))
 
     def createGeomForMaterialIndex(self, material_index, mesh):
         geom = Geometry()

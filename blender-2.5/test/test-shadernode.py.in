@@ -4,6 +4,7 @@ import sys
 sys.path.insert(0, "@PROJECT_SOURCE_DIR@/blenderExporter/")
 
 import bpy
+import json
 from osg.osgdata import BlenderObjectToGeometry
 
 
@@ -13,7 +14,14 @@ class Exporter(unittest.TestCase):
     """
     def testBasicTree(self):
         botg = BlenderObjectToGeometry(object=None)
-        tree = botg.createNodeTree(bpy.data.materials["Material.001"])
+
+        stateset = StateSet()
+        material = Material()
+        botg.createStateSetShaderNodeJSON(bpy.data.materials["Material.001"], stateset, material)
+        trees = [uservalue for uservalue in material.userdata.value if uservalue.key == "NodeTree"]
+        self.assertEquals(len(trees), 1)
+
+        tree = json.loads(trees[0].value)
         self.assertEquals(len(tree["nodes"]), 2)
 
         # test node output
@@ -59,7 +67,14 @@ class Exporter(unittest.TestCase):
     """
     def testComplexTree(self):
         botg = BlenderObjectToGeometry(object=None)
-        tree = botg.createNodeTree(bpy.data.materials["Material.008"])
+
+        stateset = StateSet()
+        material = Material()
+        botg.createStateSetShaderNodeJSON(bpy.data.materials["Material.008"], stateset, material)
+        trees = [uservalue for uservalue in material.userdata.value if uservalue.key == "NodeTree"]
+        self.assertEquals(len(trees), 1)
+
+        tree = json.loads(trees[0].value)
         self.assertEquals(len(tree["nodes"]), 9)
 
         nodeAdd = tree["nodes"]["Add Shader"]
