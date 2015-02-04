@@ -1,6 +1,4 @@
 import unittest
-import math
-
 import sys
 sys.path.insert(0, "/home/wiz/dev/osgexport/blender-2.5/exporter/")
 
@@ -11,12 +9,12 @@ from osg.osgdata import BlenderObjectToGeometry, Vector
 
 class Exporter(unittest.TestCase):
     """
-    regression test : the exporter would fail if uv coordinates would contain nan values
+    Regression test: the exporter would fail if uv coordinates contain nan values
     """
     def testUvNan(self):
         mesh = bpy.data.meshes.new("triangle")
         mesh.from_pydata([(-1, 0, -1), (1, 0, -1), (0, 0, 1)], [], [(0, 1, 2)])
-        layer = mesh.uv_textures.new("uvmap")
+        mesh.uv_textures.new("uvmap")
         mesh.uv_layers[0].data[0].uv = Vector((float('nan'), float('nan')))
         mesh.uv_layers[0].data[1].uv = Vector((1, 1))
         mesh.uv_layers[0].data[2].uv = Vector((0.5, 0))
@@ -25,13 +23,15 @@ class Exporter(unittest.TestCase):
 
         obj = bpy.data.objects.new("object", mesh)
 
-        converter = osg.osgdata.BlenderObjectToGeometry(object = obj, mesh = mesh,
-                                            config = osg.osgconf.Config(),
-                                            unique_objects = set([obj]))
+        converter = BlenderObjectToGeometry(object=obj,
+                                            mesh=mesh,
+                                            config=osg.osgconf.Config(),
+                                            unique_objects=set([obj]))
         try:
-            converter.createGeomForMaterialIndex(0, mesh)
-        except KeyError as e:
+            converter.createGeometryForMaterialIndex(0, mesh)
+        except KeyError:
             self.fail("read NaN UV coordinates")
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)

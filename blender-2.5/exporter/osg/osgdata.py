@@ -1008,7 +1008,7 @@ class BlenderObjectToGeometry(object):
             geom.uvs = uvs
         return
 
-    def createStateSet(self, index_material, mesh, geom):
+    def createStateSet(self, index_material, mesh):
         if len(mesh.materials) == 0:
             return None
 
@@ -1340,7 +1340,7 @@ class BlenderObjectToGeometry(object):
             for key, value in slot.items():
                 userData.append(StringValueObject(slot_name(index, key), toUserData(value)))
 
-    def createGeomForMaterialIndex(self, material_index, mesh):
+    def createGeometryForMaterialIndex(self, material_index, mesh):
         geom = Geometry()
         geom.groups = {}
 
@@ -1718,7 +1718,7 @@ class BlenderObjectToGeometry(object):
         geom.normals = osg_normals
         geom.primitives = primitives
         geom.setName(self.object.name)
-        stateset = self.createStateSet(material_index, mesh, geom)
+        stateset = self.createStateSet(material_index, mesh)
         if stateset is not None:
             geom.stateset = stateset
 
@@ -1736,12 +1736,12 @@ class BlenderObjectToGeometry(object):
         geometry_list = []
         material_index = 0
         if len(mesh.materials) == 0:
-            geom = self.createGeomForMaterialIndex(0, mesh)
+            geom = self.createGeometryForMaterialIndex(0, mesh)
             if geom is not None:
                 geometry_list.append(geom)
         else:
             for material in mesh.materials:
-                geom = self.createGeomForMaterialIndex(material_index, mesh)
+                geom = self.createGeometryForMaterialIndex(material_index, mesh)
                 if geom is not None:
                     geometry_list.append(geom)
                 material_index += 1
