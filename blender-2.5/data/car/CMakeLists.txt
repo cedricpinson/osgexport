@@ -17,18 +17,6 @@
 # Authors:
 #  Cedric Pinson <cedric.pinson@plopbyte.com>
 
-INCLUDE(MacroUtils)
-
-ADD_SUBDIRECTORY(avatar)
-ADD_SUBDIRECTORY(bees)
-ADD_SUBDIRECTORY(bignathan)
-ADD_SUBDIRECTORY(car)
-ADD_SUBDIRECTORY(cycles)
-ADD_SUBDIRECTORY(example)
-ADD_SUBDIRECTORY(ipos)
-ADD_SUBDIRECTORY(lights)
-ADD_SUBDIRECTORY(multimaterial)
-ADD_SUBDIRECTORY(nathan)
-ADD_SUBDIRECTORY(normalmap)
-ADD_SUBDIRECTORY(robot)
-ADD_SUBDIRECTORY(walker)
+SET ( DATA_SOURCE ${PROJECT_SOURCE_DIR}/data/car/BMW-MikePan2.blend )
+SET ( DATA_TARGET car )
+BUILD_DATA()

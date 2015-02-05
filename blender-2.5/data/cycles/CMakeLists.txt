@@ -1,4 +1,4 @@
-# Copyright (C) 2008 Cedric Pinson
+# Copyright (C) 2014 Cedric Pinson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,20 +15,9 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 # Authors:
-#  Cedric Pinson <cedric.pinson@plopbyte.com>
+#  Cedric Pinson <trigrou@gmail.com>
 
-INCLUDE(MacroUtils)
 
-ADD_SUBDIRECTORY(avatar)
-ADD_SUBDIRECTORY(bees)
-ADD_SUBDIRECTORY(bignathan)
-ADD_SUBDIRECTORY(car)
-ADD_SUBDIRECTORY(cycles)
-ADD_SUBDIRECTORY(example)
-ADD_SUBDIRECTORY(ipos)
-ADD_SUBDIRECTORY(lights)
-ADD_SUBDIRECTORY(multimaterial)
-ADD_SUBDIRECTORY(nathan)
-ADD_SUBDIRECTORY(normalmap)
-ADD_SUBDIRECTORY(robot)
-ADD_SUBDIRECTORY(walker)
+SET ( DATA_SOURCE ${PROJECT_SOURCE_DIR}/data/cycles/cycles.blend )
+SET ( DATA_TARGET  cycles )
+BUILD_DATA()

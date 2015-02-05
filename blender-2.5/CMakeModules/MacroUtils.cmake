@@ -19,6 +19,7 @@
 
 
 MACRO(BUILD_DATA)
+  find_program (BASH_PROGRAM bash)
 
   IF (${ARGC} EQUAL 1)
     SET(flags "${ARGV0}")
@@ -29,9 +30,9 @@ MACRO(BUILD_DATA)
   # need DATA_SOURCE and DATA_TARGET
   SET(DATA_TARGETNAME ${DATA_TARGET}.osgt)
   ADD_CUSTOM_COMMAND (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGETNAME}
-    COMMAND ${BLENDER}
-    ARGS  --background ${DATA_SOURCE} --python osg/__init__.py -- --output="${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGET}" "${flags}"
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${EXPORTER}
+    COMMAND ${BLENDER}  --background ${DATA_SOURCE} --python osg/__init__.py -- --output="${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGET}" "${flags}"
+    COMMAND ${BASH_PROGRAM} -c "[ -f ${CMAKE_CURRENT_BINARY_DIR}/${DATA_TARGETNAME} ]"
+    WORKING_DIRECTORY ${EXPORTER}
     DEPENDS ${DATA_SOURCE}
     COMMENT "build data from ${DATA_SOURCE}"
     )
