@@ -75,12 +75,12 @@ ADD_TEST(NAME "test-bug_uvnan"
          COMMAND ${BLENDER} --background "${CMAKE_CURRENT_BINARY_DIR}/cube.blend" --python "${CMAKE_CURRENT_BINARY_DIR}/test-bug_uvnan.py")
 
 CONFIGURE_FILE(
-  ${CMAKE_CURRENT_SOURCE_DIR}/test-jsonmaterial.py.in
-  ${CMAKE_CURRENT_BINARY_DIR}/test-jsonmaterial.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-material.py.in
+  ${CMAKE_CURRENT_BINARY_DIR}/test-material.py
   IMMEDIATE @ONLY
   )
-ADD_TEST(NAME "test-jsonmaterial"
-         COMMAND ${BLENDER} --background "${CMAKE_CURRENT_SOURCE_DIR}/../data/multimaterial/floor.blend" --python "${CMAKE_CURRENT_BINARY_DIR}/test-jsonmaterial.py")
+ADD_TEST(NAME "test-material"
+         COMMAND ${BLENDER} --background "${CMAKE_CURRENT_SOURCE_DIR}/../data/multimaterial/floor.blend" --python "${CMAKE_CURRENT_BINARY_DIR}/test-material.py")
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-shadernode.py.in

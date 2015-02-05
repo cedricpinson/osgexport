@@ -24,7 +24,7 @@ import unittest
 import math
 
 import sys
-sys.path.insert(0, "@PROJECT_SOURCE_DIR@/exporter/")
+sys.path.insert(0, "@EXPORTER@")
 
 import bpy
 import osg
@@ -40,18 +40,8 @@ def close(a, b, threshold):
 
 
 def makeSceneActive(scene):
-    import ctypes
-    import bpy
+    bpy.context.screen.scene = bpy.data.scenes[scene]
 
-    blend_cdll = ctypes.CDLL("")
-
-    bmain = ctypes.POINTER(ctypes.c_void_p).from_address(ctypes.addressof(blend_cdll.G)).contents.value
-    
-    sce = bpy.data.scenes[scene]
-    ctr = blend_cdll.BPy_GetContext()
-
-    blend_cdll.ED_screen_set_scene(ctr, sce.as_pointer())
-    print(bpy.context.scene)
 
 class Exporter(unittest.TestCase):
     # ------------------------------------------------------
@@ -74,60 +64,64 @@ class Exporter(unittest.TestCase):
         return os.path.isfile(name)
                 
     def testBlenderObjectToGeometry(self):
-        geomquad = BlenderObjectToGeometry(object = bpy.data.objects["CubeQuads"])
+        makeSceneActive("Geometry")
+        cube_quads = bpy.data.objects["CubeQuads"]
+        geomquad = BlenderObjectToGeometry(object=cube_quads, mesh=cube_quads.data)
         geom = geomquad.convert()[0]
-        self.assertEquals(False, len(geom.stateset.texture_attributes) > 0)
+        #self.assertEquals(False, len(geom.stateset.texture_attributes) > 0)
 
         self.assertEquals("CubeQuads", geom.name)
         self.assertEquals(True, geom.vertexes != None)
-        self.assertEquals(24, len(geom.vertexes.array))
+        self.assertEquals(24, len(geom.vertexes.getArray()))
         self.assertEquals(True, geom.normals != None)
-        self.assertEquals(24, len(geom.normals.array))
+        self.assertEquals(24, len(geom.normals.getArray()))
         self.assertEquals(1, len(geom.primitives))
-        self.assertEquals("QUADS", geom.primitives[0].type)
+        self.assertEquals("GL_QUADS", geom.primitives[0].type)
         self.assertEquals(24, len(geom.primitives[0].indexes))
 
-
-        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangle"])
+        cube_triangle = bpy.data.objects["CubeTriangle"]
+        geomtriangle = BlenderObjectToGeometry(object=cube_triangle, mesh=cube_triangle.data)
         geom = geomtriangle.convert()[0]
         print(geom)
-        self.assertEquals(True, geom.vertexes != None)
-        self.assertEquals(24, len(geom.vertexes.array))
-        self.assertEquals(True, geom.normals != None)
-        self.assertEquals(24, len(geom.normals.array))
+        self.assertEquals(True, geom.vertexes is not None)
+        self.assertEquals(24, len(geom.vertexes.getArray()))
+        self.assertEquals(True, geom.normals is not None)
+        self.assertEquals(24, len(geom.normals.getArray()))
         self.assertEquals(1, len(geom.primitives))
-        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals("GL_TRIANGLES", geom.primitives[0].type)
         self.assertEquals(36, len(geom.primitives[0].indexes))
 
 
-        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangleSmooth"])
+        cube_triangle_smooth = bpy.data.objects["CubeTriangleSmooth"]
+        geomtriangle = BlenderObjectToGeometry(object=cube_triangle_smooth, mesh=cube_triangle_smooth.data)
         geom = geomtriangle.convert()[0]
-        print( geom)
-        self.assertEquals(True, geom.vertexes != None)
-        self.assertEquals(8, len(geom.vertexes.array))
-        self.assertEquals(True, geom.normals != None)
-        self.assertEquals(8, len(geom.normals.array))
+        print(geom)
+        self.assertEquals(True, geom.vertexes is not None)
+        self.assertEquals(8, len(geom.vertexes.getArray()))
+        self.assertEquals(True, geom.normals is not None)
+        self.assertEquals(8, len(geom.normals.getArray()))
         self.assertEquals(1, len(geom.primitives))
-        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals("GL_TRIANGLES", geom.primitives[0].type)
         self.assertEquals(36, len(geom.primitives[0].indexes))
 
 
-        geomtriangle = BlenderObjectToGeometry(object = bpy.data.objects["CubeTriangleTextured"])
+        cube_triangle_textured = bpy.data.objects["CubeTriangleTextured"]
+        geomtriangle = BlenderObjectToGeometry(object=cube_triangle_textured, mesh=cube_triangle_textured.data)
         geom = geomtriangle.convert()[0]
-        print( geom)
-        self.assertEquals(True, geom.vertexes != None)
-        self.assertEquals(20, len(geom.vertexes.array))
-        self.assertEquals(True, geom.uvs != None)
+        print(geom)
+        self.assertEquals(True, geom.vertexes is not None)
+        self.assertEquals(20, len(geom.vertexes.getArray()))
+        self.assertEquals(True, geom.uvs is not None)
         print(geom.uvs.keys())
-        self.assertEquals(20, len(geom.uvs[0].array))
-        self.assertEquals(True, geom.normals != None)
-        self.assertEquals(20, len(geom.normals.array))
-        self.assertEquals(True, geom.stateset != None)
+        self.assertEquals(20, len(geom.uvs[0].getArray()))
+        self.assertEquals(True, geom.normals is not None)
+        self.assertEquals(20, len(geom.normals.getArray()))
+        self.assertEquals(True, geom.stateset is not None)
         print(geom.stateset.texture_attributes)
         self.assertEquals(1, len(geom.stateset.texture_attributes[0]))
-        self.assertEquals("textures/bbb.png", geom.stateset.texture_attributes[0][0].file )
+        self.assertEquals("textures/bbb.png", geom.stateset.texture_attributes[0][0].file)
         self.assertEquals(1, len(geom.primitives))
-        self.assertEquals("TRIANGLES", geom.primitives[0].type)
+        self.assertEquals("GL_TRIANGLES", geom.primitives[0].type)
         self.assertEquals(36, len(geom.primitives[0].indexes))
 
     def testMultiUVS(self):
@@ -147,14 +141,16 @@ class Exporter(unittest.TestCase):
         self.assertTrue(self.checkFile("./textures/sol_trauma_periph.png"))
 
     def testBlenderMaterial(self):
-        geomquad = BlenderObjectToGeometry(object = bpy.data.objects["CubeMaterial"])
+        makeSceneActive("Materials")
+        cube_material = bpy.data.objects["CubeMaterial"]
+        geomquad = BlenderObjectToGeometry(object=cube_material, mesh=cube_material.data)
         geom_list = geomquad.convert()
         geom = geom_list[0]
         self.assertEquals((0.0,0.0,0.0,1.0),geom.stateset.attributes[0].emission)
         self.assertEquals(True, close((0.64,0.64,0.64,1.0),geom.stateset.attributes[0].diffuse, 0.01) )
         self.assertEquals(True, close((0.64,0.64,0.64,1.0),geom.stateset.attributes[0].diffuse, 0.01) )
         self.assertEquals(True, close((0.5,0.5,0.5,1.0),geom.stateset.attributes[0].specular, 0.01) )
-        self.assertEquals(12.5 ,geom.stateset.attributes[0].shininess)
+        self.assertEquals(12.5, geom.stateset.attributes[0].shininess)
 
     def testExportBlenderMaterial(self):
         makeSceneActive("Materials")
@@ -168,6 +164,5 @@ class Exporter(unittest.TestCase):
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
-    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).failures))
-    #print(unittest.TextTestRunner(verbosity=2).run(suite))
-    #sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).errors))
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())

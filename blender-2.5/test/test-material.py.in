@@ -1,0 +1,91 @@
+import unittest
+
+import sys
+sys.path.insert(0, "@EXPORTER@")
+
+import bpy
+import json
+from osg.osgdata import BlenderObjectToGeometry
+from osg.osgobject import StateSet, Material
+
+
+
+class Exporter(unittest.TestCase):
+    def get_userdata(self, obj, key):
+         return [data for data in obj.userdata.value if data.key == key]
+
+    def testData(self):
+        botg = BlenderObjectToGeometry(object=None)
+        stateset = StateSet()
+        blenderMaterial = botg.createStateSetMaterialData(bpy.data.materials["FloorCenter"], stateset)
+
+        self.assertEquals(len(blenderMaterial["SpecularColor"]), 3)
+        self.assertAlmostEqual(blenderMaterial["SpecularColor"][0], 1)
+        self.assertAlmostEqual(blenderMaterial["SpecularColor"][1], 1)
+        self.assertAlmostEqual(blenderMaterial["SpecularColor"][2], 1)
+
+        self.assertTrue(blenderMaterial["Shadeless"])
+        self.assertAlmostEqual(blenderMaterial["Translucency"], 0)
+
+        self.assertEquals(len(blenderMaterial["TextureSlots"]), 2, "Two texture slots")
+
+        tex0 = blenderMaterial["TextureSlots"][0]
+        self.assertTrue(tex0["UseAlpha"])
+        self.assertEquals(tex0["BlendType"], "MULTIPLY")
+        self.assertFalse(tex0["UsePremultiplyAlpha"])
+        self.assertAlmostEqual(tex0["DiffuseColor"], 1.0)
+
+        tex1 = blenderMaterial["TextureSlots"][1]
+        self.assertTrue(tex1["UseAlpha"])
+        self.assertEquals(tex1["BlendType"], "MULTIPLY")
+        self.assertFalse(tex1["UsePremultiplyAlpha"])
+        self.assertAlmostEqual(tex1["DiffuseColor"], 1.0)
+
+    def testMaterialAsUserValue(self):
+        botg = BlenderObjectToGeometry(object=None)
+        botg.config.json_materials = False
+
+        stateset = StateSet()
+        material = Material()
+
+        botg.createStateSetMaterial(bpy.data.materials["FloorCenter"], stateset, material)
+
+        # test material userdata
+        translucency = self.get_userdata(material, "Translucency")
+        self.assertEquals(len(translucency), 1)
+        self.assertAlmostEqual(float(translucency[0].value), 0)
+
+        specular = self.get_userdata(material, "SpecularColor")
+        self.assertEquals(len(specular), 1)
+        self.assertEquals(len(specular[0].value.split(",")), 3)
+
+        # test stateset userdata
+        slot_0_blendtype = self.get_userdata(stateset, "00_BlendType")
+        self.assertEquals(len(slot_0_blendtype), 1)
+        self.assertEquals(slot_0_blendtype[0].value, "MULTIPLY")
+
+        slot_1_diffusecolor = self.get_userdata(stateset, "01_DiffuseColor")
+        self.assertEquals(len(slot_1_diffusecolor), 1)
+        self.assertAlmostEquals(float(slot_1_diffusecolor[0].value), 1.0)
+
+    def testMaterialAsJSON(self):
+        botg = BlenderObjectToGeometry(object=None)
+        botg.config.json_materials = True
+
+        stateset = StateSet()
+        material = Material()
+
+        botg.createStateSetMaterial(bpy.data.materials["FloorCenter"], stateset, material)
+
+        self.assertIsNone(material.userdata)
+
+        userdata = self.get_userdata(stateset, "BlenderMaterial")
+        self.assertEquals(len(userdata), 1)
+        userdata = json.loads(userdata[0].value)
+        self.assertEquals(len(userdata["TextureSlots"]), 2)
+
+
+if __name__ == '__main__':
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())

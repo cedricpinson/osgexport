@@ -21,35 +21,34 @@
 
 import unittest
 import math
+import os
 
 import sys
-sys.path.insert(0, "@PROJECT_SOURCE_DIR@/exporter/")
+sys.path.insert(0, "@EXPORTER@")
 
 import bpy
 import osg
+from io import BytesIO
 from osg.osgobject import *
 from osg.osgdata import *
 
 
 def close(a, b, threshold):
-    for i in range(0,len(a)):
+    for i in range(0, len(a)):
         if math.fabs(a[i] - b[i]) > threshold:
             return False
     return True
 
+
 def makeSceneActive(scene):
-    import ctypes
-    import bpy
+    bpy.context.screen.scene = bpy.data.scenes[scene]
 
-    blend_cdll = ctypes.CDLL("")
 
-    bmain = ctypes.POINTER(ctypes.c_void_p).from_address(ctypes.addressof(blend_cdll.G)).contents.value
-    
-    sce = bpy.data.scenes[scene]
-    ctr = blend_cdll.BPy_GetContext()
+def string_serialize(osg_object):
+    io = BytesIO()
+    osg_object.serialize(io)
+    return io.getvalue().decode('utf-8')
 
-    blend_cdll.ED_screen_set_scene(ctr, sce.as_pointer())
-    print(bpy.context.scene)
 
 class Exporter2(unittest.TestCase):
     # ------------------------------------------------------
@@ -90,33 +89,34 @@ class Exporter(unittest.TestCase):
         self.assertEquals("ALL", conf.selected)
         self.assertEquals(False, conf.relative_path)
         self.assertEquals(True, conf.export_anim)
-        self.assertEquals("./", conf.fullpath)
+        self.assertEquals(os.path.abspath("./"), os.path.abspath(conf.fullpath))
         self.assertEquals([], conf.exclude_objects)
 
 
     def testLightSource(self):
         node = LightSource()
-        node.setName("test")
+        node.setName("dummy")
         node.light = Light()
-        result = str(node)
-        text = """LightSource {
-  UniqueID uniqid_LightSource_0
-  name "test"
-  cullingActive FALSE
-  Light {
-    light_num 0
-    ambient 0.05000 0.05000 0.05000 1.00000
-    diffuse 0.80000 0.80000 0.80000 1.00000
-    specular 1.00000 1.00000 1.00000 1.00000
-    position 0.00000 0.00000 1.00000 0.00000
-    direction 0.00000 0.00000 -1.00000
-    constant_attenuation 1.00000
-    linear_attenuation 0.00000
-    quadratic_attenuation 0.00000
-    spot_exponent 0.00000
-    spot_cutoff 180.00000
+        result = string_serialize(node)
+        text = """osg::LightSource {
+  UniqueID 0
+  Name "dummy"
+  Light TRUE {
+    osg::Light {
+      UniqueID 2
+      LightNum 0
+      Ambient 0.00000 0.00000 0.00000 1.00000
+      Diffuse 0.80000 0.80000 0.80000 1.00000
+      Specular 1.00000 1.00000 1.00000 1.00000
+      Position 0.00000 0.00000 1.00000 0.00000
+      Direction 0.00000 0.00000 -1.00000
+      ConstantAttenuation 1.00000
+      LinearAttenuation 0.00000
+      QuadraticAttenuation 0.00000
+      SpotExponent 0.00000
+      SpotCutoff 180.00000
+    }
   }
-  num_children 0
 }
 """
         self.assertEquals(text, result)
@@ -191,7 +191,7 @@ class Exporter(unittest.TestCase):
         found = False
         print(exporter.images)
         for i in exporter.images:
-            print("check with ",i.name)
+            print("check with ", i.name)
             if i.name == search:
                 found = True
         self.assertEquals(True, found)
@@ -214,7 +214,7 @@ class Exporter(unittest.TestCase):
         exporter.process()
         exporter.postProcess()
         exporter.write()
-
+        self.assertEquals(1, len(exporter.animations))
 
     def testPostProcessAnimationsNathan(self):
         return
@@ -225,7 +225,10 @@ class Exporter(unittest.TestCase):
         exporter.process()
         exporter.postProcess()
         exporter.write()
+        self.assertEquals(5, len(exporter.animations))
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
-    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).failures) + len(unittest.TextTestRunner(verbosity=2).run(suite).errors))
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())
