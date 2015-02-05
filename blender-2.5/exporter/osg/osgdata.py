@@ -358,6 +358,7 @@ class Export(object):
         self.config = config
         if self.config is None:
             self.config = osgconf.Config()
+            self.config.defaultattr('scene', bpy.context.scene)
         self.rest_armatures = []
         self.animations = []
         self.images = set()
@@ -897,17 +898,15 @@ class BlenderLightToLightSource(object):
 class BlenderObjectToGeometry(object):
     def __init__(self, *args, **kwargs):
         self.object = kwargs["object"]
-        self.config = kwargs.get("config", None)
-        if not self.config:
-            self.config = osgconf.Config()
-        self.unique_objects = kwargs.get("unique_objects", {})
+        self.config = kwargs.get("config", osgconf.Config())
+        self.unique_objects = kwargs.get("unique_objects", UniqueObject())
         self.geom_type = Geometry
         self.mesh = kwargs.get("mesh", None)
 
         # if self.config.apply_modifiers is False:
-        #   self.mesh = self.object.data
+        #     self.mesh = self.object.data
         # else:
-        #   self.mesh = self.object.to_mesh(self.config.scene, True, 'PREVIEW')
+        #     self.mesh = self.object.to_mesh(self.config.scene, True, 'PREVIEW')
         self.material_animations = {}
 
     def createTexture2D(self, mtex):
@@ -1752,8 +1751,7 @@ class BlenderObjectToGeometry(object):
         # if self.mesh.vertexUV:
         #     osglog.log("WARNING mesh %s use sticky UV and it's not supported" % self.object.name)
 
-        list = self.process(self.mesh)
-        return list
+        return self.process(self.mesh)
 
 
 class BlenderObjectToRigGeometry(BlenderObjectToGeometry):
@@ -1766,7 +1764,7 @@ class BlenderAnimationToAnimation(object):
     def __init__(self, *args, **kwargs):
         self.config = kwargs["config"]
         self.object = kwargs.get("object", None)
-        self.unique_objects = kwargs.get("unique_objects", {})
+        self.unique_objects = kwargs.get("unique_objects", UniqueObject())
         self.animations = None
         self.action = None
         self.action_name = None
