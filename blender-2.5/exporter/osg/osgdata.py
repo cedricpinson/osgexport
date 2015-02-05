@@ -1039,7 +1039,7 @@ class BlenderObjectToGeometry(object):
         """
         Reads a shadernode to an osg stateset/material
         """
-        if self.config.json_materials:
+        if self.config.json_shaders:
             self.createStateSetShaderNodeJSON(mat_source, stateset, material)
         else:
             self.createStateSetShaderNodeUserData(mat_source, material)

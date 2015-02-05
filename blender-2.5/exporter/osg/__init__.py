@@ -88,6 +88,8 @@ def main():
                         help="Apply modifiers before exporting")
     parser.add_argument("-j", "--json-materials", dest="json_materials", action="store_true", default=False,
                         help="Store materials into JSON format")
+    parser.add_argument("-s", "--json-shaders", dest="json_shaders", action="store_true", default=False,
+                        help="Store shader graphs into JSON format")
 
     args = parser.parse_args(argv)  # In this example we wont use the args
 
@@ -100,6 +102,7 @@ def main():
         config.apply_modifiers = args.apply_modifiers
         config.scene = bpy.context.scene
         config.json_materials = args.json_materials
+        config.json_shaders = args.json_shaders
         OpenSceneGraphExport(config)
 
 if __name__ == "__main__":
@@ -162,6 +165,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     APPLYMODIFIERS = BoolProperty(name="Apply Modifiers", description="Apply modifiers before exporting yes/no", default=True)
     LOG = BoolProperty(name="Write log", description="Write log file yes/no", default=False)
     JSON_MATERIALS = BoolProperty(name="JSON Materials", description="Export materials into JSON userdata.", default=False)
+    JSON_SHADERS = BoolProperty(name="JSON shaders", description="Export shader graphs into JSON userdata.", default=False)
     BAKE_CONSTRAINTS = BoolProperty(name="Bake Constraints", description="Bake constraints into actions", default=True)
     BAKE_FRAME_STEP = IntProperty(name="Bake frame step", description="Frame step when baking actions", default=1, min=1, max=30)
     OSGCONV_TO_IVE = BoolProperty(name="Convert to IVE (uses osgconv)", description="Use osgconv to convert to IVE", default=False)
@@ -187,6 +191,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         layout.row(align=True).prop(self, "BAKE_CONSTRAINTS")
         layout.row(align=True).prop(self, "LOG")
         layout.row(align=True).prop(self, "JSON_MATERIALS")
+        layout.row(align=True).prop(self, "JSON_SHADERS")
         layout.row(align=True).prop(self, "ZERO_TRANSLATIONS")
         layout.row(align=True).prop(self, "ANIMFPS")
         layout.row(align=True).prop(self, "BAKE_FRAME_STEP")
@@ -232,6 +237,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.OSGCONV_PATH = self.config.osgconv_path
         self.OSGCONV_CLEANUP = self.config.osgconv_cleanup
         self.JSON_MATERIALS = self.config.json_materials
+        self.JSON_SHADERS = self.config.json_shaders
 
         self.RUN_VIEWER = self.config.run_viewer
         self.VIEWER_PATH = self.config.viewer_path

@@ -77,6 +77,7 @@ class Config(object):
 
         self.defaultattr("history", {})
         self.defaultattr("json_materials", False)
+        self.defaultattr("json_shaders", False)
         
         self.filepath = ""
         self.fullpath = ""
