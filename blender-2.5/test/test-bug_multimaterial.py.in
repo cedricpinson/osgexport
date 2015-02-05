@@ -23,7 +23,7 @@ import unittest
 import math
 import os
 import sys
-sys.path.insert(0, "@PROJECT_SOURCE_DIR@/exporter/")
+sys.path.insert(0, "@EXPORTER@")
 
 import bpy
 import osg
@@ -69,10 +69,13 @@ class Exporter(unittest.TestCase):
     def test_BlenderObjectBugMultiMaterial(self):
         makeSceneActive("BugMultiMaterial")
         exporter = Export()
+        exporter.config.initFilePaths(self.filename)
         exporter.process()
         exporter.write()
-        self.assertTrue(self.checkFile(filename))
+        self.assertTrue(self.checkFile(self.filename))
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
-    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).errors))
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())

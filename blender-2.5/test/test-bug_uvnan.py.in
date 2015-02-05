@@ -1,6 +1,6 @@
 import unittest
 import sys
-sys.path.insert(0, "/home/wiz/dev/osgexport/blender-2.5/exporter/")
+sys.path.insert(0, "@EXPORTER@")
 
 import bpy
 import osg
@@ -35,4 +35,5 @@ class Exporter(unittest.TestCase):
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
-    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).failures) + len(unittest.TextTestRunner(verbosity=2).run(suite).errors))
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())
