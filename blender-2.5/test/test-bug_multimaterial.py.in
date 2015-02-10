@@ -23,7 +23,7 @@ import unittest
 import math
 import os
 import sys
-sys.path.insert(0, "@PROJECT_SOURCE_DIR@/exporter/")
+sys.path.insert(0, "@EXPORTER@")
 
 import bpy
 import osg
@@ -32,30 +32,21 @@ from osg.osgdata import *
 
 
 def close(a, b, threshold):
-    for i in range(0,len(a)):
+    for i in range(0, len(a)):
         if math.fabs(a[i] - b[i]) > threshold:
             return False
     return True
 
+
 def makeSceneActive(scene):
-    import ctypes
-    import bpy
+    bpy.context.screen.scene = bpy.data.scenes[scene]
 
-    blend_cdll = ctypes.CDLL("")
 
-    bmain = ctypes.POINTER(ctypes.c_void_p).from_address(ctypes.addressof(blend_cdll.G)).contents.value
-    
-    sce = bpy.data.scenes[scene]
-    ctr = blend_cdll.BPy_GetContext()
-
-    blend_cdll.ED_screen_set_scene(ctr, sce.as_pointer())
-    print(bpy.context.scene)
-
-filename = "./BugMultiMaterial.osg"
 class Exporter(unittest.TestCase):
     # ------------------------------------------------------
     def setUp(self):
         osg.osgobject.Object.resetWriter()
+        self.filename = "./BugMultiMaterial.osgt"
 
     def tearDown(self):
         try:
@@ -69,10 +60,13 @@ class Exporter(unittest.TestCase):
     def test_BlenderObjectBugMultiMaterial(self):
         makeSceneActive("BugMultiMaterial")
         exporter = Export()
+        exporter.config.initFilePaths(self.filename)
         exporter.process()
         exporter.write()
-        self.assertTrue(self.checkFile(filename))
+        self.assertTrue(self.checkFile(self.filename))
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
-    sys.exit(len(unittest.TextTestRunner(verbosity=2).run(suite).errors))
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())

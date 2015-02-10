@@ -45,8 +45,8 @@ SET(CPACK_SOURCE_IGNORE_FILES
 SET(OSGEXPORTER_VERSION "0.0.1")
 SET(CPACK_SOURCE_PACKAGE_FILE_NAME "osgexporter-${OSGEXPORTER_VERSION}")
 
-OPTION(BLENDER "blender" "blender")
-SET(EXPORTER "exporter") 
+SET(BLENDER "blender" CACHE FILEPATH "(Absolute) path to blender binary")
+SET(EXPORTER "${PROJECT_SOURCE_DIR}/exporter" CACHE FILEPATH "(Absolute) path to exporter modules")
 OPTION(TEST "Enable test" OFF)
 OPTION(BUILD_DATA "Build data" ON)
 

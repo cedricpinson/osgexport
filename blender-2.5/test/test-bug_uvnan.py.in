@@ -1,0 +1,39 @@
+import unittest
+import sys
+sys.path.insert(0, "@EXPORTER@")
+
+import bpy
+import osg
+from osg.osgdata import BlenderObjectToGeometry, Vector
+
+
+class Exporter(unittest.TestCase):
+    """
+    Regression test: the exporter would fail if uv coordinates contain nan values
+    """
+    def testUvNan(self):
+        mesh = bpy.data.meshes.new("triangle")
+        mesh.from_pydata([(-1, 0, -1), (1, 0, -1), (0, 0, 1)], [], [(0, 1, 2)])
+        mesh.uv_textures.new("uvmap")
+        mesh.uv_layers[0].data[0].uv = Vector((float('nan'), float('nan')))
+        mesh.uv_layers[0].data[1].uv = Vector((1, 1))
+        mesh.uv_layers[0].data[2].uv = Vector((0.5, 0))
+        mesh.update()
+        mesh.calc_tessface()
+
+        obj = bpy.data.objects.new("object", mesh)
+
+        converter = BlenderObjectToGeometry(object=obj,
+                                            mesh=mesh,
+                                            config=osg.osgconf.Config(),
+                                            unique_objects=set([obj]))
+        try:
+            converter.createGeometryForMaterialIndex(0, mesh)
+        except KeyError:
+            self.fail("read NaN UV coordinates")
+
+
+if __name__ == '__main__':
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())
