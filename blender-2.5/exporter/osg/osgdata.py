@@ -192,6 +192,30 @@ def resolveMisencodedNames(scene):
         print('Warning: [[blender]] {} entities having misencoded names were renamed'.format(renamed_count))
 
 
+def unselectAllObjects():
+    for obj in bpy.context.selected_objects:
+        obj.select = False
+
+
+def selectObjects(object_list):
+    for obj in object_list:
+        obj.select = True
+
+
+def make_dupliverts_real(scene):
+    ''' Duplicates vertex instances and makes them real'''
+    unselectAllObjects()
+    # Select all objects that use dupli_vertex mode
+    selectObjects([obj for obj in scene.objects if obj.dupli_type == 'VERTS' and obj.children])
+
+    # Duplicate all instances into real objects
+    if bpy.context.selected_objects:
+        bpy.ops.object.duplicates_make_real(use_base_parent=True, use_hierarchy=True)
+        print('Warning: [[blender]] Some instances (duplication at vertex) were duplicated as real objects')
+        # Clear selection
+        unselectAllObjects()
+
+
 # def findObjectForIpo(ipo):
 #     index = ipo.name.rfind('-')
 #     if index != -1:
@@ -578,7 +602,16 @@ class Export(object):
         return skeleton
 
     def preProcess(self):
+        # The following process may alter object selection, so
+        # we need to save it
+        backup_selection = bpy.context.selected_objects
+
+        make_dupliverts_real(self.config.scene)
         resolveMisencodedNames(self.config.scene)
+
+        # restore the user's selection
+        unselectAllObjects()
+        selectObjects(backup_selection)
 
     def process(self):
         self.preProcess()
