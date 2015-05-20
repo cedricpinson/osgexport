@@ -157,6 +157,41 @@ def findArmatureObjectForTrack(track):
     return None
 
 
+def checkNameEncoding(elements, label, renamed_count):
+    for element in elements:
+        try:
+            element.name
+        except UnicodeDecodeError:
+            element.name = 'renamed_{}_{}'.format(label, renamed_count)
+            renamed_count += 1
+
+
+def resolveMisencodedNames(scene):
+    ''' Replace misencoded object names to avoid errors '''
+    scene = bpy.context.scene
+    renamed_count = 0
+
+    renamed_count = checkNameEncoding(scene.objects, 'object', renamed_count)
+    for obj in scene.objects:
+        renamed_count = checkNameEncoding(obj.modifiers, 'modifier', renamed_count)
+        renamed_count = checkNameEncoding(obj.vertex_groups, 'vertex_group', renamed_count)
+
+    renamed_count = checkNameEncoding(bpy.data.armatures, 'armature', renamed_count)
+    for arm in bpy.data.armatures:
+        renamed_count = checkNameEncoding(arm.bones, 'bone', renamed_count)
+
+    renamed_count = checkNameEncoding(bpy.data.materials, 'material', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.textures, 'texture', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.images, 'image', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.curves, 'curve', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.cameras, 'camera', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.lamps, 'lamp', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.metaballs, 'metaball', renamed_count)
+
+    if renamed_count:
+        print('Warning: [[blender]] {} entities having misencoded names were renamed'.format(renamed_count))
+
+
 # def findObjectForIpo(ipo):
 #     index = ipo.name.rfind('-')
 #     if index != -1:
@@ -542,7 +577,12 @@ class Export(object):
         skeleton.collectBones()
         return skeleton
 
+    def preProcess(self):
+        resolveMisencodedNames(self.config.scene)
+
     def process(self):
+        self.preProcess()
+
         # Object.resetWriter()
         self.scene_name = self.config.scene.name
         osglog.log("current scene {}".format(self.scene_name))
