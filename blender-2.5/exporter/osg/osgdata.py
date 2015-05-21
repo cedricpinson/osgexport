@@ -1406,25 +1406,20 @@ class BlenderObjectToGeometry(object):
             vertex_colors = mesh.vertex_colors
 
         if vertex_colors:
-            backupColor = None
-            for colorLayer in vertex_colors:
-                if colorLayer.active:
-                    backupColor = colorLayer
-            for colorLayer in vertex_colors:
-                idx = 0
-                colorLayer.active = True
-                # mesh.update()
-                color_array = []
-                for data in colorLayer.data:
-                    color_array.append(data.color1)
-                    color_array.append(data.color2)
-                    color_array.append(data.color3)
-                    # DW - how to tell if this is a tri or a quad?
-                    if len(faces[idx].vertices) > 3:
-                        color_array.append(data.color4)
-                    idx += 1
-                colors[colorLayer.name] = color_array
-            backupColor.active = True
+            # We only retrieve the active vertex color layer
+            colorLayer = vertex_colors.active
+            colorArray = []
+            idx = 0
+            # mesh.update()
+            for data in colorLayer.data:
+                colorArray.append(data.color1)
+                colorArray.append(data.color2)
+                colorArray.append(data.color3)
+                # DW - how to tell if this is a tri or a quad?
+                if len(faces[idx].vertices) > 3:
+                    colorArray.append(data.color4)
+                idx += 1
+            colors = colorArray
             # mesh.update()
 
         # uvs = {}
@@ -1504,9 +1499,9 @@ class BlenderObjectToGeometry(object):
                     (truncateFloat(normals[index][0]),
                      truncateFloat(normals[index][1]),
                      truncateFloat(normals[index][2])),
-                    tuple([tuple(truncateVector(uvs[x][index])) for x in uvs.keys()]))
-                    #  vertex color not supported
-                    # tuple([tuple(truncateVector(colors[x][index])) for x in colors.keys()]))
+                    tuple([tuple(truncateVector(uvs[x][index])) for x in uvs.keys()]),
+                    tuple([tuple(colors[index]) if colors else ()]))
+
 
         # Build a dictionary of indexes to all the vertexes that
         # are equal.
@@ -1629,7 +1624,10 @@ class BlenderObjectToGeometry(object):
         osg_vertexes = VertexArray()
         osg_normals = NormalArray()
         osg_uvs = {}
-        # osg_colors = {}
+
+        # Get the first vertex color layer (only one supported for now)
+        osg_colors = ColorArray() if colors else None
+
         for vertex in mapping_vertexes:
             vindex = vertex[0]
             coord = vertexes[vindex].co
@@ -1637,6 +1635,9 @@ class BlenderObjectToGeometry(object):
 
             ncoord = normals[vindex]
             osg_normals.getArray().append([ncoord[0], ncoord[1], ncoord[2]])
+
+            if osg_colors is not None:
+                osg_colors.getArray().append(colors[vindex])
 
             for name in uvs.keys():
                 if name not in osg_uvs.keys():
@@ -1712,7 +1713,7 @@ class BlenderObjectToGeometry(object):
             primitives.append(quads)
 
         geom.uvs = osg_uvs
-        # geom.colors = osg_colors
+        geom.colors = osg_colors
         geom.vertexes = osg_vertexes
         geom.normals = osg_normals
         geom.primitives = primitives

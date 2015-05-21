@@ -930,7 +930,7 @@ class NormalArray(VertexArray):
 
 class ColorArray(VertexAttributeData):
     def __init__(self, *args, **kwargs):
-        kwargs["type"] = "Vec4fArray"
+        kwargs["type"] = "Vec3fArray"
         kwargs["array"] = kwargs.get("array", [])
         VertexAttributeData.__init__(self, *args, **kwargs)
 
