@@ -294,7 +294,7 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
 
 
 def createAnimationMaterialAndSetCallback(osg_node, obj, config, unique_objects):
-    osglog.log("WARNING update material animation not yet supported")
+    osglog.log("Warning: [[blender]] Update material animations are not yet supported")
     return None
     # return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
 
@@ -493,7 +493,7 @@ class Export(object):
                 item.children.append(lightItem)
 
             else:
-                osglog.log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
+                osglog.log("Warning: [[blender]] The object {} (type {}) was not exported".format(obj.name, obj.type))
                 return None
 
             self.unique_objects.registerObject(obj, item)
@@ -507,7 +507,7 @@ class Export(object):
         if obj.parent_type == "BONE":
             bone = findBoneInHierarchy(rootItem, obj.parent_bone)
             if bone is None:
-                osglog.log("WARNING {} not found".format(obj.parent_bone))
+                osglog.log("Warning: [[blender]] {} not found".format(obj.parent_bone))
             else:
                 armature = obj.parent.data
                 original_pose_position = armature.pose_position
@@ -620,7 +620,7 @@ class Export(object):
             st = StateSet()
             self.root.stateset = st
             if len(self.lights) > 8:
-                osglog.log("WARNING more than 8 lights")
+                osglog.log("Warning: [[blender]] The model has more than 8 lights")
 
             # retrieve world to global ambient
             lm = LightModel()
@@ -916,7 +916,7 @@ class BlenderObjectToGeometry(object):
         except:
             image_object = None
         if image_object is None:
-            osglog.log("WARNING the texture {} has no Image, skip it".format(mtex))
+            osglog.log("Warning: [[blender]] The texture {} is skipped since it has no Image".format(mtex))
             return None
 
         if self.unique_objects.hasTexture(mtex.texture):
@@ -939,7 +939,7 @@ class BlenderObjectToGeometry(object):
         except:
             image_object = None
         if image_object is None:
-            osglog.log("WARNING the texture node {} has no Image, skip it".format(node))
+            osglog.log("Warning: [[blender]] The texture node {} is skipped since it has no Image".format(node))
             return None
 
         if self.unique_objects.hasTexture(node):
@@ -984,7 +984,7 @@ class BlenderObjectToGeometry(object):
                     osglog.log("uv layer {}".format(uv_layer))
 
                 if len(uv_layer) > 0 and uv_layer not in uvs.keys():
-                    osglog.log("WARNING your material '{}' with texture '{}' use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv channel as fallback".format(material.name, texture_slot, uv_layer, geom.name))
+                    osglog.log("Warning: [[blender]] The material '{}' with texture '{}' use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv channel as fallback".format(material.name, texture_slot, uv_layer, geom.name))
                 if len(uv_layer) > 0 and uv_layer in uvs.keys():
                     if DEBUG:
                         osglog.log("texture {} use uv layer {}".format(i, uv_layer))
@@ -1573,7 +1573,7 @@ class BlenderObjectToGeometry(object):
         #    verts = {}
         #    for idx, weight in mesh.getVertsFromGroup(i, 1):
         #        if weight < 0.001:
-        #            log( "WARNING " + str(idx) + " to has a weight too small (" + str(weight) + "), skipping vertex")
+        #            log( "Warning: [[blender]] " + str(idx) + " to has a weight too small (" + str(weight) + "), skipping vertex")
         #            continue
         #        if idx in original_vertexes2optimized.keys():
         #            for v in original_vertexes2optimized[idx]:
@@ -1581,7 +1581,7 @@ class BlenderObjectToGeometry(object):
         #                    verts[v] = weight
         #                #verts.append([v, weight])
         #    if len(verts) == 0:
-        #        log( "WARNING " + str(i) + " has not vertexes, skip it, if really unsued you should clean it")
+        #        log( "Warning: [[blender]] " + str(i) + " has not vertices, skip it, if really unsued you should clean it")
         #    else:
         #        vertex_weight_list = [ list(e) for e in verts.items() ]
         #        vg = VertexGroup()
@@ -1609,7 +1609,7 @@ class BlenderObjectToGeometry(object):
                                 verts[v] = weight
 
             if len(verts) == 0:
-                osglog.log("WARNING group has no vertexes, skip it, if really unsued you should clean it")
+                osglog.log("Warning: [[blender]] The Group {} is skipped since it has no vertices".format(vertex_group.name))
             else:
                 vertex_weight_list = [list(e) for e in verts.items()]
                 vg = VertexGroup()
@@ -1660,7 +1660,7 @@ class BlenderObjectToGeometry(object):
             elif nv == 4:
                 nquad = nquad + 1
             else:
-                osglog.log("WARNING can't manage faces with {} vertices".format(nv))
+                osglog.log("Warning: [[blender]] Faces with {} vertices are not supported".format(nv))
 
         # counting number of primitives (one for lines, one for triangles and one for quads)
         numprims = 0
@@ -1750,7 +1750,7 @@ class BlenderObjectToGeometry(object):
     def convert(self):
         # looks like this was dropped
         # if self.mesh.vertexUV:
-        #     osglog.log("WARNING mesh %s use sticky UV and it's not supported" % self.object.name)
+        #     osglog.log("Warning: [[blender]] mesh %s use sticky UV and it's not supported" % self.object.name)
 
         return self.process(self.mesh)
 
