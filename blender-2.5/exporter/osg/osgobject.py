@@ -21,17 +21,16 @@
 
 
 import bpy
+import json
 import mathutils
-import os
-from . import osglog
 
-Matrix    = mathutils.Matrix
-Vector    = mathutils.Vector
-FLOATPRE  = 5
-CONCAT    = lambda s, j="": j.join(str(v) for v in s)
-STRFLT    = lambda f: "%%.%df" % FLOATPRE % float(f)
-INDENT    = 2
-VERSION   = (0,0,0)
+Matrix = mathutils.Matrix
+Vector = mathutils.Vector
+FLOATPRE = 5
+CONCAT = lambda s, j="": j.join(str(v) for v in s)
+STRFLT = lambda f: "%%.%df" % FLOATPRE % float(f)
+INDENT = 2
+VERSION = (0, 0, 0)
 
 
 def findNode(name, root):
@@ -44,6 +43,7 @@ def findNode(name, root):
         if found is not None:
             return found
     return None
+
 
 def findMaterial(name, root):
     if root.stateset is not None:
@@ -68,7 +68,7 @@ class Writer(object):
     wrote_elements = {}
     file_object = None
 
-    def __init__(self, comment = None):
+    def __init__(self, comment=None):
         object.__init__(self)
         self.comment = comment
         self.indent_level = 0
@@ -86,42 +86,49 @@ class Writer(object):
 
     def write(self, output):
         Writer.serializeInstanceOrUseIt(self, output)
-        
+
     def encode(self, string):
-        text = string.replace("\t", "").replace("#", (" " * INDENT)).replace("$", (" " * (INDENT*self.indent_level) ))
+        text = string.replace("\t", "") \
+                     .replace("#", (" " * INDENT)) \
+                     .replace("$", (" " * (INDENT * self.indent_level)))
         return text.encode('utf-8')
 
     def writeMatrix(self, output, matrix):
         if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 62:
-            for i in range(0,4):
-                output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(matrix[0][i]), STRFLT(matrix[1][i]),STRFLT(matrix[2][i]), STRFLT(matrix[3][i])) ) )
+            for i in range(0, 4):
+                output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(matrix[0][i]),
+                                                               STRFLT(matrix[1][i]),
+                                                               STRFLT(matrix[2][i]),
+                                                               STRFLT(matrix[3][i]))))
         else:
-            for i in range(0,4):
-                output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(matrix[i][0]), STRFLT(matrix[i][1]),STRFLT(matrix[i][2]), STRFLT(matrix[i][3])) ) )
+            for i in range(0, 4):
+                output.write(self.encode("$##%s %s %s %s\n" % (STRFLT(matrix[i][0]),
+                                                               STRFLT(matrix[i][1]),
+                                                               STRFLT(matrix[i][2]),
+                                                               STRFLT(matrix[i][3]))))
         output.write(self.encode("$#}\n"))
-
 
     @staticmethod
     def resetWriter():
         Writer.instances = {}
-        wrote_elements = {}
-        file_object = None
         ArrayData.instance = 0
         Object.instance = 0
 
     @staticmethod
     def serializeInstanceOrUseIt(obj, output):
         if obj in Writer.wrote_elements and \
-                hasattr(obj,"uniqueID") and \
-                obj.uniqueID != None and \
-                hasattr(obj,'serializeReference'):
+           hasattr(obj, "uniqueID") and \
+           obj.uniqueID is not None and \
+           hasattr(obj, 'serializeReference'):
             return obj.serializeReference(output)
 
         Writer.wrote_elements[obj] = True
         return obj.serialize(output)
 
+
 class Object(Writer):
     instance = 0
+
     def __init__(self, *args, **kwargs):
         Writer.__init__(self, *args)
         self.dataVariance = "UNKNOWN"
@@ -143,12 +150,12 @@ class Object(Writer):
         output.write(self.encode("$}\n"))
 
     def getOrCreateUserData(self):
-        if self.userdata == None:
+        if self.userdata is None:
             self.userdata = DefaultUserDataContainer()
         return self.userdata
 
     def getNameSpaceClass(self):
-        return "%s::%s" % (self.nameSpace(), self.className())
+        return "{}::{}".format(self.nameSpace(), self.className())
 
     def setName(self, name):
         self.name = name
@@ -161,14 +168,13 @@ class Object(Writer):
 
     def serializeContent(self, output):
         if self.uniqueID is not None:
-            output.write(self.encode("$#UniqueID %d\n" % self.uniqueID))
-
+            output.write(self.encode("$#UniqueID {}\n".format(self.uniqueID)))
 
         if self.name is not "None":
-            output.write(self.encode("$#Name \"%s\"\n" % self.name))
+            output.write(self.encode("$#Name \"{}\"\n".format(self.name)))
 
         if self.dataVariance is not "UNKNOWN":
-            output.write(self.encode("$#DataVariance " + self.dataVariance + "\n"))
+            output.write(self.encode("$#DataVariance {}\n".format(self.dataVariance)))
 
         if self.userdata is not None:
             output.write(self.encode("$#UserDataContainer TRUE {\n"))
@@ -191,10 +197,11 @@ class StringValueObject(Object):
         output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
         Object.serializeContent(self, output)
 
-        output.write(self.encode("$#Name \"%s\"\n" % self.key))
-        output.write(self.encode("$#Value \"%s\"\n" % self.value))
+        output.write(self.encode("$#Name %s\n" % json.dumps(self.key)))
+        output.write(self.encode("$#Value %s\n" % json.dumps(self.value)))
 
         output.write(self.encode("$}\n"))
+
 
 class DefaultUserDataContainer(Object):
     def __init__(self, *args, **kwargs):
@@ -220,7 +227,7 @@ class DefaultUserDataContainer(Object):
             s.indent_level = self.indent_level + 2
             s.write(output)
         output.write(self.encode("$#}\n"))
-        
+
 
 class UpdateMatrixTransform(Object):
     def __init__(self, *args, **kwargs):
@@ -247,6 +254,7 @@ class UpdateMatrixTransform(Object):
             s.write(output)
         output.write(self.encode("$#}\n"))
 
+
 class UpdateMaterial(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -261,6 +269,7 @@ class UpdateMaterial(Object):
         output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
         Object.serializeContent(self, output)
         output.write(self.encode("$}\n"))
+
 
 class StackedMatrixElement(Object):
     def __init__(self, *args, **kwargs):
@@ -293,7 +302,7 @@ class StackedTranslateElement(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
-        self.translate = Vector((0,0,0))
+        self.translate = Vector((0, 0, 0))
         self.name = "translate"
 
     def className(self):
@@ -309,14 +318,16 @@ class StackedTranslateElement(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        output.write(self.encode("$#Translate %s %s %s\n" % (STRFLT(self.translate[0]), STRFLT(self.translate[1]),STRFLT(self.translate[2])) ) )
+        output.write(self.encode("$#Translate %s %s %s\n" % (STRFLT(self.translate[0]),
+                                                             STRFLT(self.translate[1]),
+                                                             STRFLT(self.translate[2]))))
 
 
 class StackedScaleElement(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
-        self.scale = Vector((1,1,1))
+        self.scale = Vector((1, 1, 1))
         self.name = "scale"
 
     def className(self):
@@ -332,13 +343,16 @@ class StackedScaleElement(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        output.write(self.encode("$#Scale %s %s %s\n" % (STRFLT(self.scale[0]), STRFLT(self.scale[1]),STRFLT(self.scale[2]))))
+        output.write(self.encode("$#Scale %s %s %s\n" % (STRFLT(self.scale[0]),
+                                                         STRFLT(self.scale[1]),
+                                                         STRFLT(self.scale[2]))))
+
 
 class StackedRotateAxisElement(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
-        self.axis = kwargs.get('axis', Vector((1,0,0)))
+        self.axis = kwargs.get('axis', Vector((1, 0, 0)))
         self.angle = kwargs.get('angle', 0)
 
     def className(self):
@@ -354,8 +368,11 @@ class StackedRotateAxisElement(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        output.write(self.encode("$#Axis %s %s %s\n" % (STRFLT(self.axis[0]), STRFLT(self.axis[1]),STRFLT(self.axis[2]))))
+        output.write(self.encode("$#Axis %s %s %s\n" % (STRFLT(self.axis[0]),
+                                                        STRFLT(self.axis[1]),
+                                                        STRFLT(self.axis[2]))))
         output.write(self.encode("$#Angle %s\n" % (STRFLT(self.angle))))
+
 
 class StackedQuaternionElement(Object):
     def __init__(self, *args, **kwargs):
@@ -379,7 +396,11 @@ class StackedQuaternionElement(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        output.write(self.encode("$#Quaternion %s %s %s %s\n" % (STRFLT(self.quaternion.x), STRFLT(self.quaternion.y),STRFLT(self.quaternion.z),STRFLT(self.quaternion.w) ) ))
+        output.write(self.encode("$#Quaternion %s %s %s %s\n" % (STRFLT(self.quaternion.x),
+                                                                 STRFLT(self.quaternion.y),
+                                                                 STRFLT(self.quaternion.z),
+                                                                 STRFLT(self.quaternion.w))))
+
 
 class UpdateBone(UpdateMatrixTransform):
     def __init__(self, *args, **kwargs):
@@ -397,6 +418,7 @@ class UpdateBone(UpdateMatrixTransform):
         UpdateMatrixTransform.serializeContent(self, output)
         output.write(self.encode("$}\n"))
 
+
 class UpdateSkeleton(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -412,6 +434,7 @@ class UpdateSkeleton(Object):
         output.write(self.encode("$%s {\n" % (self.getNameSpaceClass())))
         Object.serializeContent(self, output)
         output.write(self.encode("$}\n"))
+
 
 class Node(Object):
     def __init__(self, *args, **kwargs):
@@ -444,6 +467,7 @@ class Node(Object):
             self.stateset.write(output)
             output.write(self.encode("$#}\n"))
 
+
 class Geode(Node):
     def __init__(self, *args, **kwargs):
         Node.__init__(self, *args, **kwargs)
@@ -471,6 +495,7 @@ class Geode(Node):
                 i.write(output)
         output.write(self.encode("$#}\n"))
 
+
 class Group(Node):
     def __init__(self, *args, **kwargs):
         Node.__init__(self, *args, **kwargs)
@@ -494,12 +519,13 @@ class Group(Node):
                 i.write(output)
             output.write(self.encode("$#}\n"))
 
+
 class MatrixTransform(Group):
     def __init__(self, *args, **kwargs):
         Group.__init__(self, *args, **kwargs)
         self.matrix = Matrix().to_4x4()
         self.matrix.identity()
-    
+
     def className(self):
         return "MatrixTransform"
 
@@ -514,6 +540,7 @@ class MatrixTransform(Group):
     def serializeContent(self, output):
         output.write(self.encode("$#Matrix {\n"))
         self.writeMatrix(output, self.matrix)
+
 
 class StateAttribute(Object):
     def __init__(self, *args, **kwargs):
@@ -533,6 +560,7 @@ class StateAttribute(Object):
                 i.write(output)
             output.write(self.encode("$#}\n"))
 
+
 class StateTextureAttribute(StateAttribute):
     def __init__(self, *args, **kwargs):
         StateAttribute.__init__(self, *args, **kwargs)
@@ -543,6 +571,7 @@ class StateTextureAttribute(StateAttribute):
 
     def serializeContent(self, output):
         StateAttribute.serializeContent(self, output)
+
 
 class Light(StateAttribute):
     def __init__(self, *args, **kwargs):
@@ -570,12 +599,29 @@ class Light(StateAttribute):
 
     def serializeContent(self, output):
         output.write(self.encode("$#LightNum %s\n" % self.light_num))
-        output.write(self.encode("$#Ambient %s %s %s %s\n" % (STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]))))
-        output.write(self.encode("$#Diffuse %s %s %s %s\n" % (STRFLT(self.diffuse[0]), STRFLT(self.diffuse[1]), STRFLT(self.diffuse[2]), STRFLT(self.diffuse[3]))))
-        output.write(self.encode("$#Specular %s %s %s %s\n" % (STRFLT(self.specular[0]), STRFLT(self.specular[1]), STRFLT(self.specular[2]), STRFLT(self.specular[3]))))
-        output.write(self.encode("$#Position %s %s %s %s\n" % (STRFLT(self.position[0]), STRFLT(self.position[1]), STRFLT(self.position[2]), STRFLT(self.position[3]))))
+        output.write(self.encode("$#Ambient %s %s %s %s\n" % (STRFLT(self.ambient[0]),
+                                                              STRFLT(self.ambient[1]),
+                                                              STRFLT(self.ambient[2]),
+                                                              STRFLT(self.ambient[3]))))
 
-        output.write(self.encode("$#Direction %s %s %s\n" % (STRFLT(self.direction[0]), STRFLT(self.direction[1]), STRFLT(self.direction[2]))))
+        output.write(self.encode("$#Diffuse %s %s %s %s\n" % (STRFLT(self.diffuse[0]),
+                                                              STRFLT(self.diffuse[1]),
+                                                              STRFLT(self.diffuse[2]),
+                                                              STRFLT(self.diffuse[3]))))
+
+        output.write(self.encode("$#Specular %s %s %s %s\n" % (STRFLT(self.specular[0]),
+                                                               STRFLT(self.specular[1]),
+                                                               STRFLT(self.specular[2]),
+                                                               STRFLT(self.specular[3]))))
+
+        output.write(self.encode("$#Position %s %s %s %s\n" % (STRFLT(self.position[0]),
+                                                               STRFLT(self.position[1]),
+                                                               STRFLT(self.position[2]),
+                                                               STRFLT(self.position[3]))))
+
+        output.write(self.encode("$#Direction %s %s %s\n" % (STRFLT(self.direction[0]),
+                                                             STRFLT(self.direction[1]),
+                                                             STRFLT(self.direction[2]))))
 
         output.write(self.encode("$#ConstantAttenuation %s\n" % STRFLT(self.constant_attenuation)))
         output.write(self.encode("$#LinearAttenuation %s\n" % STRFLT(self.linear_attenuation)))
@@ -608,6 +654,7 @@ class LightSource(Group):
             self.light.indent_level = self.indent_level + 2
             self.light.write(output)
             output.write(self.encode("$#}\n"))
+
 
 class Texture2D(StateTextureAttribute):
     def __init__(self, *args, **kwargs):
@@ -642,9 +689,10 @@ class Texture2D(StateTextureAttribute):
         image.write(output)
         output.write(self.encode("$#}\n"))
 
+
 class Image(Object):
     def __init__(self, *args, **kwargs):
-        self.filename = kwargs.get("filename");
+        self.filename = kwargs.get("filename")
         Object.__init__(self, *args, **kwargs)
         self.generateID()
 
@@ -652,7 +700,7 @@ class Image(Object):
         Object.serializeContent(self, output)
         output.write(self.encode("$#FileName \"%s\"\n" % self.filename))
         output.write(self.encode("$#WriteHint 0 2\n"))
-    
+
 
 class Material(StateAttribute):
     def __init__(self, *args, **kwargs):
@@ -663,7 +711,7 @@ class Material(StateAttribute):
         self.ambient = (0.0, 0.0, 0.0, 1.0)
         self.diffuse = (0.8 * diffuse_energy, 0.8 * diffuse_energy, 0.8 * diffuse_energy, 1.0)
         self.specular = (0.5, 0.5, 0.5, 1.0)
-        self.shininess = 40/(512/128) # blender encode shininess to 512 and opengl to 128
+        self.shininess = 40 / (512 / 128)  # blender encode shininess to 512 and opengl to 128
 
     def className(self):
         return "Material"
@@ -674,16 +722,46 @@ class Material(StateAttribute):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        StateAttribute.serializeContent(self,output)
-        output.write(self.encode("$#Ambient TRUE Front %s %s %s %s Back %s %s %s %s\n" % (STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]), STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]) )))
+        StateAttribute.serializeContent(self, output)
+        output.write(self.encode("$#Ambient TRUE Front %s %s %s %s Back %s %s %s %s\n" % (STRFLT(self.ambient[0]),
+                                                                                          STRFLT(self.ambient[1]),
+                                                                                          STRFLT(self.ambient[2]),
+                                                                                          STRFLT(self.ambient[3]),
+                                                                                          STRFLT(self.ambient[0]),
+                                                                                          STRFLT(self.ambient[1]),
+                                                                                          STRFLT(self.ambient[2]),
+                                                                                          STRFLT(self.ambient[3]))))
 
-        output.write(self.encode("$#Diffuse TRUE Front %s %s %s %s Back %s %s %s %s\n" % (STRFLT(self.diffuse[0]), STRFLT(self.diffuse[1]), STRFLT(self.diffuse[2]), STRFLT(self.diffuse[3]), STRFLT(self.diffuse[0]), STRFLT(self.diffuse[1]), STRFLT(self.diffuse[2]), STRFLT(self.diffuse[3]))))
+        output.write(self.encode("$#Diffuse TRUE Front %s %s %s %s Back %s %s %s %s\n" % (STRFLT(self.diffuse[0]),
+                                                                                          STRFLT(self.diffuse[1]),
+                                                                                          STRFLT(self.diffuse[2]),
+                                                                                          STRFLT(self.diffuse[3]),
+                                                                                          STRFLT(self.diffuse[0]),
+                                                                                          STRFLT(self.diffuse[1]),
+                                                                                          STRFLT(self.diffuse[2]),
+                                                                                          STRFLT(self.diffuse[3]))))
 
-        output.write(self.encode("$#Specular TRUE Front %s %s %s %s Back %s %s %s %s\n" % (STRFLT(self.specular[0]), STRFLT(self.specular[1]), STRFLT(self.specular[2]), STRFLT(self.specular[3]),STRFLT(self.specular[0]), STRFLT(self.specular[1]), STRFLT(self.specular[2]), STRFLT(self.specular[3]))))
+        output.write(self.encode("$#Specular TRUE Front %s %s %s %s Back %s %s %s %s\n" % (STRFLT(self.specular[0]),
+                                                                                           STRFLT(self.specular[1]),
+                                                                                           STRFLT(self.specular[2]),
+                                                                                           STRFLT(self.specular[3]),
+                                                                                           STRFLT(self.specular[0]),
+                                                                                           STRFLT(self.specular[1]),
+                                                                                           STRFLT(self.specular[2]),
+                                                                                           STRFLT(self.specular[3]))))
 
-        output.write(self.encode("$#Emission TRUE Front %s %s %s %s Back %s %s %s %s\n" % (STRFLT(self.emission[0]), STRFLT(self.emission[1]), STRFLT(self.emission[2]), STRFLT(self.emission[3]), STRFLT(self.emission[0]), STRFLT(self.emission[1]), STRFLT(self.emission[2]), STRFLT(self.emission[3]))))
+        output.write(self.encode("$#Emission TRUE Front %s %s %s %s Back %s %s %s %s\n" % (STRFLT(self.emission[0]),
+                                                                                           STRFLT(self.emission[1]),
+                                                                                           STRFLT(self.emission[2]),
+                                                                                           STRFLT(self.emission[3]),
+                                                                                           STRFLT(self.emission[0]),
+                                                                                           STRFLT(self.emission[1]),
+                                                                                           STRFLT(self.emission[2]),
+                                                                                           STRFLT(self.emission[3]))))
 
-        output.write(self.encode("$#Shininess TRUE Front %s Back %s\n" % (STRFLT(self.shininess), STRFLT(self.shininess))))
+        output.write(self.encode("$#Shininess TRUE Front %s Back %s\n" % (STRFLT(self.shininess),
+                                                                          STRFLT(self.shininess))))
+
 
 class LightModel(StateAttribute):
     def __init__(self, *args, **kwargs):
@@ -705,9 +783,13 @@ class LightModel(StateAttribute):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        output.write(self.encode("$#AmbientIntensity %s %s %s %s\n" % (STRFLT(self.ambient[0]), STRFLT(self.ambient[1]), STRFLT(self.ambient[2]), STRFLT(self.ambient[3]))))
+        output.write(self.encode("$#AmbientIntensity %s %s %s %s\n" % (STRFLT(self.ambient[0]),
+                                                                       STRFLT(self.ambient[1]),
+                                                                       STRFLT(self.ambient[2]),
+                                                                       STRFLT(self.ambient[3]))))
         output.write(self.encode("$#ColorControl %s\n" % self.color_control))
         output.write(self.encode("$#LocalViewer %s\n" % self.local_viewer))
+
 
 class StateSet(Object):
     def __init__(self, *args, **kwargs):
@@ -734,12 +816,11 @@ class StateSet(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        
         if len(self.modes) > 0:
             output.write(self.encode("$#ModeList %d {\n" % (len(self.modes))))
             for i in self.modes.items():
                 if i is not None:
-                    output.write(self.encode("$##%s %s\n" %i))
+                    output.write(self.encode("$##%s %s\n" % i))
             output.write(self.encode("$#}\n"))
 
         if len(self.attributes) > 0:
@@ -753,8 +834,8 @@ class StateSet(Object):
 
         if len(self.texture_attributes) > 0:
             max_texture_used = self.getMaxTextureUnitUsed()
-            output.write(self.encode("$#TextureModeList %d {\n" % (1+max_texture_used)))
-            for i in range(0, max_texture_used+1):
+            output.write(self.encode("$#TextureModeList %d {\n" % (1 + max_texture_used)))
+            for i in range(0, max_texture_used + 1):
                 if i in self.texture_attributes:
                     output.write(self.encode("$##Data 1 {\n"))
                     output.write(self.encode("$###GL_TEXTURE_2D ON\n"))
@@ -763,8 +844,8 @@ class StateSet(Object):
                     output.write(self.encode("$##Data 0\n"))
             output.write(self.encode("$#}\n"))
 
-            output.write(self.encode("$#TextureAttributeList %d {\n" % (1+max_texture_used)))
-            for i in range(0, max_texture_used+1):
+            output.write(self.encode("$#TextureAttributeList %d {\n" % (1 + max_texture_used)))
+            for i in range(0, max_texture_used + 1):
                 if i in self.texture_attributes:
                     attributes = self.texture_attributes.get(i)
                     output.write(self.encode("$##Data %d {\n" % len(attributes)))
@@ -777,6 +858,7 @@ class StateSet(Object):
                 else:
                     output.write(self.encode("$##Data 0\n"))
             output.write(self.encode("$#}\n"))
+
 
 class ArrayData(Object):
     instance = 0
@@ -796,34 +878,37 @@ class ArrayData(Object):
         dim = len(self.array[0])
         for i in self.array:
             if dim == 3:
-                output.write(self.encode("$#%s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]) ) ) )
+                output.write(self.encode("$#%s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]))))
             elif dim == 2:
-                output.write(self.encode("$#%s %s\n" % (STRFLT(i[0]), STRFLT(i[1])) ) )
+                output.write(self.encode("$#%s %s\n" % (STRFLT(i[0]), STRFLT(i[1]))))
             elif dim == 4:
-                output.write(self.encode("$#%s %s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]), STRFLT(i[3]) ) ) )
-        output.write(self.encode("$}\n") )
+                output.write(self.encode("$#%s %s %s %s\n" % (STRFLT(i[0]), STRFLT(i[1]), STRFLT(i[2]), STRFLT(i[3]))))
+        output.write(self.encode("$}\n"))
+
 
 class VertexAttributeData(Writer):
     def __init__(self, *args, **kwargs):
         Writer.__init__(self)
         self.array = None
-        if kwargs.get("array") != None:
-           self.array = ArrayData(array = kwargs.get('array', None), type = kwargs.get('type', None))
+        if kwargs.get("array") is not None:
+            self.array = ArrayData(array=kwargs.get('array', None),
+                                   type=kwargs.get('type', None))
 
     def getArray(self):
         return self.array.array
 
     def serialize(self, output):
         output.write(self.encode("$%s {\n" % (self.className())))
-        if self.array == None:
+        if self.array is None:
             output.write(self.encode("$#Array FALSE\n"))
         else:
-            self.array.indent_level = self.indent_level +1
+            self.array.indent_level = self.indent_level + 1
             self.array.write(output)
         output.write(self.encode("$#Indices FALSE\n"))
         output.write(self.encode("$#Binding BIND_PER_VERTEX\n"))
         output.write(self.encode("$#Normalize 0\n"))
         output.write(self.encode("$}\n"))
+
 
 class VertexArray(VertexAttributeData):
     def __init__(self, *args, **kwargs):
@@ -834,12 +919,14 @@ class VertexArray(VertexAttributeData):
     def className(self):
         return "VertexData"
 
+
 class NormalArray(VertexArray):
     def __init__(self, *args, **kwargs):
         VertexArray.__init__(self, *args, **kwargs)
 
     def className(self):
         return "NormalData"
+
 
 class ColorArray(VertexAttributeData):
     def __init__(self, *args, **kwargs):
@@ -850,15 +937,17 @@ class ColorArray(VertexAttributeData):
     def className(self):
         return "ColorData"
 
+
 class TexCoordArray(VertexAttributeData):
     def __init__(self, *args, **kwargs):
         kwargs["array"] = kwargs.get("array", [])
-        kwargs["type"] =  "Vec2fArray"
+        kwargs["type"] = "Vec2fArray"
         VertexAttributeData.__init__(self, *args, **kwargs)
         self.index = 0
 
     def className(self):
         return "Data"
+
 
 class DrawElements(Object):
     def __init__(self, *args, **kwargs):
@@ -884,7 +973,7 @@ class DrawElements(Object):
 
     def serialize(self, output):
         element = self.getSizeArray()
-        output.write(self.encode("$#%s %s %s {\n" % (element, self.type, str(len(self.indexes))) ) )
+        output.write(self.encode("$#%s %s %s {\n" % (element, self.type, str(len(self.indexes)))))
         n = 1
         if self.type == "GL_TRIANGLES":
             n = 3
@@ -894,12 +983,12 @@ class DrawElements(Object):
         total = int(len(self.indexes) / n)
         for i in range(0, total):
             output.write(self.encode("$##"))
-            for a in range(0,n):
-                output.write(self.encode("%s " % self.indexes[i*n+a]))
-            output.write(self.encode("\n") )
+            for a in range(0, n):
+                output.write(self.encode("%s " % self.indexes[i * n + a]))
+            output.write(self.encode("\n"))
         output.write(self.encode("$#}\n"))
 
-    
+
 class Geometry(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -924,7 +1013,7 @@ class Geometry(Object):
         self.stateset = geometry.stateset
 
     def serialize(self, output):
-        output.write(self.encode("$%s {\n" % self.getNameSpaceClass()) )
+        output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
         Object.serializeContent(self, output)
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
@@ -937,7 +1026,7 @@ class Geometry(Object):
             output.write(self.encode("$#}\n"))
 
         if len(self.primitives):
-            output.write(self.encode("$#PrimitiveSetList %d {\n" % (len(self.primitives)) ) )
+            output.write(self.encode("$#PrimitiveSetList %d {\n" % (len(self.primitives))))
             for i in self.primitives:
                 i.indent_level = self.indent_level + 2
                 i.write(output)
@@ -954,20 +1043,21 @@ class Geometry(Object):
             self.colors.write(output)
 
         if len(self.uvs) > 0:
-            output.write(self.encode("$#TexCoordData %d {\n" % (len(self.uvs) ) ))
+            output.write(self.encode("$#TexCoordData %d {\n" % (len(self.uvs))))
             for i in self.uvs.values():
                 if i:
                     i.indent_level = self.indent_level + 2
                     i.write(output)
                 else:
-                    emptyTexCoord = TexCoordData()
+                    emptyTexCoord = TexCoordArray()
                     emptyTexCoord.indent_level = self.indent_level + 2
                     emptyTexCoord.write(output)
             output.write(self.encode("$#}\n"))
 
-################################## animation node ######################################
+
+#  animation node ######################################
 class Bone(MatrixTransform):
-    def __init__(self, skeleton = None, bone = None, parent=None, **kwargs):
+    def __init__(self, skeleton=None, bone=None, parent=None, **kwargs):
         MatrixTransform.__init__(self, **kwargs)
         self.dataVariance = "DYNAMIC"
         self.parent = parent
@@ -978,7 +1068,7 @@ class Bone(MatrixTransform):
     def buildBoneChildren(self):
         if self.skeleton is None or self.bone is None:
             return
-        
+
         self.setName(self.bone.name)
         update_callback = UpdateBone()
         update_callback.setName(self.name)
@@ -991,7 +1081,7 @@ class Bone(MatrixTransform):
             bone_matrix = parent_matrix.inverted() * bone_matrix
 
         # add bind matrix in localspace callback
-        update_callback.stacked_transforms.append(StackedMatrixElement(name = "bindmatrix", matrix = bone_matrix))
+        update_callback.stacked_transforms.append(StackedMatrixElement(name="bindmatrix", matrix=bone_matrix))
         update_callback.stacked_transforms.append(StackedTranslateElement())
         update_callback.stacked_transforms.append(StackedQuaternionElement())
         update_callback.stacked_transforms.append(StackedScaleElement())
@@ -1020,7 +1110,7 @@ class Bone(MatrixTransform):
         return "osgAnimation"
 
     def serialize(self, output):
-        output.write(self.encode("$%s {\n" % self.getNameSpaceClass()) )
+        output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
         Object.serializeContent(self, output)
         Node.serializeContent(self, output)
         Group.serializeContent(self, output)
@@ -1032,6 +1122,7 @@ class Bone(MatrixTransform):
         matrix = self.bone_inv_bind_matrix_skeleton.copy()
         output.write(self.encode("$#InvBindMatrixInSkeletonSpace {\n"))
         self.writeMatrix(output, matrix)
+
 
 class Skeleton(MatrixTransform):
     def __init__(self, name="", matrix=None):
@@ -1063,6 +1154,7 @@ class Skeleton(MatrixTransform):
         Group.serializeContent(self, output)
         MatrixTransform.serializeContent(self, output)
         output.write(self.encode("$}\n"))
+
 
 class RigGeometry(Geometry):
     def __init__(self, *args, **kwargs):
@@ -1098,6 +1190,7 @@ class RigGeometry(Geometry):
             self.sourcegeometry.write(output)
             output.write(self.encode("$#}\n"))
 
+
 class AnimationManagerBase(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -1117,7 +1210,7 @@ class AnimationManagerBase(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
-        output.write(self.encode("$#Animations %d {\n" % len(self.animations) ))
+        output.write(self.encode("$#Animations %d {\n" % len(self.animations)))
         for i in self.animations:
             i.indent_level = self.indent_level + 2
             i.write(output)
@@ -1137,6 +1230,7 @@ class BasicAnimationManager(AnimationManagerBase):
     def serializeContent(self, output):
         AnimationManagerBase.serializeContent(self, output)
 
+
 class VertexGroup(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -1148,20 +1242,21 @@ class VertexGroup(Object):
 
     def serialize(self, output):
         self.setName(self.targetGroupName)
-        output.write(self.encode("$VertexInfluence \"%s\" %d {\n" % (self.targetGroupName, len(self.vertexes)) ) )
+        output.write(self.encode("$VertexInfluence \"%s\" %d {\n" % (self.targetGroupName, len(self.vertexes))))
         self.serializeContent(output)
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
         for i in self.vertexes:
-            output.write(self.encode("$#%s %s\n" % (i[0],STRFLT(i[1])) ) )
+            output.write(self.encode("$#%s %s\n" % (i[0], STRFLT(i[1]))))
+
 
 class Animation(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
         self.channels = []
-    
+
     def className(self):
         return "Animation"
 
@@ -1172,7 +1267,7 @@ class Animation(Object):
         output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
         Object.serializeContent(self, output)
         self.serializeContent(output)
-        output.write(self.encode("$}\n") )
+        output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
         output.write(self.encode("$#Channels %d {\n" % len(self.channels)))
@@ -1180,6 +1275,7 @@ class Animation(Object):
             i.indent_level = self.indent_level + 2
             i.write(output)
         output.write(self.encode("$#}\n"))
+
 
 class Channel(Object):
     def __init__(self, *args, **kwargs):
@@ -1190,7 +1286,7 @@ class Channel(Object):
 
     def generateID(self):
         return None
-    
+
     def className(self):
         return "Channel"
 
