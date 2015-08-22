@@ -1358,9 +1358,10 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         # createGeometryForMaterialIndex(material_index, mesh)
         if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
             faces = mesh.tessfaces
+            uv_textures= mesh.tessface_uv_textures
         else:
             faces = mesh.faces
-
+            uv_textures= mesh.uv_textures
         if (len(faces) == 0):
             Log("object {} has no faces, so no materials".format(self.object.name))
             return None
@@ -1371,365 +1372,118 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             title = "mesh {} without material".format(self.object.name)
         Log(title)
 
-        vertexes = []
-        original_vertexes = []
         collected_faces = []
+        osg_vertexes = VertexArray()
+        osg_normals = NormalArray()
+        osg_colors = ColorArray()
+
+        osg_uvs = {}
+        lines = DrawElements()
+        lines.type = "GL_LINES"
+        triangles  = DrawElements()
+        triangles.type = "GL_TRIANGLES"
+        quads = DrawElements()
+        quads.type = "GL_QUADS"
+        primitives=[]
+        nquad=0
+        nlin=0
+        ntri=0
+        vgroups = {}
+        #index remapping
+        vertex_index_map={}
+        def get_vertex_key(faceindex,facevertexindex):
+            return (face.vertices[facevertexindex],tuple([tuple(uv.data[faceindex].uv[facevertexindex])  for uv in mesh.tessface_uv_textures])  )
+
         for face in faces:
             if face.material_index != material_index:
                 continue
-            f = []
-            if DEBUG:
-                fdebug = []
-            for vertex in face.vertices:
-                original_vertexes.append(vertex)
-                index = len(vertexes)
-                vertexes.append(mesh.vertices[vertex])
-                f.append(index)
-                if DEBUG:
-                    fdebug.append(vertex)
-            if DEBUG:
-                Log("true face {}".format(fdebug))
-                Log("face {}".format(f))
-            collected_faces.append((face, f))
+
+            for facevertexindex,vert_index in enumerate(face.vertices):
+                try:    indexinmap=vertex_index_map[get_vertex_key(face.index,facevertexindex)]
+                except:
+                    newindex=len(osg_vertexes.getArray())
+                    vertex_index_map[get_vertex_key(face.index,facevertexindex)]=newindex
+                    uvs=[]
+                    for uv in mesh.tessface_uv_textures:
+                        uvs.append(uv.data[face.index].uv[facevertexindex])
+                    for vertex_group in  mesh.vertices[vert_index].groups:
+                        inf = [self.object.vertex_groups[vertex_group.group ].name, vertex_group.weight]
+                        #try:getBoneByName(inf[0])   #check bone existence
+                        #except:print("TODO");
+                        if  inf[0]!="" and inf[1]>0.0001:
+                            try:
+                                vgroups[inf[0]].vertexes.append((newindex, vertex_group.weight))
+                            except:
+                                vg = VertexGroup()
+
+                                vg.targetGroupName = inf[0]
+                                vg.vertexes.append( (newindex, inf[1]) ) #= (vertex_weight_list
+                                vgroups[inf[0]]=vg
+
+                    normal=None
+                    if not face.use_smooth:
+                        #recompute normal
+                        #WARNING:assuming triangle faces
+                        p1 = mesh.vertices[face.vertices[0] ].co
+                        p2 = mesh.vertices[face.vertices[1] ].co
+                        p3 = mesh.vertices[face.vertices[2] ].co
+                        vv1 =  mathutils.Vector((p3[0] - p2[0], p3[1] - p2[1], p3[2] - p2[2]))
+                        vv2= mathutils.Vector((p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]))
+                        normal=vv1.cross(vv2)
+
+                    else:normal=mesh.vertices[vert_index].normal
+
+                    osg_normals.getArray().append([normal[0], normal[1], normal[2]])
+                    osg_vertexes.getArray().append([mesh.vertices[vert_index].co[0],mesh.vertices[vert_index].co[1],mesh.vertices[vert_index].co[2]])
+                    for uv in mesh.tessface_uv_textures:
+                        try:arr=osg_uvs[uv.name].getArray()
+                        except:
+                            osg_uvs[uv.name] = TexCoordArray()
+                            arr=osg_uvs[uv.name].getArray()
+                        arr.append(uv.data[face.index].uv[facevertexindex])
+                    if mesh.vertex_colors:
+                        col=mesh.vertex_colors.data[face.index]
+                        #TODOosg_colors.getArray().append([col[0],col[1]);
+
+            ##facelength test : crawl primitives
+            facelength=len(face.vertices)
+            if facelength == 2:
+                nlin = nlin + 1
+
+                lines.indexes.append( vertex_index_map[get_vertex_key(face.index,0)])
+                lines.indexes.append( vertex_index_map[get_vertex_key(face.index,1)])
+            elif facelength == 3:
+                ntri = ntri + 1
+                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,0)])
+                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,1)])
+                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,2)])
+
+            elif facelength == 4:
+                nquad = nquad + 1
+                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,0)])
+                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,1)])
+                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,2)])
+                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,3)])
+
+            else:
+                osglog.log("WARNING can't manage faces with {} vertices".format(nv))
+
+            collected_faces.append(face)
 
         if (len(collected_faces) == 0):
             Log("object {} has no faces for sub material slot {}".format(self.object.name, material_index))
             end_title = '-' * len(title)
             Log(end_title)
             return None
-        # colors = {}
-        # if mesh.vertex_colors:
-        #     names = mesh.getColorLayerNames()
-        #     backup_name = mesh.activeColorLayer
-        #     for name in names:
-        #         mesh.activeColorLayer = name
-        #         mesh.update()
-        #         color_array = []
-        #         for face,f in collected_faces:
-        #             for i in range(0, len(face.vertices)):
-        #                 color_array.append(face.col[i])
-        #         colors[name] = color_array
-        #     mesh.activeColorLayer = backup_name
-        #     mesh.update()
-        colors = {}
 
-        vertex_colors = None
-        if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
-            vertex_colors = mesh.tessface_vertex_colors
-        else:
-            vertex_colors = mesh.vertex_colors
-
-        if vertex_colors:
-            # We only retrieve the active vertex color layer
-            colorLayer = vertex_colors.active
-            colorArray = []
-            idx = 0
-            # mesh.update()
-            for data in colorLayer.data:
-                colorArray.append(data.color1)
-                colorArray.append(data.color2)
-                colorArray.append(data.color3)
-                # DW - how to tell if this is a tri or a quad?
-                if len(faces[idx].vertices) > 3:
-                    colorArray.append(data.color4)
-                idx += 1
-            colors = colorArray
-            # mesh.update()
-
-        # uvs = {}
-        # if mesh.faceUV:
-        #     names = mesh.getUVLayerNames()
-        #     backup_name = mesh.activeUVLayer
-        #     for name in names:
-        #         mesh.activeUVLayer = name
-        #         mesh.update()
-        #         uv_array = []
-        #         for face,f in collected_faces:
-        #             for i in range(0, len(face.vertices)):
-        #                 uv_array.append(face.uv[i])
-        #         uvs[name] = uv_array
-        #     mesh.activeUVLayer = backup_name
-        #     mesh.update()
-
-        uv_textures = None
-        if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
-            uv_textures = mesh.tessface_uv_textures
-        else:
-            uv_textures = mesh.uv_textures
-
-        uvs = {}
-        if uv_textures:
-            backup_texture = None
-            for textureLayer in uv_textures:
-                if textureLayer.active:
-                    backup_texture = textureLayer
-
-            for textureLayer in uv_textures:
-                textureLayer.active = True
-                # mesh.update()
-                uv_array = []
-
-                for face, f in collected_faces:
-                    data = textureLayer.data[face.index]
-                    uv_array.append(data.uv1)
-                    uv_array.append(data.uv2)
-                    uv_array.append(data.uv3)
-                    if len(face.vertices) > 3:
-                        uv_array.append(data.uv4)
-                uvs[textureLayer.name] = uv_array
-            backup_texture.active = True
-            # mesh.update()
-
-        normals = []
-        for face, f in collected_faces:
-            if face.use_smooth:
-                for vert in face.vertices:
-                    normals.append(mesh.vertices[vert].normal)
-            else:
-                for vert in face.vertices:
-                    normals.append(face.normal)
-
-        mapping_vertexes = []
-        merged_vertexes = []
-        tagged_vertexes = []
-        for i in range(0, len(vertexes)):
-            merged_vertexes.append(i)
-            tagged_vertexes.append(False)
-
-        def truncateFloat(value, digit=5):
-            if math.isnan(value):
-                return 0
-            return round(value, digit)
-
-        def truncateVector(vector, digit=5):
-            for i in range(0, len(vector)):
-                vector[i] = truncateFloat(vector[i], digit)
-            return vector
-
-        def get_vertex_key(index):
-            return ((truncateFloat(vertexes[index].co[0]),
-                     truncateFloat(vertexes[index].co[1]),
-                     truncateFloat(vertexes[index].co[2])),
-                    (truncateFloat(normals[index][0]),
-                     truncateFloat(normals[index][1]),
-                     truncateFloat(normals[index][2])),
-                    tuple([tuple(truncateVector(uvs[x][index])) for x in uvs.keys()]),
-                    tuple([tuple(colors[index]) if colors else ()]))
-
-        # Build a dictionary of indexes to all the vertexes that
-        # are equal.
-        vertex_dict = {}
-        morph_map = []
-        for i in range(0, len(vertexes)):
-            key = get_vertex_key(i)
-            if DEBUG:
-                Log("key {}".format(key))
-            if key in vertex_dict.keys():
-                vertex_dict[key].append(i)
-            else:
-                vertex_dict[key] = [i]
-                morph_map.append(original_vertexes[i])
-        for i in range(0, len(vertexes)):
-            if tagged_vertexes[i] is True:  # avoid processing more than one time a vertex
-                continue
-            index = len(mapping_vertexes)
-            merged_vertexes[i] = index
-            mapping_vertexes.append([i])
-            if DEBUG:
-                Log("process vertex {}".format(i))
-            vertex_indexes = vertex_dict[get_vertex_key(i)]
-            for j in vertex_indexes:
-                if j <= i:
-                    continue
-                if tagged_vertexes[j] is True:  # avoid processing more than one time a vertex
-                    continue
-                if DEBUG:
-                    Log("   vertex {} is the same".format(j))
-                merged_vertexes[j] = index
-                tagged_vertexes[j] = True
-                mapping_vertexes[index].append(j)
-
-        if DEBUG:
-            for i in range(0, len(mapping_vertexes)):
-                Log("vertex {} contains {}".format(i, mapping_vertexes[i]))
-
-        if len(mapping_vertexes) != len(vertexes):
-            Log("vertexes reduced from {} to {}".format(len(vertexes), len(mapping_vertexes)))
-        else:
-            Log("vertexes {}".format(len(vertexes)))
-
-        faces = []
-        for (original, face) in collected_faces:
-            f = []
-            if DEBUG:
-                fdebug = []
-            for v in face:
-                f.append(merged_vertexes[v])
-                if DEBUG:
-                    fdebug.append(vertexes[mapping_vertexes[merged_vertexes[v]][0]].index)
-            faces.append(f)
-            if DEBUG:
-                Log("new face {}".format(f))
-                Log("true face {}".format(fdebug))
-
-        Log("faces {}".format(len(faces)))
-
-        vgroups = {}
-        original_vertexes2optimized = {}
-        for i in range(0, len(mapping_vertexes)):
-            for k in mapping_vertexes[i]:
-                index = vertexes[k].index
-                if index not in original_vertexes2optimized.keys():
-                    original_vertexes2optimized[index] = []
-                original_vertexes2optimized[index].append(i)
-
-        # for i in mesh.getVertGroupNames():
-        #    verts = {}
-        #    for idx, weight in mesh.getVertsFromGroup(i, 1):
-        #        if weight < 0.001:
-        #            log( "Warning: [[blender]] " + str(idx) + " to has a weight too small
-        #                 (" + str(weight) + "), skipping vertex")
-        #            continue
-        #        if idx in original_vertexes2optimized.keys():
-        #            for v in original_vertexes2optimized[idx]:
-        #                if not v in verts.keys():
-        #                    verts[v] = weight
-        #                #verts.append([v, weight])
-        #    if len(verts) == 0:
-        #        log( "Warning: [[blender]] " + str(i) +
-        #             " has not vertices, skip it, if really unsued you should clean it")
-        #    else:
-        #        vertex_weight_list = [ list(e) for e in verts.items() ]
-        #        vg = VertexGroup()
-        #        vg.targetGroupName = i
-        #        vg.vertexes = vertex_weight_list
-        #        vgroups[i] = vg
-
-        # blenObject = None
-        # for obj in bpy.context.blend_data.objects:
-        #     if obj.data == mesh:
-        #         blenObject = obj
-
-        for vertex_group in self.object.vertex_groups:
-            # Log("Look at vertex group: " + repr(vertex_group))
-            verts = {}
-            for idx, vertices in enumerate(mesh.vertices):
-                weight = 0
-                for vg in vertices.groups:
-                    if vg.group == vertex_group.index:
-                        weight = vg.weight
-                if weight >= 0.001:
-                    if idx in original_vertexes2optimized.keys():
-                        for v in original_vertexes2optimized[idx]:
-                            if v not in verts.keys():
-                                verts[v] = weight
-
-            if len(verts) == 0:
-                Log("Warning: [[blender]] The Group {} is skipped since it has no vertices"
-                    .format(vertex_group.name))
-            else:
-                vertex_weight_list = [list(e) for e in verts.items()]
-                vg = VertexGroup()
-                vg.targetGroupName = vertex_group.name
-                vg.vertexes = vertex_weight_list
-                vgroups[vertex_group.name] = vg
-
-        if (len(vgroups)):
-            Log("vertex groups {}".format(len(vgroups)))
-        geom.groups = vgroups
-
-        osg_vertexes = VertexArray()
-        osg_normals = NormalArray()
-        osg_uvs = {}
-
-        # Get the first vertex color layer (only one supported for now)
-        osg_colors = ColorArray() if colors else None
-        for vertex in mapping_vertexes:
-            vindex = vertex[0]
-            coord = vertexes[vindex].co
-            osg_vertexes.getArray().append([coord[0], coord[1], coord[2]])
-
-            ncoord = normals[vindex]
-            osg_normals.getArray().append([ncoord[0], ncoord[1], ncoord[2]])
-
-            if osg_colors is not None:
-                osg_colors.getArray().append(colors[vindex])
-
-            for name in uvs.keys():
-                if name not in osg_uvs.keys():
-                    osg_uvs[name] = TexCoordArray()
-                osg_uvs[name].getArray().append(uvs[name][vindex])
-
-        if (len(osg_uvs)):
-            Log("uvs channels {} - {}".format(len(osg_uvs), osg_uvs.keys()))
-
-        nlin = 0
-        ntri = 0
-        nquad = 0
-        # counting number of lines, triangles and quads
-        for face in faces:
-            nv = len(face)
-            if nv == 2:
-                nlin = nlin + 1
-            elif nv == 3:
-                ntri = ntri + 1
-            elif nv == 4:
-                nquad = nquad + 1
-            else:
-                Log("Warning: [[blender]] Faces with {} vertices are not supported".format(nv))
-
-        # counting number of primitives (one for lines, one for triangles and one for quads)
-        numprims = 0
-        if (nlin > 0):
-            numprims = numprims + 1
-        if (ntri > 0):
-            numprims = numprims + 1
-        if (nquad > 0):
-            numprims = numprims + 1
-
-        # Now we write each primitive
-        primitives = []
-        if nlin > 0:
-            lines = DrawElements()
-            lines.type = "GL_LINES"
-            nface = 0
-            for face in faces:
-                nv = len(face)
-                if nv == 2:
-                    lines.indexes.append(face[0])
-                    lines.indexes.append(face[1])
-                nface = nface + 1
-            primitives.append(lines)
-
-        if ntri > 0:
-            triangles = DrawElements()
-            triangles.type = "GL_TRIANGLES"
-            nface = 0
-            for face in faces:
-                nv = len(face)
-                if nv == 3:
-                    triangles.indexes.append(face[0])
-                    triangles.indexes.append(face[1])
-                    triangles.indexes.append(face[2])
-                nface = nface + 1
-            primitives.append(triangles)
-
-        if nquad > 0:
-            quads = DrawElements()
-            quads.type = "GL_QUADS"
-            nface = 0
-            for face in faces:
-                nv = len(face)
-                if nv == 4:
-                    quads.indexes.append(face[0])
-                    quads.indexes.append(face[1])
-                    quads.indexes.append(face[2])
-                    quads.indexes.append(face[3])
-                nface = nface + 1
-            primitives.append(quads)
+        if len(lines.indexes)!=0:primitives.append(lines)
+        if len(triangles.indexes)!=0:primitives.append(triangles)
+        if len(quads.indexes)!=0:primitives.append(quads)
 
         geom.uvs = osg_uvs
+        geom.groups = vgroups
         geom.colors = osg_colors
+
         geom.vertexes = osg_vertexes
         geom.normals = osg_normals
         geom.primitives = primitives
