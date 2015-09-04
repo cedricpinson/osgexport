@@ -421,6 +421,9 @@ class Export(object):
             # Set as active action.
             blender_object.animation_data.action = action
 
+            # Set the end frame.
+            bpy.context.scene.frame_end = action.frame_range.y - 1 
+
             # Do the check for each action.
             if (self.config.export_anim is False) or (blender_object.animation_data == None) or (blender_object.animation_data.action == None) or self.unique_objects.hasAnimation(action):
                 continue
