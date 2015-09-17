@@ -157,6 +157,65 @@ def findArmatureObjectForTrack(track):
     return None
 
 
+def checkNameEncoding(elements, label, renamed_count):
+    for element in elements:
+        try:
+            element.name
+        except UnicodeDecodeError:
+            element.name = 'renamed_{}_{}'.format(label, renamed_count)
+            renamed_count += 1
+
+
+def resolveMisencodedNames(scene):
+    ''' Replace misencoded object names to avoid errors '''
+    scene = bpy.context.scene
+    renamed_count = 0
+
+    renamed_count = checkNameEncoding(scene.objects, 'object', renamed_count)
+    for obj in scene.objects:
+        renamed_count = checkNameEncoding(obj.modifiers, 'modifier', renamed_count)
+        renamed_count = checkNameEncoding(obj.vertex_groups, 'vertex_group', renamed_count)
+
+    renamed_count = checkNameEncoding(bpy.data.armatures, 'armature', renamed_count)
+    for arm in bpy.data.armatures:
+        renamed_count = checkNameEncoding(arm.bones, 'bone', renamed_count)
+
+    renamed_count = checkNameEncoding(bpy.data.materials, 'material', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.textures, 'texture', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.images, 'image', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.curves, 'curve', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.cameras, 'camera', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.lamps, 'lamp', renamed_count)
+    renamed_count = checkNameEncoding(bpy.data.metaballs, 'metaball', renamed_count)
+
+    if renamed_count:
+        print('Warning: [[blender]] {} entities having misencoded names were renamed'.format(renamed_count))
+
+
+def unselectAllObjects():
+    for obj in bpy.context.selected_objects:
+        obj.select = False
+
+
+def selectObjects(object_list):
+    for obj in object_list:
+        obj.select = True
+
+
+def make_dupliverts_real(scene):
+    ''' Duplicates vertex instances and makes them real'''
+    unselectAllObjects()
+    # Select all objects that use dupli_vertex mode
+    selectObjects([obj for obj in scene.objects if obj.dupli_type == 'VERTS' and obj.children])
+
+    # Duplicate all instances into real objects
+    if bpy.context.selected_objects:
+        bpy.ops.object.duplicates_make_real(use_base_parent=True, use_hierarchy=True)
+        print('Warning: [[blender]] Some instances (duplication at vertex) were duplicated as real objects')
+        # Clear selection
+        unselectAllObjects()
+
+
 # def findObjectForIpo(ipo):
 #     index = ipo.name.rfind('-')
 #     if index != -1:
@@ -294,7 +353,7 @@ def createAnimationsGenericObject(osg_object, blender_object, config, update_cal
 
 
 def createAnimationMaterialAndSetCallback(osg_node, obj, config, unique_objects):
-    osglog.log("WARNING update material animation not yet supported")
+    osglog.log("Warning: [[blender]] Update material animations are not yet supported")
     return None
     # return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
 
@@ -493,7 +552,7 @@ class Export(object):
                 item.children.append(lightItem)
 
             else:
-                osglog.log(str("WARNING " + obj.name + " " + obj.type + " not exported"))
+                osglog.log("Warning: [[blender]] The object {} (type {}) was not exported".format(obj.name, obj.type))
                 return None
 
             self.unique_objects.registerObject(obj, item)
@@ -507,7 +566,7 @@ class Export(object):
         if obj.parent_type == "BONE":
             bone = findBoneInHierarchy(rootItem, obj.parent_bone)
             if bone is None:
-                osglog.log("WARNING {} not found".format(obj.parent_bone))
+                osglog.log("Warning: [[blender]] {} not found".format(obj.parent_bone))
             else:
                 armature = obj.parent.data
                 original_pose_position = armature.pose_position
@@ -542,7 +601,21 @@ class Export(object):
         skeleton.collectBones()
         return skeleton
 
+    def preProcess(self):
+        # The following process may alter object selection, so
+        # we need to save it
+        backup_selection = bpy.context.selected_objects
+
+        make_dupliverts_real(self.config.scene)
+        resolveMisencodedNames(self.config.scene)
+
+        # restore the user's selection
+        unselectAllObjects()
+        selectObjects(backup_selection)
+
     def process(self):
+        self.preProcess()
+
         # Object.resetWriter()
         self.scene_name = self.config.scene.name
         osglog.log("current scene {}".format(self.scene_name))
@@ -620,7 +693,7 @@ class Export(object):
             st = StateSet()
             self.root.stateset = st
             if len(self.lights) > 8:
-                osglog.log("WARNING more than 8 lights")
+                osglog.log("Warning: [[blender]] The model has more than 8 lights")
 
             # retrieve world to global ambient
             lm = LightModel()
@@ -916,7 +989,7 @@ class BlenderObjectToGeometry(object):
         except:
             image_object = None
         if image_object is None:
-            osglog.log("WARNING the texture {} has no Image, skip it".format(mtex))
+            osglog.log("Warning: [[blender]] The texture {} is skipped since it has no Image".format(mtex))
             return None
 
         if self.unique_objects.hasTexture(mtex.texture):
@@ -939,7 +1012,7 @@ class BlenderObjectToGeometry(object):
         except:
             image_object = None
         if image_object is None:
-            osglog.log("WARNING the texture node {} has no Image, skip it".format(node))
+            osglog.log("Warning: [[blender]] The texture node {} is skipped since it has no Image".format(node))
             return None
 
         if self.unique_objects.hasTexture(node):
@@ -984,7 +1057,7 @@ class BlenderObjectToGeometry(object):
                     osglog.log("uv layer {}".format(uv_layer))
 
                 if len(uv_layer) > 0 and uv_layer not in uvs.keys():
-                    osglog.log("WARNING your material '{}' with texture '{}' use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv channel as fallback".format(material.name, texture_slot, uv_layer, geom.name))
+                    osglog.log("Warning: [[blender]] The material '{}' with texture '{}' use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv channel as fallback".format(material.name, texture_slot, uv_layer, geom.name))
                 if len(uv_layer) > 0 and uv_layer in uvs.keys():
                     if DEBUG:
                         osglog.log("texture {} use uv layer {}".format(i, uv_layer))
@@ -1406,25 +1479,20 @@ class BlenderObjectToGeometry(object):
             vertex_colors = mesh.vertex_colors
 
         if vertex_colors:
-            backupColor = None
-            for colorLayer in vertex_colors:
-                if colorLayer.active:
-                    backupColor = colorLayer
-            for colorLayer in vertex_colors:
-                idx = 0
-                colorLayer.active = True
-                # mesh.update()
-                color_array = []
-                for data in colorLayer.data:
-                    color_array.append(data.color1)
-                    color_array.append(data.color2)
-                    color_array.append(data.color3)
-                    # DW - how to tell if this is a tri or a quad?
-                    if len(faces[idx].vertices) > 3:
-                        color_array.append(data.color4)
-                    idx += 1
-                colors[colorLayer.name] = color_array
-            backupColor.active = True
+            # We only retrieve the active vertex color layer
+            colorLayer = vertex_colors.active
+            colorArray = []
+            idx = 0
+            # mesh.update()
+            for data in colorLayer.data:
+                colorArray.append(data.color1)
+                colorArray.append(data.color2)
+                colorArray.append(data.color3)
+                # DW - how to tell if this is a tri or a quad?
+                if len(faces[idx].vertices) > 3:
+                    colorArray.append(data.color4)
+                idx += 1
+            colors = colorArray
             # mesh.update()
 
         # uvs = {}
@@ -1504,9 +1572,9 @@ class BlenderObjectToGeometry(object):
                     (truncateFloat(normals[index][0]),
                      truncateFloat(normals[index][1]),
                      truncateFloat(normals[index][2])),
-                    tuple([tuple(truncateVector(uvs[x][index])) for x in uvs.keys()]))
-                    #  vertex color not supported
-                    # tuple([tuple(truncateVector(colors[x][index])) for x in colors.keys()]))
+                    tuple([tuple(truncateVector(uvs[x][index])) for x in uvs.keys()]),
+                    tuple([tuple(colors[index]) if colors else ()]))
+
 
         # Build a dictionary of indexes to all the vertexes that
         # are equal.
@@ -1578,7 +1646,7 @@ class BlenderObjectToGeometry(object):
         #    verts = {}
         #    for idx, weight in mesh.getVertsFromGroup(i, 1):
         #        if weight < 0.001:
-        #            log( "WARNING " + str(idx) + " to has a weight too small (" + str(weight) + "), skipping vertex")
+        #            log( "Warning: [[blender]] " + str(idx) + " to has a weight too small (" + str(weight) + "), skipping vertex")
         #            continue
         #        if idx in original_vertexes2optimized.keys():
         #            for v in original_vertexes2optimized[idx]:
@@ -1586,7 +1654,7 @@ class BlenderObjectToGeometry(object):
         #                    verts[v] = weight
         #                #verts.append([v, weight])
         #    if len(verts) == 0:
-        #        log( "WARNING " + str(i) + " has not vertexes, skip it, if really unsued you should clean it")
+        #        log( "Warning: [[blender]] " + str(i) + " has not vertices, skip it, if really unsued you should clean it")
         #    else:
         #        vertex_weight_list = [ list(e) for e in verts.items() ]
         #        vg = VertexGroup()
@@ -1614,7 +1682,7 @@ class BlenderObjectToGeometry(object):
                                 verts[v] = weight
 
             if len(verts) == 0:
-                osglog.log("WARNING group has no vertexes, skip it, if really unsued you should clean it")
+                osglog.log("Warning: [[blender]] The Group {} is skipped since it has no vertices".format(vertex_group.name))
             else:
                 vertex_weight_list = [list(e) for e in verts.items()]
                 vg = VertexGroup()
@@ -1629,7 +1697,10 @@ class BlenderObjectToGeometry(object):
         osg_vertexes = VertexArray()
         osg_normals = NormalArray()
         osg_uvs = {}
-        # osg_colors = {}
+
+        # Get the first vertex color layer (only one supported for now)
+        osg_colors = ColorArray() if colors else None
+
         for vertex in mapping_vertexes:
             vindex = vertex[0]
             coord = vertexes[vindex].co
@@ -1637,6 +1708,9 @@ class BlenderObjectToGeometry(object):
 
             ncoord = normals[vindex]
             osg_normals.getArray().append([ncoord[0], ncoord[1], ncoord[2]])
+
+            if osg_colors is not None:
+                osg_colors.getArray().append(colors[vindex])
 
             for name in uvs.keys():
                 if name not in osg_uvs.keys():
@@ -1659,7 +1733,7 @@ class BlenderObjectToGeometry(object):
             elif nv == 4:
                 nquad = nquad + 1
             else:
-                osglog.log("WARNING can't manage faces with {} vertices".format(nv))
+                osglog.log("Warning: [[blender]] Faces with {} vertices are not supported".format(nv))
 
         # counting number of primitives (one for lines, one for triangles and one for quads)
         numprims = 0
@@ -1712,7 +1786,7 @@ class BlenderObjectToGeometry(object):
             primitives.append(quads)
 
         geom.uvs = osg_uvs
-        # geom.colors = osg_colors
+        geom.colors = osg_colors
         geom.vertexes = osg_vertexes
         geom.normals = osg_normals
         geom.primitives = primitives
@@ -1749,7 +1823,7 @@ class BlenderObjectToGeometry(object):
     def convert(self):
         # looks like this was dropped
         # if self.mesh.vertexUV:
-        #     osglog.log("WARNING mesh %s use sticky UV and it's not supported" % self.object.name)
+        #     osglog.log("Warning: [[blender]] mesh %s use sticky UV and it's not supported" % self.object.name)
 
         return self.process(self.mesh)
 
