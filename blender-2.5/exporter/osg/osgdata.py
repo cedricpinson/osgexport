@@ -472,18 +472,28 @@ class Export(object):
         return "no name"
 
     def createAnimationsSkeletonObject(self, osg_object, blender_object):
-        if (self.config.export_anim is False) or (blender_object.animation_data is None) or (blender_object.animation_data.action is None):
-            return None
+        # Prepare the array for the animations.
+        anims = []
 
-        if self.unique_objects.hasAnimation(blender_object.animation_data.action):
-            return None
+        # Loop through each action.
+        for action in bpy.data.actions:
+            # Set as active action.
+            blender_object.animation_data.action = action
 
-        osglog.log("animation_data is {} {}".format(blender_object.name, blender_object.animation_data))
+            # Set the end frame.
+            bpy.context.scene.frame_end = action.frame_range.y - 1 
 
-        action2animation = BlenderAnimationToAnimation(object=blender_object, config=self.config, unique_objects=self.unique_objects)
-        osglog.log("animations created for object '{}'".format(blender_object.name))
+            # Do the check for each action.
+            if (self.config.export_anim is False) or (blender_object.animation_data == None) or (blender_object.animation_data.action == None) or self.unique_objects.hasAnimation(action):
+                continue
+			
+            osglog.log("animation_data is %s %s" % (blender_object.name, blender_object.animation_data))
 
-        anims = action2animation.createAnimation()
+            action2animation = BlenderAnimationToAnimation(object = blender_object, config = self.config, unique_objects = self.unique_objects)
+            osglog.log("animations created for object '%s'" % (blender_object.name))
+
+            anims.extend(action2animation.createAnimation())
+
         return anims
 
     def createAnimationsObjectAndSetCallback(self, osg_object, blender_object):
