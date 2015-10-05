@@ -59,6 +59,7 @@ class Config(object):
 
         self.defaultattr("zero_translations", False)
         self.defaultattr("apply_modifiers", False)
+        self.defaultattr("bake_animations", False)
         self.defaultattr("bake_constraints", True)
         self.defaultattr("bake_frame_step", 1)
         self.defaultattr("osgconv_to_ive", False)

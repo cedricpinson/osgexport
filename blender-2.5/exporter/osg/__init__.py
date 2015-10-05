@@ -84,6 +84,8 @@ def main():
                         help="Save the generated file to the specified path")
     parser.add_argument("-a", "--enable-animation", dest="enable_animation", action="store_true", default=False,
                         help="Enable saving of animations")
+    parser.add_argument("-b", "--bake-all", dest="bake_all", action="store_true", default=False,
+                        help="Force animation baking")
     parser.add_argument("-m", "--apply-modifiers", dest="apply_modifiers", action="store_true", default=False,
                         help="Apply modifiers before exporting")
     parser.add_argument("-j", "--json-materials", dest="json_materials", action="store_true", default=False,
@@ -99,6 +101,7 @@ def main():
         config = osgconf.Config()
         config.initFilePaths(args.save_path)
         config.export_anim = args.enable_animation
+        config.bake_animations = args.bake_all
         config.apply_modifiers = args.apply_modifiers
         config.scene = bpy.context.scene
         config.json_materials = args.json_materials
@@ -177,6 +180,8 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
                                   default=False)
     JSON_SHADERS = BoolProperty(name="JSON shaders", description="Export shader graphs into JSON userdata.",
                                 default=False)
+    BAKE_ALL = BoolProperty(name="Bake all animations", description="Force baking for all animations",
+                            default=True)
     BAKE_CONSTRAINTS = BoolProperty(name="Bake Constraints", description="Bake constraints into actions", default=True)
     BAKE_FRAME_STEP = IntProperty(name="Bake frame step", description="Frame step when baking actions",
                                   default=1, min=1, max=30)
@@ -201,6 +206,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         layout.row(align=True).prop(self, "EXPORTANIM")
         layout.row(align=True).prop(self, "EXPORT_ALL_SCENES")
         layout.row(align=True).prop(self, "APPLYMODIFIERS")
+        layout.row(align=True).prop(self, "BAKE_ALL")
         layout.row(align=True).prop(self, "BAKE_CONSTRAINTS")
         layout.row(align=True).prop(self, "LOG")
         layout.row(align=True).prop(self, "JSON_MATERIALS")
@@ -243,6 +249,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.APPLYMODIFIERS = self.config.apply_modifiers
         self.ZERO_TRANSLATIONS = self.config.zero_translations
         self.LOG = self.config.log
+        self.BAKE_ALL = self.config.bake_animations
         self.BAKE_CONSTRAINTS = self.config.bake_constraints
         self.BAKE_FRAME_STEP = self.config.bake_frame_step
         self.OSGCONV_TO_IVE = self.config.osgconv_to_ive
@@ -282,6 +289,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.config.apply_modifiers = self.APPLYMODIFIERS
         self.config.log = self.LOG
         self.config.zero_translations = self.ZERO_TRANSLATIONS
+        self.config.bake_animations = self.BAKE_ALL
         self.config.bake_constraints = self.BAKE_CONSTRAINTS
         self.config.bake_frame_step = self.BAKE_FRAME_STEP
         self.config.osgconv_to_ive = self.OSGCONV_TO_IVE
