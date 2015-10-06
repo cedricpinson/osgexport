@@ -285,7 +285,7 @@ class Export(object):
             anims = self.createAnimationsObject(osg_object, blender_object, self.config,
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
-                                                                      blender_object.rotation_mode),
+                                                                      rotation_mode),
                                                 self.unique_objects)
             return (osg_object, anims)
 
@@ -298,7 +298,7 @@ class Export(object):
             anims = self.createAnimationsObject(osg_object, blender_object, self.config,
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
-                                                                      blender_object.rotation_mode),
+                                                                      rotation_mode),
                                                 self.unique_objects)
             osg_object.children.append(lightItem)
             return (osg_object, anims)
@@ -322,7 +322,7 @@ class Export(object):
             anims = self.createAnimationsObject(osg_object, blender_object, self.config,
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
-                                                                      blender_object.rotation_mode),
+                                                                      rotation_mode),
                                                 self.unique_objects)
 
             if is_visible:
@@ -348,7 +348,6 @@ class Export(object):
                 matrix = getDeltaMatrixFromMatrix(boneInWorldSpace, blender_object.matrix_world)
                 osg_object.matrix = matrix
                 bone.children.append(osg_object)
-
                 armature.pose_position = original_pose_position
 
         # We skip the object if it is in the excluded objects list
@@ -363,6 +362,8 @@ class Export(object):
 
         anims = []
         osg_object = None
+        rotation_mode = 'QUATERNION' if self.config.use_quaternions else blender_object.rotation_mode
+
         if self.unique_objects.hasObject(blender_object):
             Log("{} '{}' has already been parsed, reuse osg_object".format(blender_object.type, blender_object.name))
             osg_object = self.unique_objects.getObject(blender_object)
@@ -1716,7 +1717,6 @@ class BlenderAnimationToAnimation(object):
             return True
         else:
             if self.has_action:
-                self.action = self.object.animation_data.action
                 for fcu in self.action.fcurves:
                     for kf in fcu.keyframe_points:
                         if kf.interpolation != 'LINEAR':
@@ -1727,11 +1727,16 @@ class BlenderAnimationToAnimation(object):
         Log("Exporting animation on object {}".format(self.object.name))
         if self.has_action:
             self.action_name = self.object.animation_data.action.name
+            self.action = self.object.animation_data.action
 
         # Bake animation if needed
         if self.config.bake_animations or self.needBake(self.object):
             Log("Baking animation for object {}".format(self.object.name))
-            self.action = osgbake.bakeAnimation(self.config.scene, self.config.bake_frame_step, self.object, has_action=self.has_action)
+            self.action = osgbake.bakeAnimation(self.config.scene,
+                                                self.config.bake_frame_step,
+                                                self.object,
+                                                has_action=self.has_action,
+                                                use_quaternions=self.config.use_quaternions)
             self.action_name = self.action.name
 
         if target is None:
