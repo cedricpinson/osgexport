@@ -157,18 +157,31 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
 
     AUTHOR = StringProperty(name="Author", description="Name of the Author of this model", default="")
     SELECTED = BoolProperty(name="Only Export Selected", description="Only export the selected model", default=False)
-    ONLY_VISIBLE = BoolProperty(name="Only Export Visible", description="Only export the visible models", default=False)
-    INDENT = IntProperty(name="Number of Indent Spaces", description="Number of Spaces to use for indentation in the model file", default=3, min=1, max=8)
-    FLOATPRE = IntProperty(name="Floating Point Precision", description="The Floating Point Precision to use in exported model file", min=1, max=8, default=4)
-    ANIMFPS = IntProperty(name="Frames Per Second", description="Number of Frames Per Second to use for exported animations", min=1, max=300, default=30)
-    EXPORTANIM = BoolProperty(name="Export animations", description="Export animation yes/no", default=True)
-    APPLYMODIFIERS = BoolProperty(name="Apply Modifiers", description="Apply modifiers before exporting yes/no", default=True)
+    ONLY_VISIBLE = BoolProperty(name="Only Export Visible", description="Only export the visible models",
+                                default=False)
+    INDENT = IntProperty(name="Number of Indent Spaces",
+                         description="Number of Spaces to use for indentation in the model file",
+                         default=3, min=1, max=8)
+    FLOATPRE = IntProperty(name="Floating Point Precision",
+                           description="The Floating Point Precision to use in exported model file",
+                           min=1, max=8, default=4)
+    ANIMFPS = IntProperty(name="Frames Per Second",
+                          description="Number of Frames Per Second to use for exported animations",
+                          min=1, max=300, default=30)
+    EXPORTANIM = BoolProperty(name="Export animations", description="Export animation yes/no",
+                              default=True)
+    APPLYMODIFIERS = BoolProperty(name="Apply Modifiers", description="Apply modifiers before exporting yes/no",
+                                  default=True)
     LOG = BoolProperty(name="Write log", description="Write log file yes/no", default=False)
-    JSON_MATERIALS = BoolProperty(name="JSON Materials", description="Export materials into JSON userdata.", default=False)
-    JSON_SHADERS = BoolProperty(name="JSON shaders", description="Export shader graphs into JSON userdata.", default=False)
+    JSON_MATERIALS = BoolProperty(name="JSON Materials", description="Export materials into JSON userdata.",
+                                  default=False)
+    JSON_SHADERS = BoolProperty(name="JSON shaders", description="Export shader graphs into JSON userdata.",
+                                default=False)
     BAKE_CONSTRAINTS = BoolProperty(name="Bake Constraints", description="Bake constraints into actions", default=True)
-    BAKE_FRAME_STEP = IntProperty(name="Bake frame step", description="Frame step when baking actions", default=1, min=1, max=30)
-    OSGCONV_TO_IVE = BoolProperty(name="Convert to IVE (uses osgconv)", description="Use osgconv to convert to IVE", default=False)
+    BAKE_FRAME_STEP = IntProperty(name="Bake frame step", description="Frame step when baking actions",
+                                  default=1, min=1, max=30)
+    OSGCONV_TO_IVE = BoolProperty(name="Convert to IVE (uses osgconv)", description="Use osgconv to convert to IVE",
+                                  default=False)
     OSGCONV_EMBED_TEXTURES = BoolProperty(name="Embed textures in IVE", default=False)
     OSGCONV_CLEANUP = BoolProperty(name="Cleanup after conversion", default=False)
     OSGCONV_PATH = StringProperty(name="osgconv path", subtype=FILE_NAME, default="")
