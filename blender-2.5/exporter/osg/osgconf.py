@@ -35,11 +35,11 @@ class Config(object):
     def __init__(self):
         object.__init__(self)
         self.activate()
-        
+
     def defaultattr(self, attr, value):
         if not hasattr(self, attr):
             setattr(self, attr, value)
-      
+
     def activate(self):
         self.log_file = None
         self.defaultattr("author", "")
@@ -59,6 +59,8 @@ class Config(object):
 
         self.defaultattr("zero_translations", False)
         self.defaultattr("apply_modifiers", False)
+        self.defaultattr("bake_animations", False)
+        self.defaultattr("use_quaternions", False)
         self.defaultattr("bake_constraints", True)
         self.defaultattr("bake_frame_step", 1)
         self.defaultattr("osgconv_to_ive", False)
@@ -78,7 +80,7 @@ class Config(object):
         self.defaultattr("history", {})
         self.defaultattr("json_materials", False)
         self.defaultattr("json_shaders", False)
-        
+
         self.filepath = ""
         self.fullpath = ""
         self.exclude_objects = []
@@ -87,7 +89,7 @@ class Config(object):
         if self.log:
             status = " with log"
         print("save path %s %s" %(self.fullpath, status))
-        
+
     def createLogfile(self):
         logfilename = self.getFullName( "log")
         osglog.LOGFILE = None
@@ -97,7 +99,7 @@ class Config(object):
             #print("log %s %s" % (logfilename, osglog.LOGFILE))
         if self.export_anim is False:
             osglog.log("Animations will not be exported")
-        
+
     def closeLogfile(self):
         if self.log_file != None:
             filename = self.log_file.name
@@ -110,14 +112,14 @@ class Config(object):
         if len(self.filename) == 0:
             return False
         return True
-        
+
     def initFilePaths(self, filename):
         self.filename = filename
         dirname = os.path.dirname(self.filename)
         if dirname == '':
             dirname = '.'
         basename = os.path.splitext(os.path.basename(self.filename))[0]
-        
+
         if not os.path.isdir(dirname):
             os.mkdir(dirname)
 
