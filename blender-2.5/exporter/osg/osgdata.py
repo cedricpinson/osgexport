@@ -32,6 +32,7 @@ import subprocess
 import osg
 from . import osglog
 from . import osgconf
+from .osgutils import *
 from .osgconf import DEBUG
 from . import osgbake
 from . import osgobject
@@ -42,178 +43,6 @@ Euler = mathutils.Euler
 Matrix = mathutils.Matrix
 Vector = mathutils.Vector
 Quaternion = mathutils.Quaternion
-
-
-def createImageFilename(texturePath, image):
-    fn = bpy.path.basename(bpy.path.display_name_from_filepath(image.filepath))
-
-    # for packed file, fallback to image name
-    if not fn:
-        fn = image.name
-
-    i = fn.rfind(".")
-    if i != -1:
-        name = fn[0:i]
-    else:
-        name = fn
-    # [BMP, IRIS, PNG, JPEG, TARGA, TARGA_RAW, AVI_JPEG, AVI_RAW, FRAMESERVER]
-    if image.file_format == 'PNG':
-        ext = "png"
-    elif image.file_format == 'HDR':
-        ext = "hdr"
-    elif image.file_format == 'JPEG':
-        ext = "jpg"
-    elif image.file_format == 'TARGA' or image.file_format == 'TARGA_RAW':
-        ext = "tga"
-    elif image.file_format == 'BMP':
-        ext = "bmp"
-    elif image.file_format == 'AVI_JPEG' or image.file_format == 'AVI_RAW':
-        ext = "avi"
-    else:
-        ext = "unknown"
-    name = name + "." + ext
-    print("create Image Filename " + name)
-    if texturePath != "" and not texturePath.endswith("/"):
-        texturePath = texturePath + "/"
-    return texturePath + name
-
-
-def getImageFilesFromStateSet(stateset):
-    images = []
-    if stateset is not None and len(stateset.texture_attributes) > 0:
-        for unit, attributes in stateset.texture_attributes.items():
-            for a in attributes:
-                if a.className() == "Texture2D":
-                    images.append(a.source_image)
-    return images
-
-
-def getRootBonesList(armature):
-    bones = []
-    for bone in armature.bones:
-        if bone.parent is None:
-            bones.append(bone)
-    return bones
-
-
-def getTransform(matrix):
-    return (matrix.translationPart(),
-            matrix.scalePart(),
-            matrix.toQuat())
-
-
-def getDeltaMatrixFrom(parent, child):
-    if parent is None:
-        return child.matrix_world
-
-    return getDeltaMatrixFromMatrix(parent.matrix_world,
-                                    child.matrix_world)
-
-
-def getDeltaMatrixFromMatrix(parent, child):
-    p = parent
-    bi = p.copy()
-    bi.invert()
-    return bi * child
-
-
-def getChildrenOf(scene, object):
-    children = []
-    for obj in scene.objects:
-        if obj.parent == object:
-            children.append(obj)
-    return children
-
-
-def findBoneInHierarchy(scene, bonename):
-    if scene.name == bonename and (type(scene) == type(Bone()) or type(scene) == type(Skeleton())):
-        return scene
-
-    if isinstance(scene, Group) is False:
-        return None
-
-    for child in scene.children:
-        result = findBoneInHierarchy(child, bonename)
-        if result is not None:
-            return result
-    return None
-
-
-def isActionLinkedToObject(action, objects_name):
-    action_fcurves = action.fcurves
-
-    for fcurve in action_fcurves:
-        path = fcurve.data_path.split("\"")
-        if objects_name in path:
-            return True
-    return False
-
-
-def findArmatureObjectForTrack(track):
-    for o in bpy.data.objects:
-        if o.type.lower() == "Armature".lower():
-            if list(o.animation_data.nla_tracks).count(track) > 0:
-                return 0
-    return None
-
-
-def checkNameEncoding(elements, label, renamed_count):
-    for element in elements:
-        try:
-            element.name
-        except UnicodeDecodeError:
-            element.name = 'renamed_{}_{}'.format(label, renamed_count)
-            renamed_count += 1
-
-
-def resolveMisencodedNames(scene):
-    ''' Replace misencoded object names to avoid errors '''
-    scene = bpy.context.scene
-    renamed_count = 0
-
-    renamed_count = checkNameEncoding(scene.objects, 'object', renamed_count)
-    for obj in scene.objects:
-        renamed_count = checkNameEncoding(obj.modifiers, 'modifier', renamed_count)
-        renamed_count = checkNameEncoding(obj.vertex_groups, 'vertex_group', renamed_count)
-
-    renamed_count = checkNameEncoding(bpy.data.armatures, 'armature', renamed_count)
-    for arm in bpy.data.armatures:
-        renamed_count = checkNameEncoding(arm.bones, 'bone', renamed_count)
-
-    renamed_count = checkNameEncoding(bpy.data.materials, 'material', renamed_count)
-    renamed_count = checkNameEncoding(bpy.data.textures, 'texture', renamed_count)
-    renamed_count = checkNameEncoding(bpy.data.images, 'image', renamed_count)
-    renamed_count = checkNameEncoding(bpy.data.curves, 'curve', renamed_count)
-    renamed_count = checkNameEncoding(bpy.data.cameras, 'camera', renamed_count)
-    renamed_count = checkNameEncoding(bpy.data.lamps, 'lamp', renamed_count)
-    renamed_count = checkNameEncoding(bpy.data.metaballs, 'metaball', renamed_count)
-
-    if renamed_count:
-        print('Warning: [[blender]] {} entities having misencoded names were renamed'.format(renamed_count))
-
-
-def unselectAllObjects():
-    for obj in bpy.context.selected_objects:
-        obj.select = False
-
-
-def selectObjects(object_list):
-    for obj in object_list:
-        obj.select = True
-
-
-def make_dupliverts_real(scene):
-    ''' Duplicates vertex instances and makes them real'''
-    unselectAllObjects()
-    # Select all objects that use dupli_vertex mode
-    selectObjects([obj for obj in scene.objects if obj.dupli_type == 'VERTS' and obj.children])
-
-    # Duplicate all instances into real objects
-    if bpy.context.selected_objects:
-        bpy.ops.object.duplicates_make_real(use_base_parent=True, use_hierarchy=True)
-        print('Warning: [[blender]] Some instances (duplication at vertex) were duplicated as real objects')
-        # Clear selection
-        unselectAllObjects()
 
 
 def createAnimationUpdate(obj, callback, rotation_mode, prefix="", zero=False):
@@ -564,16 +393,62 @@ class Export(object):
         return skeleton
 
     def preProcess(self):
-        # The following process may alter object selection, so
-        # we need to save it
-        backup_selection = bpy.context.selected_objects
+        def checkNameEncoding(elements, label, renamed_count):
+            for element in elements:
+                try:
+                    element.name
+                except UnicodeDecodeError:
+                    element.name = 'renamed_{}_{}'.format(label, renamed_count)
+                    renamed_count += 1
 
-        make_dupliverts_real(self.config.scene)
-        resolveMisencodedNames(self.config.scene)
+        def resolveMisencodedNames(scene):
+            ''' Replace misencoded object names to avoid errors '''
+            scene = bpy.context.scene
+            renamed_count = 0
 
-        # restore the user's selection
-        unselectAllObjects()
-        selectObjects(backup_selection)
+            renamed_count = checkNameEncoding(scene.objects, 'object', renamed_count)
+            for obj in scene.objects:
+                renamed_count = checkNameEncoding(obj.modifiers, 'modifier', renamed_count)
+                renamed_count = checkNameEncoding(obj.vertex_groups, 'vertex_group', renamed_count)
+
+            renamed_count = checkNameEncoding(bpy.data.armatures, 'armature', renamed_count)
+            for arm in bpy.data.armatures:
+                renamed_count = checkNameEncoding(arm.bones, 'bone', renamed_count)
+
+            renamed_count = checkNameEncoding(bpy.data.materials, 'material', renamed_count)
+            renamed_count = checkNameEncoding(bpy.data.textures, 'texture', renamed_count)
+            renamed_count = checkNameEncoding(bpy.data.images, 'image', renamed_count)
+            renamed_count = checkNameEncoding(bpy.data.curves, 'curve', renamed_count)
+            renamed_count = checkNameEncoding(bpy.data.cameras, 'camera', renamed_count)
+            renamed_count = checkNameEncoding(bpy.data.lamps, 'lamp', renamed_count)
+            renamed_count = checkNameEncoding(bpy.data.metaballs, 'metaball', renamed_count)
+
+            if renamed_count:
+                print('Warning: [[blender]] {} entities having misencoded names were renamed'.format(renamed_count))
+
+        def make_dupliverts_real(scene):
+            ''' Duplicates vertex instances and makes them real'''
+            unselectAllObjects()
+            # Select all objects that use dupli_vertex mode
+            selectObjects([obj for obj in scene.objects if obj.dupli_type == 'VERTS' and obj.children])
+
+        # Duplicate all instances into real objects
+        if bpy.context.selected_objects:
+            bpy.ops.object.duplicates_make_real(use_base_parent=True, use_hierarchy=True)
+            print('Warning: [[blender]] Some instances (duplication at vertex) were duplicated as real objects')
+            # Clear selection
+            unselectAllObjects()
+
+            # The following process may alter object selection, so
+            # we need to save it
+            backup_selection = bpy.context.selected_objects
+
+            make_dupliverts_real(self.config.scene)
+            resolveMisencodedNames(self.config.scene)
+
+            # restore the user's selection
+            unselectAllObjects()
+            selectObjects(backup_selection)
 
     def process(self):
         self.preProcess()
