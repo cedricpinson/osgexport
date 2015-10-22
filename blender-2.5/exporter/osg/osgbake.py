@@ -273,5 +273,4 @@ class BakeAction(bpy.types.Operator):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
 
-
 bpy.utils.register_class(BakeAction)

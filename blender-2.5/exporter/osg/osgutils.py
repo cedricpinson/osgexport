@@ -110,6 +110,16 @@ def getDeltaMatrixFrom(parent, child):
                                     child.matrix_world)
 
 
+def hasConstraints(blender_object):
+        return hasattr(blender_object, "constraints") and (len(blender_object.constraints) > 0)
+
+
+def hasAction(blender_object):
+    return hasattr(blender_object, "animation_data") and \
+           hasattr(blender_object.animation_data, "action") and \
+           blender_object.animation_data.action is not None
+
+
 # OBJECTS HELPERS
 # ------------------------------
 def getDeltaMatrixFromMatrix(parent, child):
