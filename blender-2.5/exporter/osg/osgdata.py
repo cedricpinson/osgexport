@@ -311,9 +311,12 @@ def createAnimationUpdate(obj, callback, rotation_mode, prefix="", zero=False):
         callback.stacked_transforms.append(tr)
 
         if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
-            rotation_keys = [StackedRotateAxisElement(name="euler_x", axis=Vector((1, 0, 0)), angle=obj.rotation_euler[0]),
-                             StackedRotateAxisElement(name="euler_y", axis=Vector((0, 1, 0)), angle=obj.rotation_euler[1]),
-                             StackedRotateAxisElement(name="euler_z", axis=Vector((0, 0, 1)), angle=obj.rotation_euler[2])]
+            rotation_keys = [StackedRotateAxisElement(name="euler_x", axis=Vector((1, 0, 0)),
+                                                      angle=obj.rotation_euler[0]),
+                             StackedRotateAxisElement(name="euler_y", axis=Vector((0, 1, 0)),
+                                                      angle=obj.rotation_euler[1]),
+                             StackedRotateAxisElement(name="euler_z", axis=Vector((0, 0, 1)),
+                                                      angle=obj.rotation_euler[2])]
 
             callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[2]) - ord('X')])
             callback.stacked_transforms.append(rotation_keys[ord(obj.rotation_mode[1]) - ord('X')])
@@ -472,25 +475,33 @@ class Export(object):
         return "no name"
 
     def createAnimationsSkeletonObject(self, osg_object, blender_object):
-        if (self.config.export_anim is False) or (blender_object.animation_data is None) or (blender_object.animation_data.action is None):
+        if (self.config.export_anim is False) \
+           or (blender_object.animation_data is None) \
+           or (blender_object.animation_data.action is None):
             return None
 
         if self.unique_objects.hasAnimation(blender_object.animation_data.action):
             return None
-
+        update_callback = createAnimationUpdate(blender_object, UpdateMatrixTransform(name=osg_object.name), blender_object.rotation_mode)
         osglog.log("animation_data is {} {}".format(blender_object.name, blender_object.animation_data))
 
-        action2animation = BlenderAnimationToAnimation(object=blender_object, config=self.config, unique_objects=self.unique_objects)
+        action2animation = BlenderAnimationToAnimation(object=blender_object,
+                                                       config=self.config,
+                                                       unique_objects=self.unique_objects)
         osglog.log("animations created for object '{}'".format(blender_object.name))
 
         anims = action2animation.createAnimation()
+        if len(anims) > 0 and update_callback:
+            osg_object.update_callbacks = []
+            osg_object.update_callbacks.append(update_callback)
         return anims
 
     def createAnimationsObjectAndSetCallback(self, osg_object, blender_object):
+        rotation_mode = 'QUATERNION' if self.config.use_quaternions else blender_object.rotation_mode
         return createAnimationsGenericObject(osg_object, blender_object, self.config,
                                              createAnimationUpdate(blender_object,
                                                                    UpdateMatrixTransform(name=osg_object.name),
-                                                                   blender_object.rotation_mode),
+                                                                   rotation_mode),
                                              self.unique_objects)
 
     def isObjectVisible(self, obj):
@@ -631,7 +642,8 @@ class Export(object):
                     self.config.scene.objects.active = o
                     self.config.scene.objects.selected = [o]
                 except ValueError:
-                    osglog.log("Error, problem happens when assigning object {} to scene {}".format(o.name, self.config.scene.name))
+                    osglog.log("Error, problem happens when assigning object {} to scene {}"
+                               .format(o.name, self.config.scene.name))
                     raise
 
             for obj in self.config.scene.objects:
@@ -759,7 +771,8 @@ class Export(object):
                                 # cleaned up
                                 copied_images.append(filename)
                             i.filepath_raw = filename
-                            osglog.log("packed file, save it to {}".format(os.path.abspath(bpy.path.abspath(filename))))
+                            osglog.log("packed file, save it to {}"
+                                       .format(os.path.abspath(bpy.path.abspath(filename))))
                             i.save()
                         except:
                             osglog.log("failed to save file {} to {}".format(imagename, nativePath))
@@ -782,9 +795,11 @@ class Export(object):
         filetoview = self.config.getFullName("osgt")
         if self.config.osgconv_to_ive:
             if self.config.osgconv_embed_textures:
-                r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile", self.config.getFullName("osgt"), self.config.getFullName("ive")]
+                r = [self.config.osgconv_path, "-O", "includeImageFileInIVEFile",
+                     self.config.getFullName("osgt"), self.config.getFullName("ive")]
             else:
-                r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile", self.config.getFullName("osgt"), self.config.getFullName("ive")]
+                r = [self.config.osgconv_path, "-O", "noTexturesInIVEFile",
+                     self.config.getFullName("osgt"), self.config.getFullName("ive")]
             try:
                 if subprocess.call(r) == 0:
                     filetoview = self.config.getFullName("ive")
@@ -1057,7 +1072,9 @@ class BlenderObjectToGeometry(object):
                     osglog.log("uv layer {}".format(uv_layer))
 
                 if len(uv_layer) > 0 and uv_layer not in uvs.keys():
-                    osglog.log("Warning: [[blender]] The material '{}' with texture '{}' use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv channel as fallback".format(material.name, texture_slot, uv_layer, geom.name))
+                    osglog.log("Warning: [[blender]] The material '{}' with texture '{}'\
+use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv channel as fallback"
+                               .format(material.name, texture_slot, uv_layer, geom.name))
                 if len(uv_layer) > 0 and uv_layer in uvs.keys():
                     if DEBUG:
                         osglog.log("texture {} use uv layer {}".format(i, uv_layer))
@@ -1575,7 +1592,6 @@ class BlenderObjectToGeometry(object):
                     tuple([tuple(truncateVector(uvs[x][index])) for x in uvs.keys()]),
                     tuple([tuple(colors[index]) if colors else ()]))
 
-
         # Build a dictionary of indexes to all the vertexes that
         # are equal.
         vertex_dict = {}
@@ -1646,7 +1662,8 @@ class BlenderObjectToGeometry(object):
         #    verts = {}
         #    for idx, weight in mesh.getVertsFromGroup(i, 1):
         #        if weight < 0.001:
-        #            log( "Warning: [[blender]] " + str(idx) + " to has a weight too small (" + str(weight) + "), skipping vertex")
+        #            log( "Warning: [[blender]] " + str(idx) + " to has a weight too small
+        #                 (" + str(weight) + "), skipping vertex")
         #            continue
         #        if idx in original_vertexes2optimized.keys():
         #            for v in original_vertexes2optimized[idx]:
@@ -1654,7 +1671,8 @@ class BlenderObjectToGeometry(object):
         #                    verts[v] = weight
         #                #verts.append([v, weight])
         #    if len(verts) == 0:
-        #        log( "Warning: [[blender]] " + str(i) + " has not vertices, skip it, if really unsued you should clean it")
+        #        log( "Warning: [[blender]] " + str(i) +
+        #             " has not vertices, skip it, if really unsued you should clean it")
         #    else:
         #        vertex_weight_list = [ list(e) for e in verts.items() ]
         #        vg = VertexGroup()
@@ -1682,7 +1700,8 @@ class BlenderObjectToGeometry(object):
                                 verts[v] = weight
 
             if len(verts) == 0:
-                osglog.log("Warning: [[blender]] The Group {} is skipped since it has no vertices".format(vertex_group.name))
+                osglog.log("Warning: [[blender]] The Group {} is skipped since it has no vertices"
+                           .format(vertex_group.name))
             else:
                 vertex_weight_list = [list(e) for e in verts.items()]
                 vg = VertexGroup()
@@ -1856,17 +1875,9 @@ class BlenderAnimationToAnimation(object):
                         if kf.interpolation != 'LINEAR':
                             need_bake = True
 
-        if need_bake:
-            self.action = osgbake.bake(self.config.scene,
-                                       self.object,
-                                       self.config.scene.frame_start,
-                                       self.config.scene.frame_end,
-                                       self.config.bake_frame_step,
-                                       False,  # only_selected
-                                       True,   # do_pose
-                                       True,   # do_object
-                                       False,  # do_constraint_clear
-                                       False)  # to_quat
+        if self.config.bake_animations or need_bake:
+            self.action = osgbake.bakeAnimation(self.config.scene, self.object, use_quaternions=self.config.use_quaternions)
+            self.action_name = self.action.name
 
     def createAnimation(self, target=None):
         osglog.log("Exporting animation on object {}".format(self.object))
@@ -1892,6 +1903,8 @@ class BlenderAnimationToAnimation(object):
                 bname = bone.name
                 osglog.log("{} processing channels for bone {}".format(name, bname))
                 self.appendChannelsToAnimation(bname, animation, action, prefix=('pose.bones["{}"].'.format(bname)))
+            # Append channels for armature solid animation
+            self.appendChannelsToAnimation(self.object.name, animation, action)
         else:
             self.appendChannelsToAnimation(target, animation, action)
         return animation

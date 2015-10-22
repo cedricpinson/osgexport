@@ -1132,6 +1132,7 @@ class Skeleton(MatrixTransform):
         self.setName(name)
         self.update_callbacks = []
         self.update_callbacks.append(UpdateSkeleton())
+        self.update_matrixTransform = []
 
     def collectBones(self):
         self.boneDict = {}
