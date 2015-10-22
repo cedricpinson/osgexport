@@ -216,41 +216,6 @@ def make_dupliverts_real(scene):
         unselectAllObjects()
 
 
-# def findObjectForIpo(ipo):
-#     index = ipo.name.rfind('-')
-#     if index != -1:
-#         objname = ipo.name[index+1:]
-#         try:
-#             obj = self.config.scene.objects[objname]
-#             log("bake ipo %s to object %s" % (ipo.name, objname))
-#             return obj
-#         except:
-#             return None
-#
-#     for o in self.config.scene.objects:
-#         if o.getIpo() == ipo:
-#             log("bake ipo %s to object %s" % (ipo.name, o.name))
-#             return o
-#     return None
-#
-# def findMaterialForIpo(ipo):
-#     index = ipo.name.rfind('-')
-#     if index != -1:
-#         objname = ipo.name[index+1:]
-#         try:
-#             obj = bpy.data.materials[objname]
-#             log("bake ipo %s to material %s" % (ipo.name, objname))
-#             return obj
-#         except:
-#             return None
-#
-#     for o in bpy.data.materials:
-#         if o.getIpo() == ipo:
-#             log("bake ipo %s to material %s" % (ipo.name, o.name))
-#             return o
-#     return None
-
-
 def createAnimationUpdate(obj, callback, rotation_mode, prefix="", zero=False):
     has_location_keys = False
     has_scale_keys = False
@@ -339,26 +304,10 @@ def createAnimationUpdate(obj, callback, rotation_mode, prefix="", zero=False):
     return callback
 
 
-def createAnimationsGenericObject(osg_object, blender_object, config, update_callback, unique_objects):
-    if (config.export_anim is False) or (update_callback is None) or (blender_object.animation_data is None):
-        return None
-
-    if unique_objects.hasAnimation(blender_object.animation_data.action):
-        return None
-
-    action2animation = BlenderAnimationToAnimation(object=blender_object,
-                                                   config=config,
-                                                   unique_objects=unique_objects)
-    anim = action2animation.createAnimation()
-    if len(anim) > 0:
-        osg_object.update_callbacks.append(update_callback)
-    return anim
-
-
 def createAnimationMaterialAndSetCallback(osg_node, obj, config, unique_objects):
     osglog.log("Warning: [[blender]] Update material animations are not yet supported")
     return None
-    # return createAnimationsGenericObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
+    # return createAnimationsObject(osg_node, obj, config, UpdateMaterial(), uniq_anims)
 
 
 class UniqueObject(object):
@@ -474,34 +423,28 @@ class Export(object):
             return obj.name
         return "no name"
 
-    def createAnimationsSkeletonObject(self, osg_object, blender_object):
-        if (self.config.export_anim is False) \
-           or (blender_object.animation_data is None) \
-           or (blender_object.animation_data.action is None):
-            return None
-
-        if self.unique_objects.hasAnimation(blender_object.animation_data.action):
-            return None
-
-        osglog.log("animation_data is {} {}".format(blender_object.name, blender_object.animation_data))
-
-        action2animation = BlenderAnimationToAnimation(object=blender_object,
-                                                       config=self.config,
-                                                       unique_objects=self.unique_objects)
-        osglog.log("animations created for object '{}'".format(blender_object.name))
-
-        anims = action2animation.createAnimation()
-        return anims
-
-    def createAnimationsObjectAndSetCallback(self, osg_object, blender_object):
-        return createAnimationsGenericObject(osg_object, blender_object, self.config,
-                                             createAnimationUpdate(blender_object,
-                                                                   UpdateMatrixTransform(name=osg_object.name),
-                                                                   blender_object.rotation_mode),
-                                             self.unique_objects)
-
     def isObjectVisible(self, obj):
         return obj.is_visible(self.config.scene) or not self.config.only_visible
+
+    def createAnimationsObject(self, osg_object, blender_object, config, update_callback, unique_objects):
+        if not config.export_anim:
+            return None
+
+        if not blender_object.animation_data \
+           or not blender_object.animation_data.action \
+           or unique_objects.hasAnimation(blender_object.animation_data.action):
+            return None
+
+        if blender_object.type != 'ARMATURE' and not update_callback:
+            return None
+
+        action2animation = BlenderAnimationToAnimation(object=blender_object,
+                                                       config=config,
+                                                       unique_objects=unique_objects)
+        anim = action2animation.createAnimation()
+        if len(anim) > 0 and blender_object.type != 'ARMATURE':
+            osg_object.update_callbacks.append(update_callback)
+        return anim
 
     def exportChildrenRecursively(self, obj, parent, rootItem):
         # We skip the object if it is in the excluded objects list
@@ -523,7 +466,11 @@ class Export(object):
             osglog.log("Type of {} is {}".format(obj.name, obj.type))
             if obj.type == "ARMATURE":
                 item = self.createSkeleton(obj)
-                anims = self.createAnimationsSkeletonObject(item, obj)
+                anims = self.createAnimationsObject(item, obj, self.config,
+                                                    createAnimationUpdate(obj,
+                                                                          UpdateMatrixTransform(name=item.name),
+                                                                          obj.rotation_mode),
+                                                    self.unique_objects)
 
             elif obj.type == "MESH" or obj.type == "EMPTY" or obj.type == "CAMERA":
                 # because it blender can insert inverse matrix, we have to recompute the parent child
@@ -540,7 +487,11 @@ class Export(object):
                     else:
                         item.matrix[3].xyz = Vector()
 
-                anims = self.createAnimationsObjectAndSetCallback(item, obj)
+                anims = self.createAnimationsObject(item, obj, self.config,
+                                                    createAnimationUpdate(obj,
+                                                                          UpdateMatrixTransform(name=item.name),
+                                                                          obj.rotation_mode),
+                                                    self.unique_objects)
 
                 if is_visible:
                     if obj.type == "MESH":
@@ -555,7 +506,11 @@ class Export(object):
                 item.setName(obj.name)
                 item.matrix = matrix
                 lightItem = self.createLight(obj)
-                anims = self.createAnimationsObjectAndSetCallback(item, obj)
+                anims = self.createAnimationsObject(item, obj, self.config,
+                                                    createAnimationUpdate(obj,
+                                                                          UpdateMatrixTransform(name=item.name),
+                                                                          obj.rotation_mode),
+                                                    self.unique_objects)
                 item.children.append(lightItem)
 
             else:
