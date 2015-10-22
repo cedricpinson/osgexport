@@ -184,9 +184,9 @@ def bakeAction(blender_object,
     # object. TODO. multiple objects
     if do_object:
 
-        rotation_mode_backup = obj.rotation_mode
-        if use_quaternions and obj.rotation_mode != 'QUATERNION':
-            obj.rotation_mode = 'QUATERNION'
+        rotation_mode_backup = blender_object.rotation_mode
+        if use_quaternions and blender_object.rotation_mode != 'QUATERNION':
+            blender_object.rotation_mode = 'QUATERNION'
 
         if do_constraint_clear:
             while blender_object.constraints:
@@ -220,7 +220,7 @@ def bakeAction(blender_object,
             blender_object.keyframe_insert("scale", -1, f, name, options)
 
         # restore rotation mode
-        obj.rotation_mode = rotation_mode_backup
+        blender_object.rotation_mode = rotation_mode_backup
 
         if do_parents_clear:
             blender_object.parent = None

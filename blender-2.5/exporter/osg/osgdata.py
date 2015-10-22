@@ -206,6 +206,7 @@ class Export(object):
         self.lights = {}
         self.root = None
         self.unique_objects = UniqueObject()
+        self.parse_all_actions = False  # if only one object and several actions
 
     def isExcluded(self, blender_object):
         return blender_object.name in self.config.exclude_objects
@@ -256,7 +257,7 @@ class Export(object):
     def isObjectVisible(self, blender_object):
         return blender_object.is_visible(self.config.scene) or not self.config.only_visible
 
-    def createAnimationsObject(self, osg_object, blender_object, config, update_callback, unique_objects):
+    def createAnimationsObject(self, osg_object, blender_object, config, update_callback, unique_objects, parse_all_actions):
         if not config.export_anim:
             return None
 
@@ -265,6 +266,7 @@ class Export(object):
 
         has_action = hasAction(blender_object)
         has_constraints = hasConstraints(blender_object)
+        anims = []
 
         if not has_action or unique_objects.hasAnimation(blender_object.animation_data.action):
             return None
@@ -274,10 +276,18 @@ class Export(object):
                                                        unique_objects=unique_objects,
                                                        has_action=has_action,
                                                        has_constraints=has_constraints)
-        anim = action2animation.createAnimation()
-        if len(anim) > 0 and blender_object.type != 'ARMATURE':
+
+        if parse_all_actions:
+            anims = action2animation.parseAllActions()
+        else:
+            anims.append(action2animation.createAnimation(blender_object.name))
+
+        if len(anims) > 0 and update_callback:
+            if blender_object.type == 'ARMATURE':
+                osg_object.update_callbacks = []
             osg_object.update_callbacks.append(update_callback)
-        return anim
+
+        return anims
 
     def exportChildrenRecursively(self, blender_object, parent, osg_root):
         def parseArmature(blender_armature):
@@ -286,7 +296,8 @@ class Export(object):
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
                                                                       rotation_mode),
-                                                self.unique_objects)
+                                                self.unique_objects,
+                                                self.parse_all_actions)
             return (osg_object, anims)
 
         def parseLight(blender_light):
@@ -299,7 +310,8 @@ class Export(object):
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
                                                                       rotation_mode),
-                                                self.unique_objects)
+                                                self.unique_objects,
+                                                self.parse_all_actions)
             osg_object.children.append(lightItem)
             return (osg_object, anims)
 
@@ -323,7 +335,8 @@ class Export(object):
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
                                                                       rotation_mode),
-                                                self.unique_objects)
+                                                self.unique_objects,
+                                                self.parse_all_actions)
 
             if is_visible:
                 if blender_object.type == "MESH":
@@ -414,6 +427,16 @@ class Export(object):
         return skeleton
 
     def preProcess(self):
+        def lookForAnimatedObjects():
+            scene = self.config.scene
+            nb_animated_objects = 0
+            for obj in scene.objects:
+                if hasAction(obj):
+                    nb_animated_objects += 1
+
+            self.parse_all_actions = nb_animated_objects == 1
+            print(nb_animated_objects)
+
         def checkNameEncoding(elements, label, renamed_count):
             for element in elements:
                 try:
@@ -466,6 +489,7 @@ class Export(object):
 
         make_dupliverts_real(self.config.scene)
         resolveMisencodedNames(self.config.scene)
+        lookForAnimatedObjects()
 
         # restore the user's selection
         unselectAllObjects()
@@ -1723,6 +1747,22 @@ class BlenderAnimationToAnimation(object):
                             return True
         return False
 
+    def parseAllActions(self):
+        anims = []
+        action_backup = self.object.animation_data.action
+        nb_actions = len(bpy.data.actions)
+        actions_dict = dict(bpy.data.actions)
+        actions = {key:actions_dict[key] for key in actions_dict if actions_dict[key].users > 0}
+        for action_key in actions:
+            action = bpy.data.actions[action_key]
+            self.object.animation_data.action = action
+            self.action_name = action.name
+            self.current_action = action
+            anims.append(self.createAnimation())
+        # Restore original action
+        self.object.animation_data.action = action_backup
+        return anims
+
     def createAnimation(self, target=None):
         Log("Exporting animation on object {}".format(self.object.name))
         if self.has_action:
@@ -1744,7 +1784,7 @@ class BlenderAnimationToAnimation(object):
 
         anim = self.createAnimationFromAction(target, self.action_name, self.action)
         self.unique_objects.registerAnimation(self.action, anim)
-        return [anim]
+        return anim
 
     def createAnimationFromAction(self, target, name, action):
         animation = Animation()
