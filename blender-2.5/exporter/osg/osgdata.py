@@ -279,6 +279,77 @@ class Export(object):
         return anim
 
     def exportChildrenRecursively(self, blender_object, parent, osg_root):
+        def parseArmature(blender_armature):
+            osg_object = self.createSkeleton(blender_object)
+            anims = self.createAnimationsObject(osg_object, blender_object, self.config,
+                                                createAnimationUpdate(blender_object,
+                                                                      UpdateMatrixTransform(name=osg_object.name),
+                                                                      blender_object.rotation_mode),
+                                                self.unique_objects)
+            return (osg_object, anims)
+
+        def parseLight(blender_light):
+            matrix = getDeltaMatrixFrom(blender_object.parent, blender_object)
+            osg_object = MatrixTransform()
+            osg_object.setName(blender_object.name)
+            osg_object.matrix = matrix
+            lightItem = self.createLight(blender_object)
+            anims = self.createAnimationsObject(osg_object, blender_object, self.config,
+                                                createAnimationUpdate(blender_object,
+                                                                      UpdateMatrixTransform(name=osg_object.name),
+                                                                      blender_object.rotation_mode),
+                                                self.unique_objects)
+            osg_object.children.append(lightItem)
+            return (osg_object, anims)
+
+        # Mesh, Camera and Empty objects
+        def parseBlenderObject(blender_object, is_visible):
+            # because it blender can insert inverse matrix, we have to recompute the parent child
+            # matrix for our use. Not if an armature we force it to be in rest position to compute
+            # matrix in the good space
+            matrix = getDeltaMatrixFrom(blender_object.parent, blender_object)
+            osg_object = MatrixTransform()
+            osg_object.setName(blender_object.name)
+
+            osg_object.matrix = matrix.copy()
+            if self.config.zero_translations and parent is None:
+                if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 62:
+                    print("zero_translations option has not been converted to blender 2.62")
+                else:
+                    osg_object.matrix[3].xyz = Vector()
+
+            anims = self.createAnimationsObject(osg_object, blender_object, self.config,
+                                                createAnimationUpdate(blender_object,
+                                                                      UpdateMatrixTransform(name=osg_object.name),
+                                                                      blender_object.rotation_mode),
+                                                self.unique_objects)
+
+            if is_visible:
+                if blender_object.type == "MESH":
+                    osg_geode = self.createGeodeFromObject(blender_object)
+                    osg_object.children.append(osg_geode)
+                else:
+                    self.evaluateGroup(blender_object, osg_object, osg_root)
+            return (osg_object, anims)
+
+        def handleBoneChild(blender_object, osg_object):
+            bone = findBoneInHierarchy(osg_root, blender_object.parent_bone)
+            if bone is None:
+                osglog.log("Warning: [[blender]] {} not found".format(blender_object.parent_bone))
+            else:
+                armature = blender_object.parent.data
+                original_pose_position = armature.pose_position
+                armature.pose_position = 'REST'
+
+                boneInWorldSpace = blender_object.parent.matrix_world \
+                    * armature.bones[blender_object.parent_bone].matrix_local
+
+                matrix = getDeltaMatrixFromMatrix(boneInWorldSpace, blender_object.matrix_world)
+                osg_object.matrix = matrix
+                bone.children.append(osg_object)
+
+                armature.pose_position = original_pose_position
+
         # We skip the object if it is in the excluded objects list
         if self.isExcluded(blender_object):
             return None
@@ -297,55 +368,11 @@ class Export(object):
         else:
             osglog.log("Type of {} is {}".format(blender_object.name, blender_object.type))
             if blender_object.type == "ARMATURE":
-                osg_object = self.createSkeleton(blender_object)
-                anims = self.createAnimationsObject(osg_object, blender_object, self.config,
-                                                    createAnimationUpdate(blender_object,
-                                                                          UpdateMatrixTransform(name=osg_object.name),
-                                                                          blender_object.rotation_mode),
-                                                    self.unique_objects)
-
-            elif blender_object.type in ['MESH', 'EMPTY', 'CAMERA']:
-                # because it blender can insert inverse matrix, we have to recompute the parent child
-                # matrix for our use. Not if an armature we force it to be in rest position to compute
-                # matrix in the good space
-                matrix = getDeltaMatrixFrom(blender_object.parent, blender_object)
-                osg_object = MatrixTransform()
-                osg_object.setName(blender_object.name)
-
-                osg_object.matrix = matrix.copy()
-                if self.config.zero_translations and parent is None:
-                    if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 62:
-                        print("zero_translations option has not been converted to blender 2.62")
-                    else:
-                        osg_object.matrix[3].xyz = Vector()
-
-                anims = self.createAnimationsObject(osg_object, blender_object, self.config,
-                                                    createAnimationUpdate(blender_object,
-                                                                          UpdateMatrixTransform(name=osg_object.name),
-                                                                          blender_object.rotation_mode),
-                                                    self.unique_objects)
-
-                if is_visible:
-                    if blender_object.type == "MESH":
-                        osg_geode = self.createGeodeFromObject(blender_object)
-                        osg_object.children.append(osg_geode)
-                    else:
-                        self.evaluateGroup(blender_object, osg_object, osg_root)
-
-
+                osg_object, anims = parseArmature(blender_object)
             elif blender_object.type == "LAMP" and is_visible:
-                matrix = getDeltaMatrixFrom(blender_object.parent, blender_object)
-                osg_object = MatrixTransform()
-                osg_object.setName(blender_object.name)
-                osg_object.matrix = matrix
-                lightItem = self.createLight(blender_object)
-                anims = self.createAnimationsObject(osg_object, blender_object, self.config,
-                                               createAnimationUpdate(blender_object,
-                                                                     UpdateMatrixTransform(name=osg_object.name),
-                                                                     blender_object.rotation_mode),
-                                               self.unique_objects)
-                osg_object.children.append(lightItem)
-
+                osg_object, anims = parseLight(blender_object)
+            elif blender_object.type in ['MESH', 'EMPTY', 'CAMERA']:
+                osg_object, anims = parseBlenderObject(blender_object, is_visible)
             else:
                 osglog.log("Warning: [[blender]] The object {} (type {}) was not exported"
                            .format(blender_object.name, blender_object.type))
@@ -359,24 +386,9 @@ class Export(object):
         if osg_root is None:
             osg_root = osg_object
 
+        # Handle parenting
         if blender_object.parent_type == "BONE":
-            bone = findBoneInHierarchy(osg_root, blender_object.parent_bone)
-            if bone is None:
-                osglog.log("Warning: [[blender]] {} not found".format(blender_object.parent_bone))
-            else:
-                armature = blender_object.parent.data
-                original_pose_position = armature.pose_position
-                armature.pose_position = 'REST'
-
-                boneInWorldSpace = blender_object.parent.matrix_world \
-                    * armature.bones[blender_object.parent_bone].matrix_local
-
-                matrix = getDeltaMatrixFromMatrix(boneInWorldSpace, blender_object.matrix_world)
-                osg_object.matrix = matrix
-                bone.children.append(osg_object)
-
-                armature.pose_position = original_pose_position
-
+            handleBoneChild(blender_object, osg_object)
         elif parent:
             parent.children.append(osg_object)
 
