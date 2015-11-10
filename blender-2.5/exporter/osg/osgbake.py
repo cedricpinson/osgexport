@@ -253,22 +253,33 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
     if has_action:
         original_action = blender_object.animation_data.action
 
+    # Set armature to POSE mode before baking
+    if blender_object.type == 'ARMATURE':
+        backup_pose_position = blender_object.data.pose_position
+        blender_object.data.pose_position = 'POSE'
+
+    do_visual_keying = True # Always, need to take bone constraints  into account
+
     # Baking is done on the active object
     baked_action = bakeAction(blender_object,
                               start,
                               end,
                               frame_step,
                               do_clean=True,  # clean keyframes
-                              do_constraint_clear=False,  # remove constraints from object
-                              do_parents_clear=False,  # don't unparent object
+                              do_constraint_clear=False,
+                              do_parents_clear=False,
                               do_object=True,  # bake solid animation
                               do_pose=True,  # bake skeletal animation
-                              use_quaternions=use_quaternions,
+                              use_quaternions=use_quaternions, #use_quaternions,
                               # visual keying bakes in worldspace, but here we want it local since we keep parenting
-                              do_visual_keying=False)
+                              do_visual_keying=do_visual_keying)
 
     # restore original action and rotation_mode
     if original_action:
         blender_object.animation_data.action = original_action
 
+    if blender_object.type == 'ARMATURE':
+        blender_object.data.pose_position = backup_pose_position
+
     return baked_action
+

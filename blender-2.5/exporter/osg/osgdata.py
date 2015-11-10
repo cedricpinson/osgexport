@@ -265,7 +265,7 @@ class Export(object):
         if blender_object.type != 'ARMATURE' and not update_callback:
             return None
 
-        has_action = hasAction(blender_object)
+        has_action = blender_object.animation_data and hasAction(blender_object)
         has_constraints = hasConstraints(blender_object)
 
         if not has_action or unique_objects.hasAnimation(blender_object.animation_data.action):
