@@ -248,17 +248,16 @@ def bakeAction(blender_object,
 
 
 # take care of restoring selection after
-def bakeAnimation(scene, frame_step, blender_object, has_action=False, use_quaternions=False):
+def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=False, use_quaternions=False):
     # baking will replace the current action but we want to keep scene unchanged
     if has_action:
         original_action = blender_object.animation_data.action
 
     # Baking is done on the active object
     baked_action = bakeAction(blender_object,
-                              scene.frame_start,
-                              scene.frame_end,
+                              start,
+                              end,
                               frame_step,
-                              blender_object,
                               do_clean=True,  # clean keyframes
                               do_constraint_clear=False,  # remove constraints from object
                               do_parents_clear=False,  # don't unparent object

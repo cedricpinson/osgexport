@@ -147,16 +147,16 @@ class UniqueObject(object):
         self.objects = {}
         self.anims = {}
 
-    def hasAnimation(self, obj):
-        return obj in self.anims
+    def hasAnimation(self, action):
+        return any([action in self.anims[key] for key in self.anims])
 
-    def getAnimation(self, obj):
-        if self.hasAnimation(obj):
-            return self.anims[obj]
-        return None
+    def getAnimation(self, action):
+        for anim in self.anims:
+            if action in self.anims[anim]:
+                return action
 
-    def registerAnimation(self, obj, reg):
-        self.anims[obj] = reg
+    def registerAnimation(self, animation, action):
+        self.anims.setdefault(animation, []).append(action)
 
     def hasObject(self, obj):
         return obj in self.objects
@@ -202,6 +202,7 @@ class Export(object):
             self.config.defaultattr('scene', bpy.context.scene)
         self.rest_armatures = []
         self.animations = []
+        self.current_animation = None
         self.images = set()
         self.lights = {}
         self.root = None
@@ -257,7 +258,7 @@ class Export(object):
     def isObjectVisible(self, blender_object):
         return blender_object.is_visible(self.config.scene) or not self.config.only_visible
 
-    def createAnimationsObject(self, osg_object, blender_object, config, update_callback, unique_objects, parse_all_actions):
+    def createAnimationsObject(self, osg_object, blender_object, config, update_callback, unique_objects, parse_all_actions=False):
         if not config.export_anim:
             return None
 
@@ -266,9 +267,11 @@ class Export(object):
 
         has_action = hasAction(blender_object)
         has_constraints = hasConstraints(blender_object)
-        anims = []
 
         if not has_action or unique_objects.hasAnimation(blender_object.animation_data.action):
+            return None
+
+        if parse_all_actions and not has_action:
             return None
 
         action2animation = BlenderAnimationToAnimation(object=blender_object,
@@ -278,16 +281,21 @@ class Export(object):
                                                        has_constraints=has_constraints)
 
         if parse_all_actions:
-            anims = action2animation.parseAllActions()
+            self.animations = action2animation.parseAllActions()
         else:
-            anims.append(action2animation.createAnimation(blender_object.name))
+            # must have only one animation here
+            if not self.current_animation:
+                self.current_animation = Animation()
+                self.current_animation.setName('Take 01')
+                self.animations.append(self.current_animation)
 
-        if len(anims) > 0 and update_callback:
+            action2animation.handleAnimationBaking()
+            action2animation.addActionDataToAnimation(self.current_animation)
+
+        if update_callback:
             if blender_object.type == 'ARMATURE':
                 osg_object.update_callbacks = []
             osg_object.update_callbacks.append(update_callback)
-
-        return anims
 
     def exportChildrenRecursively(self, blender_object, parent, osg_root):
         def parseArmature(blender_armature):
@@ -298,7 +306,7 @@ class Export(object):
                                                                       rotation_mode),
                                                 self.unique_objects,
                                                 self.parse_all_actions)
-            return (osg_object, anims)
+            return osg_object
 
         def parseLight(blender_light):
             matrix = getDeltaMatrixFrom(blender_object.parent, blender_object)
@@ -313,7 +321,7 @@ class Export(object):
                                                 self.unique_objects,
                                                 self.parse_all_actions)
             osg_object.children.append(lightItem)
-            return (osg_object, anims)
+            return osg_object
 
         # Mesh, Camera and Empty objects
         def parseBlenderObject(blender_object, is_visible):
@@ -344,7 +352,7 @@ class Export(object):
                     osg_object.children.append(osg_geode)
                 else:
                     self.evaluateGroup(blender_object, osg_object, osg_root)
-            return (osg_object, anims)
+            return osg_object
 
         def handleBoneChild(blender_object, osg_object):
             bone = findBoneInHierarchy(osg_root, blender_object.parent_bone)
@@ -383,20 +391,17 @@ class Export(object):
         else:
             Log("Parsing object '{}' of type {}".format(blender_object.name, blender_object.type))
             if blender_object.type == "ARMATURE":
-                osg_object, anims = parseArmature(blender_object)
+                osg_object = parseArmature(blender_object)
             elif blender_object.type == "LAMP" and is_visible:
-                osg_object, anims = parseLight(blender_object)
+                osg_object = parseLight(blender_object)
             elif blender_object.type in ['MESH', 'EMPTY', 'CAMERA']:
-                osg_object, anims = parseBlenderObject(blender_object, is_visible)
+                osg_object = parseBlenderObject(blender_object, is_visible)
             else:
                 Log("Warning: [[blender]] Skipping object {} (objects {} are not exported)"
                     .format(blender_object.name, blender_object.type))
                 return None
 
             self.unique_objects.registerObject(blender_object, osg_object)
-
-        if anims is not None:
-            self.animations += [a for a in anims if a is not None]
 
         if osg_root is None:
             osg_root = osg_object
@@ -1730,10 +1735,18 @@ class BlenderAnimationToAnimation(object):
         self.object = kwargs.get("object", None)
         self.unique_objects = kwargs.get("unique_objects", UniqueObject())
         self.animations = None
-        self.action = None
+        self.current_action = None
         self.action_name = None
         self.has_action = kwargs.get("has_action", False)
         self.has_constraints = kwargs.get("has_constraints", False)
+        if self.object:
+            self.target = self.object.name
+        else:
+            Log("Warning: animation with no target")
+            self.target = 'unknown target'
+
+        if self.has_action:
+            self.action_name = self.object.animation_data.action.name
 
     def needBake(self, blender_object):
         if self.has_constraints and self.config.bake_constraints:
@@ -1741,14 +1754,46 @@ class BlenderAnimationToAnimation(object):
             return True
         else:
             if self.has_action:
-                for fcu in self.action.fcurves:
+                for fcu in self.current_action.fcurves:
                     for kf in fcu.keyframe_points:
                         if kf.interpolation != 'LINEAR':
                             return True
         return False
 
+    def handleAnimationBaking(self, is_multi_animation=False):
+        Log("Exporting animation on object {}".format(self.object.name))
+        if self.has_action and not self.current_action:
+            self.current_action = self.object.animation_data.action
+
+        if self.config.bake_animations or self.needBake(self.object):
+            # all scene actions will be baked and merged together into a single
+            # osg animation, so define start and end frames with the wider duration
+            start = self.config.scene.frame_start
+            end = self.config.scene.frame_end
+
+            if is_multi_animation:
+                # Bake animation using current action frame_range
+                start, end = self.object.animation_data.action.frame_range
+            else:
+                # Bake using widest time range to have short animations looping
+                start, end = getWidestActionDuration(self.config.scene)
+
+            print('BAKING animation for action')
+            self.current_action = osgbake.bakeAnimation(self.config.scene,
+                                                        int(start),
+                                                        int(end),
+                                                        self.config.bake_frame_step,
+                                                        self.object,
+                                                        use_quaternions=self.config.use_quaternions,
+                                                        has_action=self.has_action)
+
+        self.action_name = self.object.animation_data.action.name if self.has_action else 'Action_baked'
+
     def parseAllActions(self):
         anims = []
+        if not self.has_action:
+            Log("Warning: osgdata::parseAllActions object has no action")
+            return anims
         action_backup = self.object.animation_data.action
         nb_actions = len(bpy.data.actions)
         actions_dict = dict(bpy.data.actions)
@@ -1756,48 +1801,41 @@ class BlenderAnimationToAnimation(object):
         for action_key in actions:
             action = bpy.data.actions[action_key]
             self.object.animation_data.action = action
-            self.action_name = action.name
             self.current_action = action
-            anims.append(self.createAnimation())
+            self.handleAnimationBaking(is_multi_animation=True)
+            anim = self.createAnimationFromAction(self.current_action)
+            self.unique_objects.registerAnimation(anim, self.current_action)
+            anims.append(anim)
         # Restore original action
         self.object.animation_data.action = action_backup
         return anims
 
-    def createAnimation(self, target=None):
-        Log("Exporting animation on object {}".format(self.object.name))
-        if self.has_action:
-            self.action_name = self.object.animation_data.action.name
-            self.action = self.object.animation_data.action
-
-        # Bake animation if needed
-        if self.config.bake_animations or self.needBake(self.object):
-            Log("Baking animation for object {}".format(self.object.name))
-            self.action = osgbake.bakeAnimation(self.config.scene,
-                                                self.config.bake_frame_step,
-                                                self.object,
-                                                has_action=self.has_action,
-                                                use_quaternions=self.config.use_quaternions)
-            self.action_name = self.action.name
-
-        if target is None:
-            target = self.object.name
-
-        anim = self.createAnimationFromAction(target, self.action_name, self.action)
-        self.unique_objects.registerAnimation(self.action, anim)
-        return anim
-
-    def createAnimationFromAction(self, target, name, action):
-        animation = Animation()
-        animation.setName(name)
+    def addActionDataToAnimation(self, animation):
+        print('adding data from action {} to animation {}'.format(self.action_name, animation))
         if self.object.type == "ARMATURE":
             for bone in self.object.data.bones:
                 bname = bone.name
-                Log("{} processing channels for bone {}".format(name, bname))
+                Log("{} processing channels for bone {}".format(self.action_name, bname))
+                self.appendChannelsToAnimation(bname, animation, self.current_action, prefix=('pose.bones["{}"].'.format(bname)))
+            # Append channels for armature solid animation
+            self.appendChannelsToAnimation(self.object.name, animation, self.current_action)
+        else:
+            self.appendChannelsToAnimation(self.target, animation, self.current_action)
+
+        return animation
+
+    def createAnimationFromAction(self, action):
+        animation = Animation()
+        animation.setName(self.action_name)
+        if self.object.type == "ARMATURE":
+            for bone in self.object.data.bones:
+                bname = bone.name
+                Log("{} processing channels for bone {}".format(self.action_name, bname))
                 self.appendChannelsToAnimation(bname, animation, action, prefix=('pose.bones["{}"].'.format(bname)))
             # Append channels for armature solid animation
             self.appendChannelsToAnimation(self.object.name, animation, action)
         else:
-            self.appendChannelsToAnimation(target, animation, action)
+            self.appendChannelsToAnimation(self.target, animation, action)
         return animation
 
     def appendChannelsToAnimation(self, target, anim, action, prefix=""):

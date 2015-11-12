@@ -110,6 +110,17 @@ def getDeltaMatrixFrom(parent, child):
                                     child.matrix_world)
 
 
+def getWidestActionDuration(scene):
+    start = min([obj.animation_data.action.frame_range[0] for obj in scene.objects if hasAction(obj)])
+    end = max([obj.animation_data.action.frame_range[1] for obj in scene.objects if hasAction(obj)])
+
+    # If scene frame range is wider, use it
+    start = min(scene.frame_start, start)
+    end = max(scene.frame_end, end)
+
+    return (start, end)
+
+
 def hasConstraints(blender_object):
         return hasattr(blender_object, "constraints") and (len(blender_object.constraints) > 0)
 
