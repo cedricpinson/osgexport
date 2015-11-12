@@ -1754,6 +1754,8 @@ class BlenderAnimationToAnimation(object):
                 bname = bone.name
                 Log("{} processing channels for bone {}".format(name, bname))
                 self.appendChannelsToAnimation(bname, animation, action, prefix=('pose.bones["{}"].'.format(bname)))
+            # Append channels for armature solid animation
+            self.appendChannelsToAnimation(self.object.name, animation, action)
         else:
             self.appendChannelsToAnimation(target, animation, action)
         return animation
