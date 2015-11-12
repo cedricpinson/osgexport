@@ -452,23 +452,23 @@ class Export(object):
             # Select all objects that use dupli_vertex mode
             selectObjects([obj for obj in scene.objects if obj.dupli_type == 'VERTS' and obj.children])
 
-        # Duplicate all instances into real objects
-        if bpy.context.selected_objects:
-            bpy.ops.object.duplicates_make_real(use_base_parent=True, use_hierarchy=True)
-            print('Warning: [[blender]] Some instances (duplication at vertex) were duplicated as real objects')
-            # Clear selection
-            unselectAllObjects()
+            # Duplicate all instances into real objects
+            if bpy.context.selected_objects:
+                bpy.ops.object.duplicates_make_real(use_base_parent=True, use_hierarchy=True)
+                print('Warning: [[blender]] Some instances (duplication at vertex) were duplicated as real objects')
+                # Clear selection
+                unselectAllObjects()
 
-            # The following process may alter object selection, so
-            # we need to save it
-            backup_selection = bpy.context.selected_objects
+        # The following process may alter object selection, so
+        # we need to save it
+        backup_selection = bpy.context.selected_objects
 
-            make_dupliverts_real(self.config.scene)
-            resolveMisencodedNames(self.config.scene)
+        make_dupliverts_real(self.config.scene)
+        resolveMisencodedNames(self.config.scene)
 
-            # restore the user's selection
-            unselectAllObjects()
-            selectObjects(backup_selection)
+        # restore the user's selection
+        unselectAllObjects()
+        selectObjects(backup_selection)
 
     def process(self):
         self.preProcess()
@@ -1729,18 +1729,9 @@ class BlenderAnimationToAnimation(object):
             self.action_name = self.object.animation_data.action.name
 
         # Bake animation if needed
-        if self.needBake(self.object):
-            self.action = osgbake.bake(self.config.scene,
-                                       self.object,
-                                       self.config.scene.frame_start,
-                                       self.config.scene.frame_end,
-                                       self.config.bake_frame_step,
-                                       False,  # only_selected
-                                       True,   # do_pose
-                                       True,   # do_object
-                                       False,  # do_constraint_clear
-                                       False)  # to_quat
-
+        if self.config.bake_animations or self.needBake(self.object):
+            Log("Baking animation for object {}".format(self.object.name))
+            self.action = osgbake.bakeAnimation(self.config.scene, self.config.bake_frame_step, self.object, has_action=self.has_action)
             self.action_name = self.action.name
 
         if target is None:

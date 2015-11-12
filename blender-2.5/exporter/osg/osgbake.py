@@ -17,260 +17,241 @@
 # ##### END GPL LICENSE BLOCK #####
 
 # <pep8-80 compliant>
-
 import bpy
 
 
-def pose_frame_info(obj):
-    info = {}
-    for name, pbone in obj.pose.bones.items():
-        info[name] = pbone.matrix_basis.copy()
-    return info
+# This function comes from bpy_extras.anim_utils and has been
+# added here to allow more control on baking process
+def bakeAction(blender_object,
+               frame_start,
+               frame_end,
+               frame_step=1,
+               only_selected=False,
+               do_pose=True,
+               do_object=True,
+               do_visual_keying=True,
+               do_constraint_clear=False,
+               do_parents_clear=False,
+               do_clean=False,
+               action=None,
+               ):
 
+    """
+    Return an image from the file path with options to search multiple paths
+    and return a placeholder if its not found.
 
-def obj_frame_info(obj):
-    return obj.matrix_local.copy()
+    :arg frame_start: First frame to bake.
+    :type frame_start: int
+    :arg frame_end: Last frame to bake.
+    :type frame_end: int
+    :arg frame_step: Frame step.
+    :type frame_step: int
+    :arg only_selected: Only bake selected data.
+    :type only_selected: bool
+    :arg do_pose: Bake pose channels.
+    :type do_pose: bool
+    :arg do_object: Bake objects.
+    :type do_object: bool
+    :arg do_visual_keying: Use the final transformations for baking ('visual keying')
+    :type do_visual_keying: bool
+    :arg do_constraint_clear: Remove constraints after baking.
+    :type do_constraint_clear: bool
+    :arg do_parents_clear: Unparent after baking objects.
+    :type do_parents_clear: bool
+    :arg do_clean: Remove redundant keyframes after baking.
+    :type do_clean: bool
+    :arg action: An action to bake the data into, or None for a new action
+       to be created.
+    :type action: :class:`bpy.types.Action` or None
 
+    :return: an action or None
+    :rtype: :class:`bpy.types.Action`
+    """
 
-def bakedTransforms(scene, obj, frame_start, frame_end, step=1, do_pose=True, do_object=True):
+    # -------------------------------------------------------------------------
+    # Helper Functions and vars
+
+    def poseFrameInfo(blender_object, do_visual_keying):
+        matrix = {}
+        for name, pbone in blender_object.pose.bones.items():
+            if do_visual_keying:
+                # Get the final transform of the bone in its own local space...
+                matrix[name] = blender_object.convert_space(pbone, pbone.matrix, 'POSE', 'LOCAL')
+            else:
+                matrix[name] = pbone.matrix_basis.copy()
+        return matrix
+
+    if do_parents_clear:
+        def objFrameInfo(blender_object, do_visual_keying):
+            parent = blender_object.parent
+            matrix = blender_object.matrix_local if do_visual_keying else blender_object.matrix_local
+            if parent:
+                return parent.matrix_world * matrix
+            else:
+                return matrix.copy()
+    else:
+        def objFrameInfo(blender_object, do_visual_keying):
+            return blender_object.matrix_local.copy() if do_visual_keying else blender_object.matrix_basis.copy()
+
+    # -------------------------------------------------------------------------
+    # Setup the Context
+
+    # TODO, pass data rather then grabbing from the context!
+    scene = bpy.context.scene
     frame_back = scene.frame_current
+
+    if blender_object.pose is None:
+        do_pose = False
+
+    if not (do_pose or do_object):
+        return None
 
     pose_info = []
     obj_info = []
 
-    frame_range = range(frame_start, frame_end + 1, step)
+    options = {'INSERTKEY_NEEDED'}
 
-    if obj.type == "ARMATURE":
-        obj.data.pose_position = 'POSE'
+    frame_range = range(frame_start, frame_end + 1, frame_step)
 
     # -------------------------------------------------------------------------
     # Collect transformations
 
-    # could speed this up by applying steps here too...
     for f in frame_range:
         scene.frame_set(f)
-
+        scene.update()
         if do_pose:
-            pose_info.append(pose_frame_info(obj))
+            pose_info.append(poseFrameInfo(blender_object, do_visual_keying))
         if do_object:
-            obj_info.append(obj_frame_info(obj))
-
-    scene.frame_set(frame_back)
-
-    if obj.type == "ARMATURE":
-        obj.data.pose_position = 'REST'
-
-    return (frame_range, obj_info, pose_info)
-
-
-def action_fcurve_ensure(action, data_path, array_index):
-    for fcu in action.fcurves:
-        if fcu.data_path == data_path and fcu.array_index == array_index:
-            return fcu
-
-    return action.fcurves.new(data_path=data_path, index=array_index)
-
-
-def make_fcurves(action, rotation_mode, prefix=""):
-    fc = {}
-    fc["location_x"] = action.fcurves.new(prefix + "location", 0, "Location")
-    fc["location_y"] = action.fcurves.new(prefix + "location", 1, "Location")
-    fc["location_z"] = action.fcurves.new(prefix + "location", 2, "Location")
-
-    if rotation_mode == 'QUATERNION':
-        fc["rot_w"] = action.fcurves.new(prefix + "rotation_quaternion", 0, "Rotation")
-        fc["rot_x"] = action.fcurves.new(prefix + "rotation_quaternion", 1, "Rotation")
-        fc["rot_y"] = action.fcurves.new(prefix + "rotation_quaternion", 2, "Rotation")
-        fc["rot_z"] = action.fcurves.new(prefix + "rotation_quaternion", 3, "Rotation")
-    elif rotation_mode == 'AXIS_ANGLE':
-        fc["rot_w"] = action.fcurves.new(prefix + "rotation_axis_angle", 0, "Rotation")
-        fc["rot_x"] = action.fcurves.new(prefix + "rotation_axis_angle", 1, "Rotation")
-        fc["rot_y"] = action.fcurves.new(prefix + "rotation_axis_angle", 2, "Rotation")
-        fc["rot_z"] = action.fcurves.new(prefix + "rotation_axis_angle", 3, "Rotation")
-    else:  # euler, XYZ, ZXY etc
-        fc["rot_x"] = action.fcurves.new(prefix + "rotation_euler", 0, "Rotation")
-        fc["rot_y"] = action.fcurves.new(prefix + "rotation_euler", 1, "Rotation")
-        fc["rot_z"] = action.fcurves.new(prefix + "rotation_euler", 2, "Rotation")
-
-    fc["scale_x"] = action.fcurves.new(prefix + "scale", 0, "Scale")
-    fc["scale_y"] = action.fcurves.new(prefix + "scale", 1, "Scale")
-    fc["scale_z"] = action.fcurves.new(prefix + "scale", 2, "Scale")
-
-    return fc
-
-
-def set_keys(fc, f, matrix, rotation_mode):
-    opt = {'NEEDED'}
-    trans = matrix.to_translation()
-    fc["location_x"].keyframe_points.insert(f, trans[0], opt)
-    fc["location_y"].keyframe_points.insert(f, trans[1], opt)
-    fc["location_z"].keyframe_points.insert(f, trans[2], opt)
-
-    if rotation_mode == 'QUATERNION':
-        quat = matrix.to_quaternion()
-        fc["rot_w"].keyframe_points.insert(f, quat[0], opt)
-        fc["rot_x"].keyframe_points.insert(f, quat[1], opt)
-        fc["rot_y"].keyframe_points.insert(f, quat[2], opt)
-        fc["rot_z"].keyframe_points.insert(f, quat[3], opt)
-    elif rotation_mode == 'AXIS_ANGLE':
-        aa = matrix.to_quaternion().to_axis_angle()
-        fc["rot_w"].keyframe_points.insert(f, aa[0], opt)
-        fc["rot_x"].keyframe_points.insert(f, aa[1], opt)
-        fc["rot_y"].keyframe_points.insert(f, aa[2], opt)
-        fc["rot_z"].keyframe_points.insert(f, aa[3], opt)
-    else:  # euler, XYZ, ZXY etc
-        eu = matrix.to_euler(rotation_mode)
-        fc["rot_x"].keyframe_points.insert(f, eu[0], opt)
-        fc["rot_y"].keyframe_points.insert(f, eu[1], opt)
-        fc["rot_z"].keyframe_points.insert(f, eu[2], opt)
-
-    sc = matrix.to_scale()
-    fc["scale_x"].keyframe_points.insert(f, sc[0], opt)
-    fc["scale_y"].keyframe_points.insert(f, sc[1], opt)
-    fc["scale_z"].keyframe_points.insert(f, sc[2], opt)
-
-
-def bake(scene, obj, frame_start, frame_end, step=1,
-         only_selected=False, do_pose=True, do_object=True,
-         do_constraint_clear=False, to_quat=False):
-
-    pose = obj.pose
-
-    if pose is None:
-        do_pose = False
-
-    if do_pose is None and do_object is None:
-        return None
-
-    if to_quat:
-        print("Change rotation to QUATERNION")
-        obj.rotation_mode = 'QUATERNION'
-        print("rotation " + obj.rotation_mode)
-
-    # -------------------------------------------------------------------------
-    # Collect transformations
-    (frame_range, obj_info, pose_info) = bakedTransforms(scene, obj, frame_start, frame_end, step, do_pose, do_object)
+            obj_info.append(objFrameInfo(blender_object, do_visual_keying))
 
     # -------------------------------------------------------------------------
     # Create action
-    action = bpy.data.actions.new("Action")
 
-    if do_pose:
-        pose_items = pose.bones.items()
-    else:
-        pose_items = []  # skip
+    # in case animation data hasn't been created
+    atd = blender_object.animation_data_create()
+    if action is None:
+        action = bpy.data.actions.new("BakedAction")
+    atd.action = action
 
     # -------------------------------------------------------------------------
     # Apply transformations to action
-    frame_back = scene.frame_current
 
     # pose
-    for name, pbone in (pose_items if do_pose else ()):
-        if only_selected and not pbone.bone.select:
-            continue
+    if do_pose:
+        for name, pbone in blender_object.pose.bones.items():
+            if only_selected and not pbone.bone.select:
+                continue
 
-        if do_constraint_clear:
-            while pbone.constraints:
-                pbone.constraints.remove(pbone.constraints[0])
+            if do_constraint_clear:
+                while pbone.constraints:
+                    pbone.constraints.remove(pbone.constraints[0])
 
-        fc = make_fcurves(action, pbone.rotation_mode, "pose.bones[\"%s\"]." % (pbone.name))
+            # create compatible eulers
+            euler_prev = None
 
-        for f in frame_range:
-            matrix = pose_info[(f - frame_start) // step][name]
-            set_keys(fc, f, matrix, pbone.rotation_mode)
+            for (f, matrix) in zip(frame_range, pose_info):
+                pbone.matrix_basis = matrix[name].copy()
 
-            # pbone.location = matrix.to_translation()
-            # pbone.rotation_quaternion = matrix.to_quaternion()
-            # pbone.matrix_basis = matrix
-            #
-            # pbone.keyframe_insert("location", -1, f, name)
-            #
-            # rotation_mode = pbone.rotation_mode
-            #
-            # if rotation_mode == 'QUATERNION':
-            #     pbone.keyframe_insert("rotation_quaternion", -1, f, name)
-            # elif rotation_mode == 'AXIS_ANGLE':
-            #     pbone.keyframe_insert("rotation_axis_angle", -1, f, name)
-            # else:  # euler, XYZ, ZXY etc
-            #     pbone.keyframe_insert("rotation_euler", -1, f, name)
-            #
-            # pbone.keyframe_insert("scale", -1, f, name)
+                pbone.keyframe_insert("location", -1, f, name, options)
 
-    # object.
+                rotation_mode = pbone.rotation_mode
+                if rotation_mode == 'QUATERNION':
+                    pbone.keyframe_insert("rotation_quaternion", -1, f, name, options)
+                elif rotation_mode == 'AXIS_ANGLE':
+                    pbone.keyframe_insert("rotation_axis_angle", -1, f, name, options)
+                else:  # euler, XYZ, ZXY etc
+                    if euler_prev is not None:
+                        euler = pbone.rotation_euler.copy()
+                        euler.make_compatible(euler_prev)
+                        pbone.rotation_euler = euler
+                        euler_prev = euler
+                        del euler
+                    else:
+                        euler_prev = pbone.rotation_euler.copy()
+                    pbone.keyframe_insert("rotation_euler", -1, f, name, options)
+
+                pbone.keyframe_insert("scale", -1, f, name, options)
+
+    # object. TODO. multiple objects
     if do_object:
         if do_constraint_clear:
-            while obj.constraints:
-                obj.constraints.remove(obj.constraints[0])
+            while blender_object.constraints:
+                blender_object.constraints.remove(blender_object.constraints[0])
 
-        fc = make_fcurves(action, obj.rotation_mode)
+        # create compatible eulers
+        euler_prev = None
 
-        for f in frame_range:
-            matrix = obj_info[(f - frame_start) // step]
-            set_keys(fc, f, matrix, obj.rotation_mode)
+        for (f, matrix) in zip(frame_range, obj_info):
+            name = "Action Bake"  # XXX: placeholder
+            blender_object.matrix_basis = matrix
 
-    # Eliminate duplicate keyframe entries.
-    for fcu in action.fcurves:
-        keyframe_points = fcu.keyframe_points
-        i = 1
-        while i < len(fcu.keyframe_points) - 1:
-            val_prev = keyframe_points[i - 1].co[1]
-            val_next = keyframe_points[i + 1].co[1]
-            val = keyframe_points[i].co[1]
+            blender_object.keyframe_insert("location", -1, f, name, options)
 
-            if abs(val - val_prev) + abs(val - val_next) < 0.0001:
-                keyframe_points.remove(keyframe_points[i])
-            else:
-                i += 1
+            rotation_mode = blender_object.rotation_mode
+            if rotation_mode == 'QUATERNION':
+                blender_object.keyframe_insert("rotation_quaternion", -1, f, name, options)
+            elif rotation_mode == 'AXIS_ANGLE':
+                blender_object.keyframe_insert("rotation_axis_angle", -1, f, name, options)
+            else:  # euler, XYZ, ZXY etc
+                if euler_prev is not None:
+                    euler = blender_object.rotation_euler.copy()
+                    euler.make_compatible(euler_prev)
+                    blender_object.rotation_euler = euler
+                    euler_prev = euler
+                    del euler
+                else:
+                    euler_prev = blender_object.rotation_euler.copy()
+                blender_object.keyframe_insert("rotation_euler", -1, f, name, options)
+
+            blender_object.keyframe_insert("scale", -1, f, name, options)
+
+        if do_parents_clear:
+            blender_object.parent = None
+
+    # -------------------------------------------------------------------------
+    # Clean
+
+    if do_clean:
+        for fcu in action.fcurves:
+            keyframe_points = fcu.keyframe_points
+            i = 1
+            while i < len(fcu.keyframe_points) - 1:
+                val_prev = keyframe_points[i - 1].co[1]
+                val_next = keyframe_points[i + 1].co[1]
+                val = keyframe_points[i].co[1]
+
+                if abs(val - val_prev) + abs(val - val_next) < 0.0001:
+                    keyframe_points.remove(keyframe_points[i])
+                else:
+                    i += 1
 
     scene.frame_set(frame_back)
 
     return action
 
 
-from bpy.props import IntProperty, BoolProperty, EnumProperty
+# take care of restoring selection after
+def bakeAnimation(scene, frame_step, blender_object, has_action=False):
+    # baking will replace the current action but we want to keep scene unchanged
+    if has_action:
+        original_action = blender_object.animation_data.action
 
+    # Baking is done on the active object
+    baked_action = bakeAction(blender_object,
+                              scene.frame_start,
+                              scene.frame_end,
+                              frame_step,
+                              blender_object,
+                              do_clean=True,  # clean keyframes
+                              do_constraint_clear=False,  # remove constraints from object
+                              do_parents_clear=False,  # don't unparent object
+                              do_object=True,  # bake solid animation
+                              do_pose=True,  # bake skeletal animation
+                              # visual keying bakes in worldspace, but here we want it local since we keep parenting
+                              do_visual_keying=False)
 
-class BakeAction(bpy.types.Operator):
-    '''Bake animation to an Action'''
-    bl_idname = "osg.bake"
-    bl_label = "Bake Action"
-    bl_options = {'REGISTER', 'UNDO'}
+    # restore original action
+    if original_action:
+        blender_object.animation_data.action = original_action
 
-    frame_start = IntProperty(name="Start Frame", description="Start frame for baking", min=0, max=300000, default=1)
-    frame_end = IntProperty(name="End Frame", description="End frame for baking", min=1, max=300000, default=250)
-    step = IntProperty(name="Frame Step", description="Frame Step", min=1, max=120, default=1)
-    only_selected = BoolProperty(name="Only Selected", default=True)
-    clear_consraints = BoolProperty(name="Clear Constraints", default=True)
-    bake_types = EnumProperty(name="Bake Data",
-                              options={'ENUM_FLAG'},
-                              items=(('POSE', "Pose", ""),
-                                     ('OBJECT', "Object", "")),
-                              default={'POSE', 'OBJECT'})
-    to_quat = BoolProperty(name="To Quaternion", default=False)
-
-    def execute(self, context):
-        action = bake(bpy.context.scene,
-                      bpy.context.object,
-                      self.frame_start,
-                      self.frame_end,
-                      self.step,
-                      self.only_selected,
-                      'POSE' in self.bake_types,
-                      'OBJECT' in self.bake_types,
-                      self.clear_consraints,
-                      self.to_quat)
-
-        if action is None:
-            self.report({'INFO'}, "Nothing to bake")
-            return {'CANCELLED'}
-
-        atd = bpy.context.object.animation_data_create()
-        atd.action = action
-
-        return {'FINISHED'}
-
-    def invoke(self, context, event):
-        wm = context.window_manager
-        return wm.invoke_props_dialog(self)
-
-bpy.utils.register_class(BakeAction)
+    return baked_action
