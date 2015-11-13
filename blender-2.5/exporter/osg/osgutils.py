@@ -130,6 +130,11 @@ def hasAction(blender_object):
            hasattr(blender_object.animation_data, "action") and \
            blender_object.animation_data.action is not None
 
+def hasNLATracks(blender_object):
+    return hasattr(blender_object, "animation_data") and \
+           hasattr(blender_object.animation_data, "nla_tracks") and \
+           blender_object.animation_data.nla_tracks
+
 
 # OBJECTS HELPERS
 # ------------------------------
