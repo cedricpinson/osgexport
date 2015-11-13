@@ -198,6 +198,9 @@ def bakeAction(blender_object,
         for (f, matrix) in zip(frame_range, obj_info):
             name = "Action Bake"  # XXX: placeholder
             blender_object.matrix_basis = matrix
+            # visual keying is enabled so set parent to identity
+            if do_visual_keying:
+                blender_object.matrix_parent_inverse.identity()
 
             blender_object.keyframe_insert("location", -1, f, name, options)
 
@@ -275,7 +278,7 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
                               do_visual_keying=do_visual_keying)
 
     # restore original action and rotation_mode
-    if original_action:
+    if has_action:
         blender_object.animation_data.action = original_action
 
     if blender_object.type == 'ARMATURE':
