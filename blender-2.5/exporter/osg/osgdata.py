@@ -204,12 +204,23 @@ class Export(object):
             self.config.defaultattr('scene', bpy.context.scene)
         self.rest_armatures = []
         self.animations = []
+        self.baked_actions = []
         self.current_animation = None
         self.images = set()
         self.lights = {}
         self.root = None
         self.unique_objects = UniqueObject()
         self.parse_all_actions = False  # if only one object and several actions
+
+    def clean_generated_actions(self):
+        for action in self.baked_actions:
+            if action.users != 0:
+                Log('Warning: The exporter generated actions that are still attached to objects. Cleaning users')
+                action.user_clear()
+            try:
+                bpy.data.actions.remove(action)
+            except:
+                Log('Can''t remove generated action')
 
     def isExcluded(self, blender_object):
         return blender_object.name in self.config.exclude_objects
@@ -297,6 +308,8 @@ class Export(object):
             action2animation.handleAnimationBaking()
             action2animation.addActionDataToAnimation(self.current_animation)
 
+        # Remove actions created by the exporter for baking
+        self.baked_actions.extend(action2animation.get_generated_actions())
         if update_callback:
             if blender_object.type == 'ARMATURE':
                 osg_object.update_callbacks = []
@@ -534,6 +547,7 @@ class Export(object):
                     self.exportItemAndChildren(obj)
         finally:
             self.restoreArmaturePoseMode()
+            self.clean_generated_actions()
 
         self.postProcess()
 
@@ -1741,6 +1755,7 @@ class BlenderAnimationToAnimation(object):
         self.unique_objects = kwargs.get("unique_objects", UniqueObject())
         self.animations = None
         self.current_action = None
+        self.baked_actions = []
         self.action_name = None
         self.has_action = kwargs.get("has_action", False)
         self.has_constraints = kwargs.get("has_constraints", False)
@@ -1800,7 +1815,6 @@ class BlenderAnimationToAnimation(object):
             Log("Warning: osgdata::parseAllActions object has no action")
             return anims
         action_backup = self.object.animation_data.action
-        nb_actions = len(bpy.data.actions)
         actions_dict = dict(bpy.data.actions)
         actions = {key:actions_dict[key] for key in actions_dict if actions_dict[key].users > 0}
         for action_key in actions:
@@ -1847,7 +1861,8 @@ class BlenderAnimationToAnimation(object):
         channels = exportActionsToKeyframeSplitRotationTranslationScale(target, action, self.config.anim_fps, prefix)
         for channel in channels:
             anim.channels.append(channel)
-
+    def get_generated_actions(self):
+        return self.baked_actions
 
 def getChannel(target, action, fps, data_path, array_indexes):
     times = []
