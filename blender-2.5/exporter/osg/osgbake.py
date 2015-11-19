@@ -75,11 +75,17 @@ def bakeAction(blender_object,
     def poseFrameInfo(blender_object, do_visual_keying):
         matrix = {}
         for name, pbone in blender_object.pose.bones.items():
+            # As there is no similar "use_inherit_rotation" property in osg, we have to temporarily enable
+            # it here to get the good baking results and the good bone transforms
+            backup_rotation_inheritance = pbone.bone.use_inherit_rotation
+            pbone.bone.use_inherit_rotation = True
             if do_visual_keying:
                 # Get the final transform of the bone in its own local space...
                 matrix[name] = blender_object.convert_space(pbone, pbone.matrix, 'POSE', 'LOCAL')
             else:
                 matrix[name] = pbone.matrix_basis.copy()
+
+            pbone.bone.use_inherit_rotation = backup_rotation_inheritance
         return matrix
 
     if do_parents_clear:
