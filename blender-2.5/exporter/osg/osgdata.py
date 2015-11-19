@@ -377,17 +377,19 @@ class Export(object):
             if bone is None:
                 Log("Warning: [[blender]] {} not found".format(blender_object.parent_bone))
             else:
-                armature = blender_object.parent.data
-                original_pose_position = armature.pose_position
-                armature.pose_position = 'REST'
+                armature = blender_object.parent
+                original_pose_position = armature.data.pose_position
+                armature.data.pose_position = 'REST'
 
-                boneInWorldSpace = blender_object.parent.matrix_world \
-                    * armature.bones[blender_object.parent_bone].matrix_local
+                boneInWorldSpace = armature.matrix_world \
+                    * armature.pose.bones[blender_object.parent_bone].matrix
 
                 matrix = getDeltaMatrixFromMatrix(boneInWorldSpace, blender_object.matrix_world)
+
                 osg_object.matrix = matrix
                 bone.children.append(osg_object)
-                armature.pose_position = original_pose_position
+
+                armature.data.pose_position = original_pose_position
 
         # We skip the object if it is in the excluded objects list
         if self.isExcluded(blender_object):
@@ -1806,7 +1808,7 @@ class BlenderAnimationToAnimation(object):
                                                         self.object,
                                                         use_quaternions=self.config.use_quaternions,
                                                         has_action=self.has_action)
-
+            self.baked_actions.append(self.current_action)
         self.action_name = self.object.animation_data.action.name if self.has_action else 'Action_baked'
 
     def parseAllActions(self):
