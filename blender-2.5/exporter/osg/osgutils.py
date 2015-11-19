@@ -136,6 +136,7 @@ def hasNLATracks(blender_object):
            blender_object.animation_data.nla_tracks
 
 
+
 # OBJECTS HELPERS
 # ------------------------------
 def getDeltaMatrixFromMatrix(parent, child):
