@@ -249,6 +249,18 @@ def bakeAction(blender_object,
 
     return action
 
+def setRotationInheritance(blender_object):
+    if not blender_object.type == 'ARMATURE':
+        return []
+
+    backup = []
+    for bone in blender_object.data.bones:
+        if not bone.use_inherit_rotation:
+            backup.append(bone)
+            bone.use_inherit_rotation = True
+
+    return backup
+
 
 # take care of restoring selection after
 def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=False, use_quaternions=False):
@@ -260,6 +272,10 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
     if blender_object.type == 'ARMATURE':
         backup_pose_position = blender_object.data.pose_position
         blender_object.data.pose_position = 'POSE'
+        # As osg bones inherit parent's transforms by default, here the property
+        # "use_inherit_rotation" has to be enabled to get the good baking results
+        # to avoid bones transform issues
+        backup_bones = setRotationInheritance(blender_object)
 
     do_visual_keying = True # Always, need to take bone constraints  into account
 
@@ -283,6 +299,8 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
 
     if blender_object.type == 'ARMATURE':
         blender_object.data.pose_position = backup_pose_position
+        for bone in backup_bones:
+            bone.use_inherit_rotation = False
 
     return baked_action
 
