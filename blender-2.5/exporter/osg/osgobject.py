@@ -401,6 +401,26 @@ class StackedQuaternionElement(Object):
                                                                  STRFLT(self.quaternion.z),
                                                                  STRFLT(self.quaternion.w))))
 
+class UpdateMorph(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+        self.generateID()
+        self.targetNames = []
+
+    def nameSpace(self):
+        return "osgAnimation"
+
+    def className(self):
+        return "UpdateMorph"
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
+        Object.serializeContent(self, output)
+        output.write(self.encode("$#TargetNames %s {\n" % len(self.targetNames)))
+        for target in self.targetNames:
+            output.write(self.encode("$##%s\n" % target))
+        output.write(self.encode("$#}\n"))
+        output.write(self.encode("$}\n"))
 
 class UpdateBone(UpdateMatrixTransform):
     def __init__(self, *args, **kwargs):
@@ -418,6 +438,21 @@ class UpdateBone(UpdateMatrixTransform):
         UpdateMatrixTransform.serializeContent(self, output)
         output.write(self.encode("$}\n"))
 
+class UpdateMorphGeometry(Object):
+    def __init__(self, *args, **kwargs):
+        Object.__init__(self, *args, **kwargs)
+        self.generateID()
+
+    def className(self):
+        return "UpdateMorphGeometry"
+
+    def nameSpace(self):
+        return "osgAnimation"
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % (self.getNameSpaceClass())))
+        Object.serializeContent(self, output)
+        output.write(self.encode("$}\n"))
 
 class UpdateSkeleton(Object):
     def __init__(self, *args, **kwargs):
@@ -472,6 +507,7 @@ class Geode(Node):
     def __init__(self, *args, **kwargs):
         Node.__init__(self, *args, **kwargs)
         self.drawables = []
+        self.update_callbacks = []
 
     def setName(self, name):
         self.name = self.className() + name
@@ -999,6 +1035,7 @@ class Geometry(Object):
         self.colors = None
         self.uvs = {}
         self.stateset = None
+        self.update_callbacks = []
 
     def className(self):
         return "Geometry"
@@ -1019,6 +1056,13 @@ class Geometry(Object):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
+        if len(self.update_callbacks) > 0:
+            output.write(self.encode("$#UpdateCallback TRUE {\n"))
+            for i in self.update_callbacks:
+                i.indent_level = self.indent_level + 2
+                i.write(output)
+            output.write(self.encode("$#}\n"))
+
         if self.stateset is not None:
             output.write(self.encode("$#StateSet TRUE {\n"))
             self.stateset.indent_level = self.indent_level + 2
@@ -1155,6 +1199,35 @@ class Skeleton(MatrixTransform):
         MatrixTransform.serializeContent(self, output)
         output.write(self.encode("$}\n"))
 
+class MorphGeometry(Geometry):
+    def __init__(self, *args, **kwargs):
+        Geometry.__init__(self, *args, **kwargs)
+        self.dataVariance = "DYNAMIC"
+        self.morphTargets = []
+        self.update_callbacks = []
+        self.update_callbacks.append(UpdateMorphGeometry())
+
+    def className(self):
+        return "MorphGeometry"
+
+    def nameSpace(self):
+        return "osgAnimation"
+
+    def serialize(self, output):
+        output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
+        Object.serializeContent(self, output)
+        Geometry.serializeContent(self, output)
+        self.serializeContent(output)
+        output.write(self.encode("$}\n"))
+
+    def serializeContent(self, output):
+        if self.morphTargets:
+            output.write(self.encode("$#MorphTargets %s {\n" % len(self.morphTargets)))
+            for target in self.morphTargets:
+                output.write(self.encode("$##MorphTarget 0 \n"))
+                target.indent_level = self.indent_level + 2
+                target.write(output)
+            output.write(self.encode("$#}\n"))
 
 class RigGeometry(Geometry):
     def __init__(self, *args, **kwargs):
