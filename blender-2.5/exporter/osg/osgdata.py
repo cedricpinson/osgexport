@@ -725,7 +725,8 @@ class Export(object):
             exportInfluence = True
 
         if self.config.apply_modifiers and has_non_armature_modifiers:
-            mesh_object = mesh.to_mesh(self.config.scene, True, 'PREVIEW')
+            # Breaks morph targets if we apply modifiers here
+            mesh_object = mesh.to_mesh(self.config.scene, (not hasShapeKeys(mesh)), 'PREVIEW')
         else:
             mesh_object = mesh.data
 
@@ -763,11 +764,20 @@ class Export(object):
         geode.setName(mesh_object.name)
         geode.armature_modifier = armature_modifier
 
+        targetNames = []
         if len(geometries) > 0:
             for geom in geometries:
+                if geom.className() == 'MorphGeometry':
+                    targetNames.extend(map(lambda x: x.name, geom.morphTargets))
                 geode.drawables.append(geom)
             for name in converter.material_animations.keys():
                 self.animations.append(converter.material_animations[name])
+
+            if targetNames:
+                update = UpdateMorph()
+                update.setName(mesh.name)
+                update.targetNames.extend(targetNames)
+                geode.update_callbacks.append(update)
 
         self.unique_objects.registerObject(mesh_object, geode)
         return geode
@@ -1308,8 +1318,35 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             for key, value in slot.items():
                 userData.append(StringValueObject(slot_name(index, key), toUserData(value)))
 
+    def parseMorphTargets(self, mesh, geometry, morph_vertex_map):
+        ''' Create morph targets '''
+        #TODO check for absolute shape keys
+        for key in mesh.shape_keys.key_blocks:
+            if key.relative_key == key:
+                continue
+
+            target = Geometry()
+            target.name = key.name.replace(' ', '_')
+
+            osg_vertexes = VertexArray()
+            for i in range(len(morph_vertex_map)):
+                osg_vertexes.getArray().append([key.data[morph_vertex_map[i]].co[0],
+                                                key.data[morph_vertex_map[i]].co[1],
+                                                key.data[morph_vertex_map[i]].co[2]])
+            # Need to compute normals?
+            target.vertexes = osg_vertexes
+            # For instance, copying normals, but these need to be recomputed
+            target.normals = geometry.normals
+            target.primitives = geometry.primitives
+            geometry.morphTargets.append(target)
+
+
     def createGeometryForMaterialIndex(self, material_index, mesh):
-        geom = Geometry()
+        if hasShapeKeys(self.object):
+            geom = MorphGeometry()
+        else:
+            geom = Geometry()
+
         geom.groups = {}
 
         if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
@@ -1328,6 +1365,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         Log(title)
 
         vertexes = []
+        original_vertexes = []
         collected_faces = []
         for face in faces:
             if face.material_index != material_index:
@@ -1336,6 +1374,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             if DEBUG:
                 fdebug = []
             for vertex in face.vertices:
+                original_vertexes.append(vertex)
                 index = len(vertexes)
                 vertexes.append(mesh.vertices[vertex])
                 f.append(index)
@@ -1474,6 +1513,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         # Build a dictionary of indexes to all the vertexes that
         # are equal.
         vertex_dict = {}
+        morph_map = []
         for i in range(0, len(vertexes)):
             key = get_vertex_key(i)
             if DEBUG:
@@ -1482,6 +1522,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                 vertex_dict[key].append(i)
             else:
                 vertex_dict[key] = [i]
+                morph_map.append(original_vertexes[i])
 
         for i in range(0, len(vertexes)):
             if tagged_vertexes[i] is True:  # avoid processing more than one time a vertex
@@ -1698,11 +1739,15 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
 
         end_title = '-' * len(title)
         Log(end_title)
+
+        if geom.className() == "MorphGeometry":
+            self.parseMorphTargets(mesh, geom, morph_map)
+
         return geom
 
     def process(self, mesh):
         if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
-            mesh.update(calc_tessface=True)
+            mesh.update(calc_tessface=True)  # Generates faces of 3 or 4 vertices
 
         geometry_list = []
         material_index = 0
@@ -1712,6 +1757,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                 geometry_list.append(geom)
         else:
             for material in mesh.materials:
+                # Blender has an operator to split mesh by material (bpy.ops.mesh.separate(type='MATERIAL'))
                 geom = self.createGeometryForMaterialIndex(material_index, mesh)
                 if geom is not None:
                     geometry_list.append(geom)
@@ -1724,12 +1770,6 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         #     Log("Warning: [[blender]] mesh %s use sticky UV and it's not supported" % self.object.name)
 
         return self.process(self.mesh)
-
-
-class BlenderObjectToRigGeometry(BlenderObjectToGeometry):
-    def __init__(self, *args, **kwargs):
-        BlenderObjectToGeometry.__init__(self, *args, **kwargs)
-        self.geom_type = RigGeometry
 
 
 class BlenderAnimationToAnimation(object):

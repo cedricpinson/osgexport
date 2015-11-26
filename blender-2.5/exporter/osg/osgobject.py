@@ -1205,7 +1205,6 @@ class MorphGeometry(Geometry):
         self.dataVariance = "DYNAMIC"
         self.morphTargets = []
         self.update_callbacks = []
-        self.update_callbacks.append(UpdateMorphGeometry())
 
     def className(self):
         return "MorphGeometry"
