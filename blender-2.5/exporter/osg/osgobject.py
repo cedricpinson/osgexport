@@ -418,7 +418,7 @@ class UpdateMorph(Object):
         Object.serializeContent(self, output)
         output.write(self.encode("$#TargetNames %s {\n" % len(self.targetNames)))
         for target in self.targetNames:
-            output.write(self.encode("$##%s\n" % target))
+            output.write(self.encode("$##%s \n" % target))
         output.write(self.encode("$#}\n"))
         output.write(self.encode("$}\n"))
 
@@ -442,6 +442,9 @@ class UpdateMorphGeometry(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
+
+    def setName(self, name):
+        self.name = name
 
     def className(self):
         return "UpdateMorphGeometry"
@@ -1222,8 +1225,8 @@ class MorphGeometry(Geometry):
     def serializeContent(self, output):
         if self.morphTargets:
             output.write(self.encode("$#MorphTargets %s {\n" % len(self.morphTargets)))
-            for target in self.morphTargets:
-                output.write(self.encode("$##MorphTarget 0 \n"))
+            for i, target in enumerate(self.morphTargets):
+                output.write(self.encode("$##MorphTarget %s \n" % i))
                 target.indent_level = self.indent_level + 2
                 target.write(output)
             output.write(self.encode("$#}\n"))

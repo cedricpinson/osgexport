@@ -46,6 +46,8 @@ Quaternion = mathutils.Quaternion
 Log = osglog.log
 
 
+index = 0
+
 def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", zero=False):
     has_location_keys = False
     has_scale_keys = False
@@ -260,16 +262,17 @@ class Export(object):
         return blender_object.is_visible(self.config.scene) or not self.config.only_visible
 
     def createAnimationsObject(self, osg_object, blender_object, config, update_callback, unique_objects, parse_all_actions=False):
-        if not config.export_anim:
-            return None
-
-        if blender_object.type != 'ARMATURE' and not update_callback:
+        if not config.export_anim or len(bpy.data.actions) == 0:
             return None
 
         has_action = blender_object.animation_data and hasAction(blender_object)
         has_constraints = hasConstraints(blender_object)
+        has_morph = hasShapeKeysAnimation(blender_object)
 
-        if not has_action and not has_constraints and not hasNLATracks(blender_object):
+        if blender_object.type != 'ARMATURE' and not has_morph and not update_callback:
+            return None
+
+        if not has_action and not has_constraints and not has_morph and hasNLATracks(blender_object):
             return None
 
         if parse_all_actions and not has_action:
@@ -279,7 +282,8 @@ class Export(object):
                                                        config=config,
                                                        unique_objects=unique_objects,
                                                        has_action=has_action,
-                                                       has_constraints=has_constraints)
+                                                       has_constraints=has_constraints,
+                                                       has_morph=has_morph)
 
         if parse_all_actions:
             self.animations = action2animation.parseAllActions()
@@ -289,9 +293,13 @@ class Export(object):
                 self.current_animation = Animation()
                 self.current_animation.setName('Take 01')
                 self.animations.append(self.current_animation)
-
             action2animation.handleAnimationBaking()
             action2animation.addActionDataToAnimation(self.current_animation)
+
+            if has_morph:
+                # Bake morph animation
+                action2animation.handleMorphAnimationBaking()
+                action2animation.addActionDataToAnimation(self.current_animation, morph=True)
 
         # Remove actions created by the exporter for baking
         self.baked_actions.extend(action2animation.get_generated_actions())
@@ -1318,10 +1326,10 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             for key, value in slot.items():
                 userData.append(StringValueObject(slot_name(index, key), toUserData(value)))
 
-    def parseMorphTargets(self, mesh, geometry, morph_vertex_map):
+    def parseMorphTargets(self, obj, geometry, morph_vertex_map):
         ''' Create morph targets '''
         #TODO check for absolute shape keys
-        for key in mesh.shape_keys.key_blocks:
+        for key in obj.data.shape_keys.key_blocks:
             if key.relative_key == key:
                 continue
 
@@ -1340,7 +1348,6 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             target.primitives = geometry.primitives
             geometry.morphTargets.append(target)
 
-
     def createGeometryForMaterialIndex(self, material_index, mesh):
         if hasShapeKeys(self.object):
             geom = MorphGeometry()
@@ -1348,7 +1355,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             geom = Geometry()
 
         geom.groups = {}
-
+        # createGeometryForMaterialIndex(material_index, mesh)
         if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
             faces = mesh.tessfaces
         else:
@@ -1390,7 +1397,6 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             end_title = '-' * len(title)
             Log(end_title)
             return None
-
         # colors = {}
         # if mesh.vertex_colors:
         #     names = mesh.getColorLayerNames()
@@ -1523,7 +1529,6 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             else:
                 vertex_dict[key] = [i]
                 morph_map.append(original_vertexes[i])
-
         for i in range(0, len(vertexes)):
             if tagged_vertexes[i] is True:  # avoid processing more than one time a vertex
                 continue
@@ -1639,7 +1644,6 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
 
         # Get the first vertex color layer (only one supported for now)
         osg_colors = ColorArray() if colors else None
-
         for vertex in mapping_vertexes:
             vindex = vertex[0]
             coord = vertexes[vindex].co
@@ -1741,7 +1745,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         Log(end_title)
 
         if geom.className() == "MorphGeometry":
-            self.parseMorphTargets(mesh, geom, morph_map)
+            self.parseMorphTargets(self.object, geom, morph_map)
 
         return geom
 
@@ -1783,6 +1787,7 @@ class BlenderAnimationToAnimation(object):
         self.action_name = None
         self.has_action = kwargs.get("has_action", False)
         self.has_constraints = kwargs.get("has_constraints", False)
+        self.has_morph = kwargs.get("has_morph", False)
         if self.object:
             self.target = self.object.name
         else:
@@ -1803,6 +1808,14 @@ class BlenderAnimationToAnimation(object):
                         if kf.interpolation != 'LINEAR':
                             return True
         return False
+
+    def handleMorphAnimationBaking(self):
+        if not self.has_morph:
+            return
+
+        # For now, only support morph when only one animation
+        start, end = getWidestActionDuration(self.config.scene)
+        self.current_action = osgbake.bakeMorphTargets(start, end, self.object)
 
     def handleAnimationBaking(self, is_multi_animation=False):
         Log("Exporting animation on object {}".format(self.object.name))
@@ -1842,6 +1855,7 @@ class BlenderAnimationToAnimation(object):
         actions_dict = dict(bpy.data.actions)
         actions = {key:actions_dict[key] for key in actions_dict if actions_dict[key].users > 0}
         for action_key in actions:
+            #TODO handle morph here
             action = bpy.data.actions[action_key]
             self.object.animation_data.action = action
             self.current_action = action
@@ -1852,8 +1866,11 @@ class BlenderAnimationToAnimation(object):
         self.object.animation_data.action = action_backup
         return anims
 
-    def addActionDataToAnimation(self, animation):
+
+    def addActionDataToAnimation(self, animation, morph=False):
         print('adding data from action {} to animation {}'.format(self.action_name, animation))
+        if self.current_action is None:
+            return
         if self.object.type == "ARMATURE":
             for bone in self.object.data.bones:
                 bname = bone.name
@@ -1861,6 +1878,9 @@ class BlenderAnimationToAnimation(object):
                 self.appendChannelsToAnimation(bname, animation, self.current_action, prefix=('pose.bones["{}"].'.format(bname)))
             # Append channels for armature solid animation
             self.appendChannelsToAnimation(self.object.name, animation, self.current_action)
+        elif morph:
+            for key in self.object.data.shape_keys.key_blocks:
+                self.appendChannelsToAnimation(key.name, animation, self.current_action, prefix=('key_blocks["{}"].'.format(key.name)))
         else:
             self.appendChannelsToAnimation(self.target, animation, self.current_action)
 
@@ -1915,7 +1935,7 @@ def getChannel(target, action, fps, data_path, array_indexes):
         return None
 
     channel = Channel()
-    channel.target = target
+    channel.target = target.replace(' ', '_')
 
     if len(array_indexes) == 1:
         channel.type = "FloatLinearChannel"
@@ -1972,5 +1992,12 @@ def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps, pr
     if scale:
         scale.setName("scale")
         channels.append(scale)
+
+    morph_factor = getChannel(target, action, fps, prefix + "value", [0])
+    if morph_factor:
+        global index
+        morph_factor.setName('\"' + str(index) + '\"')
+        index = index + 1
+        channels.append(morph_factor)
 
     return channels

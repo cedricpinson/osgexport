@@ -111,12 +111,15 @@ def getDeltaMatrixFrom(parent, child):
 
 
 def getWidestActionDuration(scene):
-    start = min([obj.animation_data.action.frame_range[0] for obj in scene.objects if hasAction(obj)])
-    end = max([obj.animation_data.action.frame_range[1] for obj in scene.objects if hasAction(obj)])
+    start = [obj.animation_data.action.frame_range[0] for obj in scene.objects if hasAction(obj)]
+    end = [obj.animation_data.action.frame_range[1] for obj in scene.objects if hasAction(obj)]
+
+    start.append(int(scene.frame_start))
+    end.append(int(scene.frame_end))
 
     # If scene frame range is wider, use it
-    start = min(scene.frame_start, start)
-    end = max(scene.frame_end, end)
+    start = int(min(start))
+    end = int(max(end))
 
     return (start, end)
 
@@ -137,9 +140,32 @@ def hasNLATracks(blender_object):
            blender_object.animation_data.nla_tracks
 
 
+def isSolidOrRigAction(action):
+    for curve in action.fcurves:
+        if 'key_block' in curve.data_path:
+            return False
+
+    return True
+
+
 def hasShapeKeys(blender_object):
     return hasattr(blender_object.data, "shape_keys") and \
-           blender_object.data.shape_keys
+           blender_object.data.shape_keys is not None
+
+
+def hasShapeKeysAnimation(blender_object):
+    # Animation can be either on the shape_keys object
+    # or the object having shape_keys
+    if hasShapeKeys(blender_object):
+        shape = blender_object.data.shape_keys
+        if shape.animation_data and \
+            shape.animation_data.action:
+            return True
+
+    if hasAction(blender_object) and not isSolidOrRigAction(blender_object.animation_data.action):
+        return True
+
+    return False
 
 
 # OBJECTS HELPERS

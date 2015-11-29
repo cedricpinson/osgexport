@@ -18,6 +18,67 @@
 
 # <pep8-80 compliant>
 import bpy
+from .osgutils import *
+
+
+def cleanAction(action):
+    for fcu in action.fcurves:
+        keyframe_points = fcu.keyframe_points
+        i = 1
+        while i < len(fcu.keyframe_points) - 1:
+            val_prev = keyframe_points[i - 1].co[1]
+            val_next = keyframe_points[i + 1].co[1]
+            val = keyframe_points[i].co[1]
+
+            if abs(val - val_prev) + abs(val - val_next) < 0.0001:
+                keyframe_points.remove(keyframe_points[i])
+            else:
+                i += 1
+
+def bakeMorphTargets(frame_start,
+                     frame_end,
+                     blender_object,
+                     frame_step=1):
+
+    def collectValues():
+        for f in frame_range:
+            scene.frame_set(f)
+            scene.update()
+            for block in morph_info:
+                morph_info[block].append(block.value)
+
+    def setKeyframes():
+        options = {'INSERTKEY_NEEDED'}
+        atd = shape.animation_data_create()
+        atd.action = new_action
+        for block in morph_info:
+            for (f, value) in zip(frame_range, morph_info[block]):
+                block.value = value
+                shape.keyframe_insert('key_blocks[\"{}\"].value'.format(block.name), -1, f)
+
+    scene = bpy.context.scene
+    shape = blender_object.data.shape_keys
+    if not hasAction(shape):
+        return None
+
+    frame_back = scene.frame_current
+    original_action = shape.animation_data.action
+    frame_range = range(frame_start, frame_end + 1, frame_step)
+    morph_info = {}
+
+    for block in shape.key_blocks:
+        if block.name != block.relative_key.name:
+            morph_info[block] = [] # values
+
+    new_action = bpy.data.actions.new("MorphBake")
+
+    collectValues()
+    setKeyframes()
+    cleanAction(new_action)
+
+    shape.animation_data.action = original_action
+
+    return new_action
 
 
 # This function comes from bpy_extras.anim_utils and has been
@@ -122,7 +183,6 @@ def bakeAction(blender_object,
 
     # -------------------------------------------------------------------------
     # Collect transformations
-
     for f in frame_range:
         scene.frame_set(f)
         scene.update()
@@ -238,18 +298,7 @@ def bakeAction(blender_object,
     # Clean
 
     if do_clean:
-        for fcu in action.fcurves:
-            keyframe_points = fcu.keyframe_points
-            i = 1
-            while i < len(fcu.keyframe_points) - 1:
-                val_prev = keyframe_points[i - 1].co[1]
-                val_next = keyframe_points[i + 1].co[1]
-                val = keyframe_points[i].co[1]
-
-                if abs(val - val_prev) + abs(val - val_next) < 0.0001:
-                    keyframe_points.remove(keyframe_points[i])
-                else:
-                    i += 1
+        cleanAction(action)
 
     scene.frame_set(frame_back)
 
