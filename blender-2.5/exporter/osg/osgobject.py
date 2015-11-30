@@ -1297,7 +1297,7 @@ class Channel(Object):
 
     def serializeContent(self, output):
         output.write(self.encode("$#Name %s\n" % self.name))
-        output.write(self.encode("$#TargetName %s\n" % self.target))
+        output.write(self.encode("$#TargetName \"%s\"\n" % self.target))
         output.write(self.encode("$#KeyFrameContainer TRUE %d {\n" % (len(self.keys))))
         for i in self.keys:
             output.write(self.encode("$##"))
