@@ -699,7 +699,12 @@ class Image(Object):
     def serialize(self, output):
         Object.serializeContent(self, output)
         output.write(self.encode("$#FileName \"%s\"\n" % self.filename))
-        output.write(self.encode("$#WriteHint 0 2\n"))
+        # Write hint corresponding to osg::Image::WriteHint enum.
+        # The first value is the Image::_writeHint. We default to
+        # 2 (EXTERNAL_FILE) since external images are easier to work with.
+        # The second value is the currently used format (called 'decision' in osg code, i.e. what's in this file).
+        # Should be 2 since the exporter only writes the file name, does not embed the image data.
+        output.write(self.encode("$#WriteHint 2 2\n"))
 
 
 class Material(StateAttribute):

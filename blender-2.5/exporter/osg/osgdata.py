@@ -1097,7 +1097,6 @@ class BlenderObjectToGeometry(object):
         stateset.attributes.append(material)
 
         for osg_object in (stateset, material):
-            osg_object.dataVariance = "DYNAMIC"
             osg_object.setName(mat_source.name)
             osg_object.getOrCreateUserData().append(StringValueObject("source", "blender"))
 
@@ -1215,6 +1214,8 @@ class BlenderObjectToGeometry(object):
         """
         anim = createAnimationMaterialAndSetCallback(material, mat_source, self.config, self.unique_objects)
         if anim:
+            for osg_object in (stateset, material):
+                stateset.dataVariance = "DYNAMIC";
             self.material_animations[anim.name] = anim
 
         if mat_source.use_shadeless:
