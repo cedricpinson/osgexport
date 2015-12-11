@@ -147,18 +147,6 @@ class UniqueObject(object):
         self.statesets = {}
         self.textures = {}
         self.objects = {}
-        self.anims = {}
-
-    def hasAnimation(self, action):
-        return any([action in self.anims[key] for key in self.anims])
-
-    def getAnimation(self, action):
-        for anim in self.anims:
-            if action in self.anims[anim]:
-                return action
-
-    def registerAnimation(self, animation, action):
-        self.anims.setdefault(animation, []).append(action)
 
     def hasObject(self, obj):
         return obj in self.objects
@@ -1825,7 +1813,6 @@ class BlenderAnimationToAnimation(object):
             self.current_action = action
             self.handleAnimationBaking(is_multi_animation=True)
             anim = self.createAnimationFromAction(self.current_action)
-            self.unique_objects.registerAnimation(anim, self.current_action)
             anims.append(anim)
         # Restore original action
         self.object.animation_data.action = action_backup
