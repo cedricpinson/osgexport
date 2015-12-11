@@ -275,9 +275,6 @@ class Export(object):
         if parse_all_actions and not has_action:
             return None
 
-        if has_action and unique_objects.hasAnimation(blender_object.animation_data.action):
-            return None
-
         action2animation = BlenderAnimationToAnimation(object=blender_object,
                                                        config=config,
                                                        unique_objects=unique_objects,
@@ -715,9 +712,6 @@ class Export(object):
         # if no we don't write influence
         exportInfluence = False
 
-        # if mesh.parent and mesh.parent.type == "ARMATURE":
-        #     exportInfluence = True
-
         armature_modifier = None
         has_non_armature_modifiers = False
 
@@ -727,7 +721,7 @@ class Export(object):
             else:
                 has_non_armature_modifiers = True
 
-        if armature_modifier is not None:
+        if armature_modifier is not None or mesh.parent and mesh.parent.type == 'ARMATURE':
             exportInfluence = True
 
         if self.config.apply_modifiers and has_non_armature_modifiers:
@@ -1844,6 +1838,7 @@ class BlenderAnimationToAnimation(object):
             self.appendChannelsToAnimation(self.object.name, animation, action)
         else:
             self.appendChannelsToAnimation(self.target, animation, action)
+
         return animation
 
     def appendChannelsToAnimation(self, target, anim, action, prefix=""):
