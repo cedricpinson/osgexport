@@ -168,6 +168,14 @@ def hasShapeKeysAnimation(blender_object):
     return False
 
 
+def isObjectMorphAction(action):
+    for curve in action.fcurves:
+        if 'data.shape_keys' in curve.data_path:
+            return True
+
+    return False
+
+
 # OBJECTS HELPERS
 # ------------------------------
 def getDeltaMatrixFromMatrix(parent, child):

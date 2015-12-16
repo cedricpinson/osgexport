@@ -272,10 +272,10 @@ class Export(object):
         if blender_object.type != 'ARMATURE' and not has_morph and not update_callback:
             return None
 
-        if not has_action and not has_constraints and not has_morph and hasNLATracks(blender_object):
+        if not has_action and not has_constraints and not has_morph and not hasNLATracks(blender_object):
             return None
 
-        if parse_all_actions and not has_action:
+        if parse_all_actions and not has_action and not has_morph:
             return None
 
         action2animation = BlenderAnimationToAnimation(object=blender_object,
@@ -450,7 +450,7 @@ class Export(object):
             nb_animated_objects = 0
             for obj in scene.objects:
                 # FIXME not sure about the constraint check here
-                if hasAction(obj) or hasConstraints(obj) or hasNLATracks(obj):
+                if hasAction(obj) or hasConstraints(obj) or hasNLATracks(obj) or hasShapeKeysAnimation(obj):
                     nb_animated_objects += 1
 
             self.parse_all_actions = nb_animated_objects == 1
@@ -1809,13 +1809,17 @@ class BlenderAnimationToAnimation(object):
                             return True
         return False
 
-    def handleMorphAnimationBaking(self):
+    def handleMorphAnimationBaking(self, is_multi_animation=False):
         if not self.has_morph:
             return
 
-        # For now, only support morph when only one animation
-        start, end = getWidestActionDuration(self.config.scene)
-        self.current_action = osgbake.bakeMorphTargets(start, end, self.object)
+        if is_multi_animation:
+            # Bake animation using current action frame_range
+            start, end = self.object.animation_data.action.frame_range if self.has_action else self.object.data.shape_keys.animation_data.action.frame_range
+        else:
+            start, end = getWidestActionDuration(self.config.scene)
+
+        self.current_action = osgbake.bakeMorphTargets(int(start), int(end), self.object)
 
     def handleAnimationBaking(self, is_multi_animation=False):
         Log("Exporting animation on object {}".format(self.object.name))
@@ -1847,23 +1851,53 @@ class BlenderAnimationToAnimation(object):
         self.action_name = self.object.animation_data.action.name if self.has_action else 'Action_baked'
 
     def parseAllActions(self):
+        def parseSolidRigAction():
+            if hasAction(self.object):
+                backup_action = self.object.animation_data.action
+                # The object is animated so we always have animation_data not None here
+                self.object.animation_data.action = action
+                self.handleAnimationBaking(is_multi_animation=True)
+                self.addActionDataToAnimation(anim, morph=False)
+                self.object.animation_data.action = backup_action
+                anims.append(anim)
+                if backup_action:
+                    self.object.animation_data.action = backup_action
+
+        def parseMorphAction():
+            anim_object = self.object if isObjectMorphAction(action) else self.object.data.shape_keys
+            need_clear = False
+            backup_action = None
+            if hasAction(anim_object):
+                backup_action = anim_object.animation_data.action
+            if not anim_object.animation_data:
+                anim_object.animation_data_create()
+                need_clear = True
+            anim_object.animation_data.action = action
+            self.handleMorphAnimationBaking(is_multi_animation=True)
+            self.addActionDataToAnimation(anim, morph=True)
+            anims.append(anim)
+            if backup_action:
+                anim_object.animation_data.action = backup_action
+            if need_clear:
+                anim_object.animation_data_clear()
+
         anims = []
-        if not self.has_action:
+        if not self.has_action and not self.has_morph:
             Log("Warning: osgdata::parseAllActions object has no action")
             return anims
-        action_backup = self.object.animation_data.action
         actions_dict = dict(bpy.data.actions)
         actions = {key:actions_dict[key] for key in actions_dict if actions_dict[key].users > 0}
         for action_key in actions:
             #TODO handle morph here
+            print("parseAllActions: parsing {} ".format(action_key))
+            anim = Animation()
             action = bpy.data.actions[action_key]
-            self.object.animation_data.action = action
-            self.current_action = action
-            self.handleAnimationBaking(is_multi_animation=True)
-            anim = self.createAnimationFromAction(self.current_action)
-            anims.append(anim)
-        # Restore original action
-        self.object.animation_data.action = action_backup
+            anim.setName(action.name)
+            if isSolidOrRigAction(action):
+                parseSolidRigAction()
+            elif hasShapeKeys(self.object):
+                parseMorphAction()
+
         return anims
 
 
@@ -1879,6 +1913,8 @@ class BlenderAnimationToAnimation(object):
             # Append channels for armature solid animation
             self.appendChannelsToAnimation(self.object.name, animation, self.current_action)
         elif morph:
+            global index
+            index = 0
             for key in self.object.data.shape_keys.key_blocks:
                 self.appendChannelsToAnimation(key.name, animation, self.current_action, prefix=('key_blocks["{}"].'.format(key.name)))
         else:
