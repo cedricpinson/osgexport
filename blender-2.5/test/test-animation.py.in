@@ -1,0 +1,120 @@
+# -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
+# Copyright (C) 2008-2011 Cedric Pinson
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+# Authors:
+#  Cedric Pinson <cedric.pinson@plopbyte.com>
+#  Aurélien Chatelain <chatelain.aurelien@gmail.com>
+
+import unittest
+
+import sys
+sys.path.insert(0, "@EXPORTER@")
+
+import bpy
+import osg
+from osg.osgobject import *
+from osg.osgdata import *
+from osg.osgbake import *
+from osg.osgutils import *
+
+def collectKeyFrames(action, bone_name=''):
+    keyframe_nb = {}
+    for cu in action.fcurves:
+        if bone_name != '' and not bone_name in cu.data_path:
+            continue
+        if  bone_name != '' and 'location' in cu.data_path or cu.data_path == 'location':
+            keyframe_nb.setdefault('location', []).append(len(cu.keyframe_points))
+        if  bone_name != '' and 'scale' in cu.data_path or cu.data_path == 'scale':
+            keyframe_nb.setdefault('scale', []).append(len(cu.keyframe_points))
+        if  bone_name != '' and 'rotation_quaternion' in cu.data_path or cu.data_path == 'rotation_quaternion':
+            keyframe_nb.setdefault('rotation_quaternion', []).append(len(cu.keyframe_points))
+    return keyframe_nb
+
+
+def makeSceneActive(scene):
+    bpy.context.screen.scene = bpy.data.scenes[scene]
+
+# Note: each baked action needs to be aded to generated_actions
+# otherwise some assertions will fail
+class Exporter(unittest.TestCase):
+    def setUp(self):
+        osg.osgobject.Object.resetWriter()
+
+    def testAnimationExport(self):
+        makeSceneActive("MultiSolid")
+        # test animation generation
+        blender_object = bpy.context.scene.objects['Cube']
+        self.config = osgconf.Config()
+        self.config.defaultattr('scene', bpy.context.scene)
+        has_action = blender_object.animation_data and hasAction(blender_object)
+        has_constraints = hasConstraints(blender_object)
+        has_morph = hasShapeKeysAnimation(blender_object)
+        action2animation = BlenderAnimationToAnimation(object=blender_object,
+                                                       config=self.config,
+                                                       has_action=has_action,
+                                                       has_constraints=has_constraints,
+                                                       has_morph=has_morph)
+
+        animations = action2animation.parseAllActions()
+        self.assertEquals(4, len(animations))
+
+    def testAnimationExportBaking(self):
+        makeSceneActive("AnimationBaking")
+        # Solid baking
+        solid_object = bpy.context.scene.objects['solid']
+        solid_action = osgbake.bakeAnimation(bpy.context.scene,
+                                             0,
+                                             100,
+                                             1,
+                                             solid_object,
+                                             use_quaternions=True,
+                                             has_action=hasAction(solid_object))
+        # rig baking
+        armature = bpy.context.scene.objects['Armature']
+        rig_action = osgbake.bakeAnimation(bpy.context.scene,
+                                           0,
+                                           100,
+                                           1,
+                                           armature,
+                                           use_quaternions=True,
+                                           has_action=hasAction(armature))
+        self.assertIsNotNone(solid_action)
+        self.assertIsNotNone(rig_action)
+
+        # solid animation baking
+        solid_keylen_dict = collectKeyFrames(solid_action)
+        self.assertEquals(solid_keylen_dict['location'], [101, 101, 101])
+        self.assertEquals(solid_keylen_dict['rotation_quaternion'], [92, 101, 99, 98])
+        self.assertEquals(solid_keylen_dict['scale'], [101, 101, 101])
+
+        # pose animation baking
+        bone1_keylen_dict = collectKeyFrames(rig_action, 'Bone.001')
+        self.assertEquals(bone1_keylen_dict['location'], [2, 2, 2])
+        self.assertEquals(bone1_keylen_dict['rotation_quaternion'], [47, 51, 50, 51])
+        self.assertEquals(bone1_keylen_dict['scale'], [2, 2, 2])
+
+        # armature solid animation baking
+        arm_keylen_dict = collectKeyFrames(rig_action, '')
+        self.assertEquals(bone1_keylen_dict['location'], [2, 2, 2])
+        self.assertEquals(bone1_keylen_dict['rotation_quaternion'], [47, 51, 50, 51])
+        self.assertEquals(bone1_keylen_dict['scale'], [2, 2, 2])
+
+
+if __name__ == '__main__':
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())

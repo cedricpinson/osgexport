@@ -21,6 +21,7 @@ FILE(COPY
      ${CMAKE_CURRENT_SOURCE_DIR}/cube.blend
      ${CMAKE_CURRENT_SOURCE_DIR}/test.blend
      ${CMAKE_CURRENT_SOURCE_DIR}/test-shadernode.blend
+     ${CMAKE_CURRENT_SOURCE_DIR}/test-animation.blend
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -89,3 +90,12 @@ CONFIGURE_FILE(
   )
 ADD_TEST(NAME "test-shadernode"
          COMMAND ${BLENDER} --background "${CMAKE_CURRENT_BINARY_DIR}/test-shadernode.blend" --python "${CMAKE_CURRENT_BINARY_DIR}/test-shadernode.py")
+
+
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-animation.py.in
+  ${CMAKE_CURRENT_BINARY_DIR}/test-animation.py
+  IMMEDIATE @ONLY
+  )
+ADD_TEST(NAME "test-animation"
+         COMMAND ${BLENDER} --background "${CMAKE_CURRENT_BINARY_DIR}/test-animation.blend" --python "${CMAKE_CURRENT_BINARY_DIR}/test-animation.py")
