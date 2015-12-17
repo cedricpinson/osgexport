@@ -166,7 +166,7 @@ class Exporter(unittest.TestCase):
         exporter = Export()
         exporter.process()
         exporter.write()
-        self.assertEquals(5, len(exporter.items))
+        self.assertEquals(1, len(exporter.items))
 
     def testIpos(self):
         makeSceneActive("Ipos")
