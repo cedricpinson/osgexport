@@ -24,6 +24,7 @@
 
 
 import bpy
+import math
 from .osgobject import *
 
 # IMAGES HELPERS
@@ -94,6 +95,18 @@ def getRootBonesList(armature):
         if bone.parent is None:
             bones.append(bone)
     return bones
+
+
+def truncateFloat(value, digit=5):
+     if math.isnan(value):
+         return 0
+     return round(value, digit)
+
+
+def truncateVector(vector, digit=5):
+     for i in range(0, len(vector)):
+         vector[i] = truncateFloat(vector[i], digit)
+     return vector
 
 
 def getTransform(matrix):

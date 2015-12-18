@@ -1359,6 +1359,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
             faces = mesh.tessfaces
             uv_textures= mesh.tessface_uv_textures
+            vertex_colors = mesh.tessface_vertex_colors.active
         else:
             faces = mesh.faces
             uv_textures= mesh.uv_textures
@@ -1373,6 +1374,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         Log(title)
 
         collected_faces = []
+        morph_map = []
         osg_vertexes = VertexArray()
         osg_normals = NormalArray()
         osg_colors = ColorArray()
@@ -1392,78 +1394,69 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         #index remapping
         vertex_index_map={}
         def get_vertex_key(faceindex,facevertexindex):
-            return (face.vertices[facevertexindex],tuple([tuple(uv.data[faceindex].uv[facevertexindex])  for uv in mesh.tessface_uv_textures])  )
+            normal = list(mesh.vertices[face.vertices[facevertexindex]].normal) if face.use_smooth else list(face.normal)
+            vcolors = tuple(getattr(vertex_colors.data[faceindex], 'color{}'.format(facevertexindex + 1))) if vertex_colors else tuple()
+            texcoords = [tuple(truncateVector(list(uv.data[faceindex].uv[facevertexindex]))) for uv in mesh.tessface_uv_textures]
+            return (face.vertices[facevertexindex], tuple(truncateVector(normal)), tuple(texcoords), vcolors)
 
         for face in faces:
             if face.material_index != material_index:
                 continue
 
-            for facevertexindex,vert_index in enumerate(face.vertices):
-                try:    indexinmap=vertex_index_map[get_vertex_key(face.index,facevertexindex)]
-                except:
-                    newindex=len(osg_vertexes.getArray())
-                    vertex_index_map[get_vertex_key(face.index,facevertexindex)]=newindex
-                    uvs=[]
+            for facevertexindex, vert_index in enumerate(face.vertices):
+                # Uvs and colors are per face and not per vertexes, so need to deduplicate
+                # this here using keys.
+                # A key is build as (vertexIndex, normal, texcoords={},vertex_colors)
+                key = get_vertex_key(face.index, facevertexindex)
+                if key not in vertex_index_map:
+                    newindex = len(osg_vertexes.getArray())
+                    vertex_index_map[key] = newindex
+                    morph_map.append(vert_index)
+                    uvs = []
+
                     for uv in mesh.tessface_uv_textures:
                         uvs.append(uv.data[face.index].uv[facevertexindex])
+
                     for vertex_group in  mesh.vertices[vert_index].groups:
                         inf = [self.object.vertex_groups[vertex_group.group ].name, vertex_group.weight]
                         #try:getBoneByName(inf[0])   #check bone existence
-                        #except:print("TODO");
-                        if  inf[0]!="" and inf[1]>0.0001:
-                            try:
-                                vgroups[inf[0]].vertexes.append((newindex, vertex_group.weight))
-                            except:
+                        if  inf[0] != "" and inf[1] > 0.0001:
+                            if inf[0] not in vgroups:
                                 vg = VertexGroup()
-
                                 vg.targetGroupName = inf[0]
-                                vg.vertexes.append( (newindex, inf[1]) ) #= (vertex_weight_list
-                                vgroups[inf[0]]=vg
+                                vg.vertexes.append((newindex, inf[1])) #= (vertex_weight_list
+                                vgroups[inf[0]] = vg
+                            vgroups[inf[0]].vertexes.append((newindex, vertex_group.weight))
 
-                    normal=None
-                    if not face.use_smooth:
-                        #recompute normal
-                        #WARNING:assuming triangle faces
-                        p1 = mesh.vertices[face.vertices[0] ].co
-                        p2 = mesh.vertices[face.vertices[1] ].co
-                        p3 = mesh.vertices[face.vertices[2] ].co
-                        vv1 =  mathutils.Vector((p3[0] - p2[0], p3[1] - p2[1], p3[2] - p2[2]))
-                        vv2= mathutils.Vector((p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]))
-                        normal=vv1.cross(vv2)
+                    osg_normals.getArray().append(key[1])
+                    osg_vertexes.getArray().append(list(mesh.vertices[vert_index].co))
+                    # beware this enumerate, order can be different ?
+                    for idx, uv in enumerate(mesh.tessface_uv_textures):
+                        osg_uvs.setdefault(uv.name, TexCoordArray()).getArray().append(key[2][idx])
 
-                    else:normal=mesh.vertices[vert_index].normal
-
-                    osg_normals.getArray().append([normal[0], normal[1], normal[2]])
-                    osg_vertexes.getArray().append([mesh.vertices[vert_index].co[0],mesh.vertices[vert_index].co[1],mesh.vertices[vert_index].co[2]])
-                    for uv in mesh.tessface_uv_textures:
-                        try:arr=osg_uvs[uv.name].getArray()
-                        except:
-                            osg_uvs[uv.name] = TexCoordArray()
-                            arr=osg_uvs[uv.name].getArray()
-                        arr.append(uv.data[face.index].uv[facevertexindex])
-                    if mesh.vertex_colors:
-                        col=mesh.vertex_colors.data[face.index]
-                        #TODOosg_colors.getArray().append([col[0],col[1]);
+                    if vertex_colors:
+                        col = key[len(key) - 1]
+                        osg_colors.getArray().append([col[0], col[1], col[2]]);
 
             ##facelength test : crawl primitives
             facelength=len(face.vertices)
             if facelength == 2:
                 nlin = nlin + 1
 
-                lines.indexes.append( vertex_index_map[get_vertex_key(face.index,0)])
-                lines.indexes.append( vertex_index_map[get_vertex_key(face.index,1)])
+                lines.indexes.append( vertex_index_map[get_vertex_key(face.index,0)] )
+                lines.indexes.append( vertex_index_map[get_vertex_key(face.index,1)] )
             elif facelength == 3:
                 ntri = ntri + 1
-                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,0)])
-                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,1)])
-                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,2)])
+                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,0)] )
+                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,1)] )
+                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,2)] )
 
             elif facelength == 4:
                 nquad = nquad + 1
-                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,0)])
-                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,1)])
-                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,2)])
-                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,3)])
+                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,0)] )
+                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,1)] )
+                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,2)] )
+                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,3)] )
 
             else:
                 osglog.log("WARNING can't manage faces with {} vertices".format(nv))
@@ -1476,13 +1469,17 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             Log(end_title)
             return None
 
-        if len(lines.indexes)!=0:primitives.append(lines)
-        if len(triangles.indexes)!=0:primitives.append(triangles)
-        if len(quads.indexes)!=0:primitives.append(quads)
+        if len(lines.indexes) != 0:
+            primitives.append(lines)
+        if len(triangles.indexes) != 0:
+            primitives.append(triangles)
+        if len(quads.indexes) != 0:
+            primitives.append(quads)
 
         geom.uvs = osg_uvs
         geom.groups = vgroups
-        geom.colors = osg_colors
+        if mesh.vertex_colors:
+            geom.colors = osg_colors
 
         geom.vertexes = osg_vertexes
         geom.normals = osg_normals
@@ -1741,7 +1738,7 @@ def getChannel(target, action, fps, data_path, array_indexes):
 
     for time in times:
         realtime = (time) / fps
-        Log("time {} {} {}".format(time, realtime, fps))
+        # Log("time {} {} {}".format(time, realtime, fps))
 
         # realtime = time
         if realtime > duration:
