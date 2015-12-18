@@ -1810,6 +1810,7 @@ class BlenderAnimationToAnimation(object):
         return False
 
     def handleMorphAnimationBaking(self, is_multi_animation=False):
+        Log("Exporting morph animation on object {}".format(self.object.name))
         if not self.has_morph:
             return
 
@@ -1892,9 +1893,11 @@ class BlenderAnimationToAnimation(object):
             print("parseAllActions: parsing {} ".format(action_key))
             anim = Animation()
             action = bpy.data.actions[action_key]
+            self.current_action = action
             anim.setName(action.name)
             if isSolidOrRigAction(action):
-                parseSolidRigAction()
+                if not (self.object.type != 'ARMATURE' and isRigAction(action)):
+                    parseSolidRigAction()
             elif hasShapeKeys(self.object):
                 parseMorphAction()
 
@@ -1902,7 +1905,7 @@ class BlenderAnimationToAnimation(object):
 
 
     def addActionDataToAnimation(self, animation, morph=False):
-        print('adding data from action {} to animation {}'.format(self.action_name, animation))
+        Log('adding data from action {} to animation {}'.format(self.current_action.name, animation))
         if self.current_action is None:
             return
         if self.object.type == "ARMATURE":

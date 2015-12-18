@@ -140,6 +140,14 @@ def hasNLATracks(blender_object):
            blender_object.animation_data.nla_tracks
 
 
+def isRigAction(action):
+    for curve in action.fcurves:
+        if 'pose.bones' in curve.data_path:
+            return True
+
+    return False
+
+
 def isSolidOrRigAction(action):
     for curve in action.fcurves:
         if 'key_block' in curve.data_path:
@@ -164,6 +172,14 @@ def hasShapeKeysAnimation(blender_object):
 
     if hasAction(blender_object) and not isSolidOrRigAction(blender_object.animation_data.action):
         return True
+
+    return False
+
+
+def isMorphAction(action):
+    for curve in action.fcurves:
+        if 'key_blocks' in curve.data_path:
+            return True
 
     return False
 
