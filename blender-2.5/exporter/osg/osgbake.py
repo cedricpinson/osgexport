@@ -313,6 +313,7 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
     if blender_object.type == 'ARMATURE':
         backup_pose_position = blender_object.data.pose_position
         blender_object.data.pose_position = 'POSE'
+        scene.update()
 
     do_visual_keying = True # Always, need to take bone constraints  into account
 
@@ -336,6 +337,8 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
 
     if blender_object.type == 'ARMATURE':
         blender_object.data.pose_position = backup_pose_position
+        scene.update()
+
 
     return baked_action
 

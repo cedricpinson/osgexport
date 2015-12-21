@@ -222,10 +222,13 @@ class Export(object):
                 if arm.data.pose_position == 'POSE':
                     arm.data.pose_position = 'REST'
                     self.rest_armatures.append(arm)
+        # Update changes
+        self.config.scene.update()
 
     def restoreArmaturePoseMode(self):
         for arm in self.rest_armatures:
             arm.data.pose_position = 'POSE'
+        self.config.scene.update()
 
     def exportItemAndChildren(self, blender_object):
         item = self.exportChildrenRecursively(blender_object, None, None)
@@ -275,7 +278,10 @@ class Export(object):
         if not has_action and not has_constraints and not has_morph and not hasNLATracks(blender_object):
             return None
 
-        if parse_all_actions and not has_action and not has_morph:
+        if parse_all_actions and not has_action and not has_morph and not hasNLATracks(blender_object):
+            return None
+
+        if has_constraints and (blender_object.parent and blender_object.parent.type == 'ARMATURE'):
             return None
 
         action2animation = BlenderAnimationToAnimation(object=blender_object,
@@ -732,9 +738,9 @@ class Export(object):
         if armature_modifier is not None or mesh.parent and mesh.parent.type == 'ARMATURE':
             exportInfluence = True
 
-        if self.config.apply_modifiers and has_non_armature_modifiers:
-            # Breaks morph targets if we apply modifiers here
-            mesh_object = mesh.to_mesh(self.config.scene, (not hasShapeKeys(mesh)), 'PREVIEW')
+        # converting to mesh skips shape keys
+        if self.config.apply_modifiers and has_non_armature_modifiers and not hasShapeKeys(mesh):
+            mesh_object = mesh.to_mesh(self.config.scene, True, 'PREVIEW')
         else:
             mesh_object = mesh.data
 
@@ -1634,7 +1640,7 @@ class BlenderAnimationToAnimation(object):
                 anim_object.animation_data_clear()
 
         anims = []
-        if not self.has_action and not self.has_morph:
+        if not self.has_action and not self.has_morph and not hasNLATracks(self.object):
             Log("Warning: osgdata::parseAllActions object has no action")
             return anims
         actions_dict = dict(bpy.data.actions)

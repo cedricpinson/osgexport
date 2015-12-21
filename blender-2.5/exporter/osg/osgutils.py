@@ -123,16 +123,33 @@ def getDeltaMatrixFrom(parent, child):
                                     child.matrix_world)
 
 
-def getWidestActionDuration(scene):
-    start = [obj.animation_data.action.frame_range[0] for obj in scene.objects if hasAction(obj)]
-    end = [obj.animation_data.action.frame_range[1] for obj in scene.objects if hasAction(obj)]
+def getWidestActionDuration(scene, clamp_with_scene=True):
+    start = []
+    end = []
 
-    start.append(int(scene.frame_start))
-    end.append(int(scene.frame_end))
+    # Check duration in actions and nla tracks
+    for obj in scene.objects:
+        if hasAction(obj):
+            start.append(obj.animation_data.action.frame_range[0])
+            end.append(obj.animation_data.action.frame_range[1])
+        if hasNLATracks(obj):
+            for nla_tracks in obj.animation_data.nla_tracks:
+                start.extend([strip.frame_start for strip in nla_tracks.strips])
+                end.extend([strip.frame_end for strip in nla_tracks.strips])
 
-    # If scene frame range is wider, use it
-    start = int(min(start))
-    end = int(max(end))
+    if clamp_with_scene and start and end:
+        start = int(min(start))
+        end = int(max(end))
+
+        start = max(start, scene.frame_start)
+        end = min(end, scene.frame_end)
+    else:
+        start.append(int(scene.frame_start))
+        end.append(int(scene.frame_end))
+        # If scene frame range is wider, use it
+        start = int(min(start))
+        end = int(max(end))
+
 
     return (start, end)
 
