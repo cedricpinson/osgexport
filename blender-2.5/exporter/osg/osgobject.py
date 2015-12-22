@@ -1110,7 +1110,8 @@ class Bone(MatrixTransform):
         self.parent = parent
         self.skeleton = skeleton
         self.bone = bone
-        self.inverse_bind_matrix = Matrix().to_4x4().identity()
+        #self.inverse_bind_matrix = Matrix().to_4x4().identity()
+        self.bone_inv_bind_matrix_skeleton = Matrix().to_4x4()
 
     def buildBoneChildren(self):
         if self.skeleton is None or self.bone is None:

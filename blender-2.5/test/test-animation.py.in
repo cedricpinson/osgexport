@@ -114,6 +114,17 @@ class Exporter(unittest.TestCase):
         self.assertEquals(bone1_keylen_dict['scale'], [2, 2, 2])
 
 
+    def testObjectBoneParenting(self):
+        ''' Check that '''
+        makeSceneActive('RigParenting')
+        exporter = Export()
+        print(exporter)
+        exporter.process()
+        # Check that it is not rigged
+        obj_type= exporter.root.children[0].children[0]\
+                      .children[0].children[0].children[0].drawables[0].className()
+        self.assertEquals("Geometry", obj_type)
+
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
     result = unittest.TextTestRunner(verbosity=2).run(suite)

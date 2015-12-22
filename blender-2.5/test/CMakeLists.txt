@@ -26,13 +26,14 @@ FILE(COPY
 )
 
 
-#CONFIGURE_FILE(
-#  ${CMAKE_CURRENT_SOURCE_DIR}/test-armature.py.in
-#  ${CMAKE_CURRENT_BINARY_DIR}/test-armature.py
-#  IMMEDIATE @ONLY
-#  )
+CONFIGURE_FILE(
+  ${CMAKE_CURRENT_SOURCE_DIR}/test-armature.py.in
+  ${CMAKE_CURRENT_BINARY_DIR}/test-armature.py
+  IMMEDIATE @ONLY
+  )
 #animation is not yet implemented on 2.5
-#ADD_TEST("test-armature" ${BLENDER} -b ${CMAKE_CURRENT_BINARY_DIR}/test.blend -P test-armature.py --osg="filename=${CMAKE_CURRENT_BINARY_DIR}/${DATA_DEST}\;RELATIVE_PATH=True" )
+ADD_TEST(NAME "test-armature"
+         COMMAND ${BLENDER} --background ${CMAKE_CURRENT_BINARY_DIR}/test.blend --python ${CMAKE_CURRENT_BINARY_DIR}/test-armature.py)
 
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/test-bug_multimaterial.py.in
