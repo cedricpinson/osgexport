@@ -1117,7 +1117,8 @@ class Bone(MatrixTransform):
         if self.skeleton is None or self.bone is None:
             return
 
-        self.setName(self.bone.name)
+        bone_name = self.bone.name + '_' + self.skeleton.name
+        self.setName(bone_name.replace(' ', '_'))
         update_callback = UpdateBone()
         update_callback.setName(self.name)
         self.update_callbacks.append(update_callback)
@@ -1373,7 +1374,7 @@ class Channel(Object):
 
     def serializeContent(self, output):
         output.write(self.encode("$#Name %s\n" % self.name))
-        output.write(self.encode("$#TargetName \"%s\"\n" % self.target))
+        output.write(self.encode("$#TargetName \"%s\" \n" % self.target))
         output.write(self.encode("$#KeyFrameContainer TRUE %d {\n" % (len(self.keys))))
         for i in self.keys:
             output.write(self.encode("$##"))

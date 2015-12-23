@@ -257,3 +257,7 @@ def unselectAllObjects():
 def selectObjects(object_list):
     for obj in object_list:
         obj.select = True
+
+
+def spaceSafe(bonename):
+    return bonename.replace(' ', '_')
