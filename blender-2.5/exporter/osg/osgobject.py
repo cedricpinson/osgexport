@@ -1227,8 +1227,9 @@ class MorphGeometry(Geometry):
     def serializeContent(self, output):
         if self.morphTargets:
             output.write(self.encode("$#MorphTargets %s {\n" % len(self.morphTargets)))
-            for i, target in enumerate(self.morphTargets):
-                output.write(self.encode("$##MorphTarget %s \n" % i))
+            for target in self.morphTargets:
+                factor = target.factor if hasattr(target, 'factor') else 0
+                output.write(self.encode("$##MorphTarget %s \n" % factor))
                 target.indent_level = self.indent_level + 2
                 target.write(output)
             output.write(self.encode("$#}\n"))

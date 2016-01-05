@@ -1355,6 +1355,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             target.normals = geometry.normals
             target.primitives = geometry.primitives
             geometry.morphTargets.append(target)
+            target.factor = key.value
 
     def createGeometryForMaterialIndex(self, material_index, mesh):
         if hasShapeKeys(self.object):
