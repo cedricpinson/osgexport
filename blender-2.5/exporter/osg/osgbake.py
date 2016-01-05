@@ -58,9 +58,9 @@ def bakeMorphTargets(frame_start,
 
     scene = bpy.context.scene
     shape = blender_object.data.shape_keys
-    anim_obj = shape if hasAction(shape) else blender_object
     frame_back = scene.frame_current
-    original_action = anim_obj.animation_data.action
+
+    original_action = shape.animation_data.action if hasAction(shape) else None
     frame_range = range(frame_start, frame_end + 1, frame_step)
     morph_info = {}
 
@@ -73,8 +73,7 @@ def bakeMorphTargets(frame_start,
     collectValues()
     setKeyframes()
     cleanAction(new_action)
-
-    anim_obj.animation_data.action = original_action
+    shape.animation_data.action = original_action
 
     return new_action
 
