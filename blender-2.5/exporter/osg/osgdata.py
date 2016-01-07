@@ -787,6 +787,8 @@ class Export(object):
             for geom in geometries:
                 if geom.className() == 'MorphGeometry':
                     targetNames.extend(map(lambda x: x.name, geom.morphTargets))
+                if geom.className() == 'RigGeometry' and geom.sourcegeometry and hasattr(geom.sourcegeometry, 'morphTargets'):
+                    targetNames.extend(map(lambda x: x.name, geom.sourcegeometry.morphTargets))
                 geode.drawables.append(geom)
             for name in converter.material_animations.keys():
                 self.animations.append(converter.material_animations[name])
