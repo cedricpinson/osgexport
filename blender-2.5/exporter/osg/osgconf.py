@@ -63,6 +63,7 @@ class Config(object):
         self.defaultattr("use_quaternions", False)
         self.defaultattr("bake_constraints", True)
         self.defaultattr("bake_frame_step", 1)
+        self.defaultattr("arm_rest", False)
         self.defaultattr("osgconv_to_ive", False)
         osgconv_util = "osgconv"
         if sys.platform == 'win32':

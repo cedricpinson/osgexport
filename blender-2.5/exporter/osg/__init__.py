@@ -90,6 +90,8 @@ def main():
                         help="Use quaternions for rotation baking")
     parser.add_argument("-m", "--apply-modifiers", dest="apply_modifiers", action="store_true", default=False,
                         help="Apply modifiers before exporting")
+    parser.add_argument("-r", "--armature-rest", dest="arm_rest", action="store_true", default=False,
+                        help="Export static armature in rest position")
     parser.add_argument("-j", "--json-materials", dest="json_materials", action="store_true", default=False,
                         help="Store materials into JSON format")
     parser.add_argument("-s", "--json-shaders", dest="json_shaders", action="store_true", default=False,
@@ -106,6 +108,7 @@ def main():
         config.bake_animations = args.bake_all
         config.use_quaternions = args.use_quaternions
         config.apply_modifiers = args.apply_modifiers
+        config.arm_rest = args.arm_rest
         config.scene = bpy.context.scene
         config.json_materials = args.json_materials
         config.json_shaders = args.json_shaders
@@ -190,6 +193,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     BAKE_CONSTRAINTS = BoolProperty(name="Bake Constraints", description="Bake constraints into actions", default=True)
     BAKE_FRAME_STEP = IntProperty(name="Bake frame step", description="Frame step when baking actions",
                                   default=1, min=1, max=30)
+    ARMATURE_REST = BoolProperty(name="Export armature in REST pose", description="Static armatures are exported in REST mode (instead of POSE)", default=False)
     OSGCONV_TO_IVE = BoolProperty(name="Convert to IVE (uses osgconv)", description="Use osgconv to convert to IVE",
                                   default=False)
     OSGCONV_EMBED_TEXTURES = BoolProperty(name="Embed textures in IVE", default=False)
@@ -214,12 +218,14 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         layout.row(align=True).prop(self, "BAKE_ALL")
         layout.row(align=True).prop(self, "USE_QUATERNIONS")
         layout.row(align=True).prop(self, "BAKE_CONSTRAINTS")
+        layout.row(align=True).prop(self, "ARMATURE_REST")
         layout.row(align=True).prop(self, "LOG")
         layout.row(align=True).prop(self, "JSON_MATERIALS")
         layout.row(align=True).prop(self, "JSON_SHADERS")
         layout.row(align=True).prop(self, "ZERO_TRANSLATIONS")
         layout.row(align=True).prop(self, "ANIMFPS")
         layout.row(align=True).prop(self, "BAKE_FRAME_STEP")
+        layout.row(align=True).prop(self, "EXPORT_REST")
         layout.row(align=True).prop(self, "FLOATPRE")
         layout.row(align=True).prop(self, "INDENT")
         layout.row(align=True).label("Texture Prefix:")
@@ -259,6 +265,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.USE_QUATERNIONS = self.config.use_quaternions
         self.BAKE_CONSTRAINTS = self.config.bake_constraints
         self.BAKE_FRAME_STEP = self.config.bake_frame_step
+        self.ARMATURE_REST = self.config.arm_rest
         self.OSGCONV_TO_IVE = self.config.osgconv_to_ive
         self.OSGCONV_EMBED_TEXTURES = self.config.osgconv_embed_textures
         self.OSGCONV_PATH = self.config.osgconv_path
@@ -300,6 +307,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.config.use_quaternions = self.USE_QUATERNIONS
         self.config.bake_constraints = self.BAKE_CONSTRAINTS
         self.config.bake_frame_step = self.BAKE_FRAME_STEP
+        self.config.arm_rest = self.ARMATURE_REST
         self.config.osgconv_to_ive = self.OSGCONV_TO_IVE
         self.config.osgconv_path = self.OSGCONV_PATH
         self.config.run_viewer = self.RUN_VIEWER

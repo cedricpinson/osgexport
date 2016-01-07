@@ -261,7 +261,7 @@ class Export(object):
             return None
 
         has_action = blender_object.animation_data and hasAction(blender_object)
-        has_constraints = hasSolidConstraints(blender_object) or hasBoneConstraints(blender_object)
+        has_constraints = hasSolidConstraints(blender_object) or hasExternalBoneConstraints(blender_object)
         has_morph = hasShapeKeysAnimation(blender_object)
 
         if blender_object.type != 'ARMATURE' and not has_morph and not update_callback:
@@ -337,8 +337,7 @@ class Export(object):
         # Mesh, Camera and Empty objects
         def parseBlenderObject(blender_object, is_visible):
             # because it blender can insert inverse matrix, we have to recompute the parent child
-            # matrix for our use. Not if an armature we force it to be in rest position to compute
-            # matrix in the good space
+            # matrix for our use.
             matrix = getDeltaMatrixFrom(blender_object.parent, blender_object)
             osg_object = MatrixTransform()
             osg_object.setName(blender_object.name)
@@ -432,6 +431,12 @@ class Export(object):
 
     def createSkeleton(self, blender_object):
         Log("processing Armature {}".format(blender_object.name))
+        #if no animation, set it in pose mode to bake it
+        use_pose = not (hasAction(blender_object) or hasNLATracks(blender_object)) \
+                   and not (hasExternalBoneConstraints(blender_object)) and not self.config.arm_rest
+
+        if use_pose and blender_object in self.rest_armatures:
+            setArmaturesPosePosition(self.config.scene, 'POSE', [blender_object])
 
         roots = getRootBonesList(blender_object.data)
 
@@ -439,9 +444,12 @@ class Export(object):
         skeleton = Skeleton(blender_object.name, matrix)
         for bone in roots:
             b = Bone(blender_object, bone)
-            b.buildBoneChildren()
+            b.buildBoneChildren(use_pose=use_pose)
             skeleton.children.append(b)
         skeleton.collectBones()
+
+        if use_pose and blender_object in self.rest_armatures:
+            setArmaturesPosePosition(self.config.scene, 'REST', [blender_object])
         return skeleton
 
     def preProcess(self):
@@ -450,7 +458,7 @@ class Export(object):
             nb_animated_objects = 0
             for obj in scene.objects:
                 # FIXME not sure about the constraint check here
-                if hasAction(obj) or hasSolidConstraints(obj) or hasBoneConstraints(obj) or hasNLATracks(obj) or hasShapeKeysAnimation(obj):
+                if hasAction(obj) or hasSolidConstraints(obj) or hasExternalBoneConstraints(obj) or hasNLATracks(obj) or hasShapeKeysAnimation(obj):
                     nb_animated_objects += 1
 
             self.parse_all_actions = nb_animated_objects == 1

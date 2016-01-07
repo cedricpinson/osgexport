@@ -1113,7 +1113,7 @@ class Bone(MatrixTransform):
         #self.inverse_bind_matrix = Matrix().to_4x4().identity()
         self.bone_inv_bind_matrix_skeleton = Matrix().to_4x4()
 
-    def buildBoneChildren(self):
+    def buildBoneChildren(self, use_pose=False):
         if self.skeleton is None or self.bone is None:
             return
 
@@ -1123,10 +1123,10 @@ class Bone(MatrixTransform):
         update_callback.setName(self.name)
         self.update_callbacks.append(update_callback)
 
-        bone_matrix = self.bone.matrix_local.copy()
+        bone_matrix = self.skeleton.pose.bones[self.bone.name].matrix.copy() if use_pose else self.bone.matrix_local.copy()
 
         if self.parent:
-            parent_matrix = self.bone.parent.matrix_local.copy()
+            parent_matrix = self.skeleton.pose.bones[self.bone.name].parent.matrix.copy() if use_pose else self.bone.parent.matrix_local.copy()
             bone_matrix = parent_matrix.inverted() * bone_matrix
 
         # add bind matrix in localspace callback
@@ -1142,7 +1142,7 @@ class Bone(MatrixTransform):
         for boneChild in self.bone.children:
             b = Bone(self.skeleton, boneChild, self)
             self.children.append(b)
-            b.buildBoneChildren()
+            b.buildBoneChildren(use_pose)
 
     def getMatrixInArmatureSpace(self):
         return self.bone.matrix_local

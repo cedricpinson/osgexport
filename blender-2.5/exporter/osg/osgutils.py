@@ -153,11 +153,16 @@ def getWidestActionDuration(scene, clamp_with_scene=True):
 
     return (start, end)
 
-def hasBoneConstraints(blender_object):
+def hasExternalBoneConstraints(blender_object):
     if blender_object.type != 'ARMATURE' or not blender_object.pose:
         return False
 
-    return any(bone.constraints and len(bone.constraints) > 0 for bone in blender_object.pose.bones)
+    for bone in blender_object.pose.bones:
+        for cons in bone.constraints:
+            if hasattr(cons, 'target') and cons.target is not None and cons.target != blender_object:
+                return True
+
+    return False
 
 def hasSolidConstraints(blender_object):
     return hasattr(blender_object, "constraints") and (len(blender_object.constraints) > 0)
@@ -268,16 +273,21 @@ def spaceSafe(bonename):
     return bonename.replace(' ', '_')
 
 
-def setArmaturesPosePosition(scene, pose_position, armatures=bpy.data.armatures):
+def setArmaturesPosePosition(scene, pose_position, armatures=[]):
     if pose_position not in ['POSE', 'REST']:
         return
 
+    # If no armature specified, take all scene armatures
+    if not armatures:
+        armatures = [obj for obj in scene.objects if obj.type == 'ARMATURE']
+
     modified = []
     for armature in armatures:
-        if not hasattr(armature, 'pose_position'):
+        arm_data = armature.data
+        if not hasattr(arm_data, 'pose_position'):
             continue
-        if armature.pose_position != pose_position:
-            armature.pose_position = pose_position
+        if arm_data.pose_position != pose_position:
+            arm_data.pose_position = pose_position
             modified.append(armature)
 
     scene.update()
