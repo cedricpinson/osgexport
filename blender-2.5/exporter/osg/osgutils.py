@@ -153,9 +153,14 @@ def getWidestActionDuration(scene, clamp_with_scene=True):
 
     return (start, end)
 
+def hasBoneConstraints(blender_object):
+    if blender_object.type != 'ARMATURE' or not blender_object.pose:
+        return False
 
-def hasConstraints(blender_object):
-        return hasattr(blender_object, "constraints") and (len(blender_object.constraints) > 0)
+    return any(bone.constraints and len(bone.constraints) > 0 for bone in blender_object.pose.bones)
+
+def hasSolidConstraints(blender_object):
+    return hasattr(blender_object, "constraints") and (len(blender_object.constraints) > 0)
 
 
 def hasAction(blender_object):
@@ -261,3 +266,21 @@ def selectObjects(object_list):
 
 def spaceSafe(bonename):
     return bonename.replace(' ', '_')
+
+
+def setArmaturesPosePosition(scene, pose_position, armatures=bpy.data.armatures):
+    if pose_position not in ['POSE', 'REST']:
+        return
+
+    modified = []
+    for armature in armatures:
+        if not hasattr(armature, 'pose_position'):
+            continue
+        if armature.pose_position != pose_position:
+            armature.pose_position = pose_position
+            modified.append(armature)
+
+    scene.update()
+    return modified
+
+

@@ -305,8 +305,7 @@ def bakeAction(blender_object,
 # take care of restoring selection after
 def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=False, use_quaternions=False):
     # baking will replace the current action but we want to keep scene unchanged
-    if has_action:
-        original_action = blender_object.animation_data.action
+    original_action = blender_object.animation_data.action if has_action else None
 
     # Set armature to POSE mode before baking
     if blender_object.type == 'ARMATURE':
@@ -331,8 +330,7 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
                               do_visual_keying=do_visual_keying)
 
     # restore original action and rotation_mode
-    if has_action:
-        blender_object.animation_data.action = original_action
+    blender_object.animation_data.action = original_action
 
     if blender_object.type == 'ARMATURE':
         blender_object.data.pose_position = backup_pose_position

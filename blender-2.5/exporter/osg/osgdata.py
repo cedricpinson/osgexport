@@ -52,7 +52,7 @@ def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", ze
     has_location_keys = False
     has_scale_keys = False
     has_rotation_keys = False
-    has_constraints = hasConstraints(blender_object)
+    has_constraints = hasSolidConstraints(blender_object)
     has_nla = hasNLATracks(blender_object)
 
     if blender_object.animation_data:
@@ -216,19 +216,11 @@ class Export(object):
         return blender_object.name in self.config.exclude_objects
 
     def setArmatureInRestMode(self):
-        for arm in bpy.data.objects:
-            if arm.type == "ARMATURE":
-                print(arm)
-                if arm.data.pose_position == 'POSE':
-                    arm.data.pose_position = 'REST'
-                    self.rest_armatures.append(arm)
-        # Update changes
-        self.config.scene.update()
+        self.rest_armatures = setArmaturesPosePosition(self.config.scene, 'REST')
 
     def restoreArmaturePoseMode(self):
-        for arm in self.rest_armatures:
-            arm.data.pose_position = 'POSE'
-        self.config.scene.update()
+        setArmaturesPosePosition(self.config.scene, 'POSE', self.rest_armatures)
+        self.rest_armatures = []
 
     def exportItemAndChildren(self, blender_object):
         item = self.exportChildrenRecursively(blender_object, None, None)
@@ -269,7 +261,7 @@ class Export(object):
             return None
 
         has_action = blender_object.animation_data and hasAction(blender_object)
-        has_constraints = hasConstraints(blender_object)
+        has_constraints = hasSolidConstraints(blender_object) or hasBoneConstraints(blender_object)
         has_morph = hasShapeKeysAnimation(blender_object)
 
         if blender_object.type != 'ARMATURE' and not has_morph and not update_callback:
@@ -317,12 +309,14 @@ class Export(object):
     def exportChildrenRecursively(self, blender_object, parent, osg_root):
         def parseArmature(blender_armature):
             osg_object = self.createSkeleton(blender_object)
+            rest_armatures = setArmaturesPosePosition(self.config.scene, 'POSE')
             anims = self.createAnimationsObject(osg_object, blender_object, self.config,
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
                                                                       rotation_mode),
                                                 self.unique_objects,
                                                 self.parse_all_actions)
+            setArmaturesPosePosition(self.config.scene, 'REST', rest_armatures)
             return osg_object
 
         def parseLight(blender_light):
@@ -456,7 +450,7 @@ class Export(object):
             nb_animated_objects = 0
             for obj in scene.objects:
                 # FIXME not sure about the constraint check here
-                if hasAction(obj) or hasConstraints(obj) or hasNLATracks(obj) or hasShapeKeysAnimation(obj):
+                if hasAction(obj) or hasSolidConstraints(obj) or hasBoneConstraints(obj) or hasNLATracks(obj) or hasShapeKeysAnimation(obj):
                     nb_animated_objects += 1
 
             self.parse_all_actions = nb_animated_objects == 1
