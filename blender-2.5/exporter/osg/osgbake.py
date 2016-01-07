@@ -248,7 +248,11 @@ def bakeAction(blender_object,
     if do_object:
 
         rotation_mode_backup = blender_object.rotation_mode
+        # Delta rotation quaternion can break the rotation of the object
+        # so we set it to default quaternion for our use and then restore its original value
+        delta_rotation_backup = blender_object.delta_rotation_quaternion
         if use_quaternions and blender_object.rotation_mode != 'QUATERNION':
+            blender_object.delta_rotation_quaternion = (1, 0, 0, 0)
             blender_object.rotation_mode = 'QUATERNION'
 
         if do_constraint_clear:
