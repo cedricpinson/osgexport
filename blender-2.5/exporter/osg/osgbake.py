@@ -129,7 +129,6 @@ def bakeAction(blender_object,
 
     # -------------------------------------------------------------------------
     # Helper Functions and vars
-
     def poseFrameInfo(blender_object, do_visual_keying):
         matrix = {}
         for name, pbone in blender_object.pose.bones.items():
@@ -248,6 +247,12 @@ def bakeAction(blender_object,
     if do_object:
 
         rotation_mode_backup = blender_object.rotation_mode
+        # Keep the value of matrix_basis since it will be modified by the baking process
+        # It is mandatory for constraint baking
+        matrix_basis_backup = blender_object.matrix_basis.copy()
+        matrix_local_backup = blender_object.matrix_local.copy()
+        matrix_parent_inverse_backup = blender_object.matrix_parent_inverse.copy()
+
         # Delta rotation quaternion can break the rotation of the object
         # so we set it to default quaternion for our use and then restore its original value
         delta_rotation_backup = blender_object.delta_rotation_quaternion
@@ -301,7 +306,15 @@ def bakeAction(blender_object,
     if do_clean:
         cleanAction(action)
 
+    # restore current scene frame and original matrices for object.
+    # Setting back matrices is required since baking process changes these values
+    # and it can affect further constraints bakings. Note that the order is important here
     scene.frame_set(frame_back)
+    scene.update()
+    blender_object.matrix_parent_inverse = matrix_parent_inverse_backup
+    blender_object.matrix_local = matrix_local_backup
+    blender_object.matrix_basis = matrix_basis_backup
+    scene.update()
 
     return action
 
