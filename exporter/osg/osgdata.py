@@ -591,6 +591,7 @@ class Export(object):
         self.root = Group()
         self.root.setName("Root")
         self.root.children = self.items
+        self.root.getOrCreateUserData().append(StringValueObject("source", "blender"))
         if len(self.animations) > 0:
             animation_manager = BasicAnimationManager()
             animation_manager.animations = self.animations
