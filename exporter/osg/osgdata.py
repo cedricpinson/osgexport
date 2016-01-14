@@ -1022,8 +1022,9 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         material = Material()
         stateset.attributes.append(material)
 
+        # Setting dataVariance to Static since material animation is not supported
         for osg_object in (stateset, material):
-            osg_object.dataVariance = "DYNAMIC"
+            osg_object.dataVariance = "STATIC"
             osg_object.setName(mat_source.name)
             osg_object.getOrCreateUserData().append(StringValueObject("source", "blender"))
 
