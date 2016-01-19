@@ -1,0 +1,8 @@
+obj ParentBone
+
+Parsing object 'ParentBone' of type ARMATURE
+processing Armature ParentBone
+
+Parsing object 'Triangle' of type MESH
+exporting object Triangle
+mesh_object is Plane

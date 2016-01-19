@@ -1,0 +1,214 @@
+#Ascii Scene
+#Version 92
+#Generator osgexport 0.14.2
+
+osg::Group {
+  UniqueID 21
+  Name "Root"
+  Children 1 {
+    osgAnimation::Skeleton {
+      UniqueID 0
+      Name "ParentBone"
+      UpdateCallback TRUE {
+        osgAnimation::UpdateSkeleton {
+          UniqueID 1
+        }
+      }
+      Children 1 {
+        osgAnimation::Bone {
+          UniqueID 2
+          Name "Bone"
+          DataVariance DYNAMIC
+          UpdateCallback TRUE {
+            osgAnimation::UpdateBone {
+              UniqueID 3
+              Name "Bone"
+              StackedTransforms 4 {
+                osgAnimation::StackedMatrixElement {
+                  UniqueID 4
+                  Name "bindmatrix"
+                  Matrix {
+                    1.00000 0.00000 0.00000 0.00000
+                    0.00000 0.00000 1.00000 0.00000
+                    0.00000 -1.00000 0.00000 0.00000
+                    0.00000 0.00000 0.00000 1.00000
+                  }
+                }
+                osgAnimation::StackedTranslateElement {
+                  UniqueID 5
+                  Name "translate"
+                  Translate 0.00000 0.00000 0.00000
+                }
+                osgAnimation::StackedQuaternionElement {
+                  UniqueID 6
+                  Name "quaternion"
+                  Quaternion 0.00000 0.00000 0.00000 1.00000
+                }
+                osgAnimation::StackedScaleElement {
+                  UniqueID 7
+                  Name "scale"
+                  Scale 1.00000 1.00000 1.00000
+                }
+              }
+            }
+          }
+          Children 1 {
+            osgAnimation::Bone {
+              UniqueID 8
+              Name "Bone.002"
+              DataVariance DYNAMIC
+              UpdateCallback TRUE {
+                osgAnimation::UpdateBone {
+                  UniqueID 9
+                  Name "Bone.002"
+                  StackedTransforms 4 {
+                    osgAnimation::StackedMatrixElement {
+                      UniqueID 10
+                      Name "bindmatrix"
+                      Matrix {
+                        1.00000 0.00000 0.00000 0.00000
+                        0.00000 1.00000 0.00000 0.00000
+                        0.00000 -0.00000 1.00000 0.00000
+                        0.00000 1.00000 0.00000 1.00000
+                      }
+                    }
+                    osgAnimation::StackedTranslateElement {
+                      UniqueID 11
+                      Name "translate"
+                      Translate 0.00000 0.00000 0.00000
+                    }
+                    osgAnimation::StackedQuaternionElement {
+                      UniqueID 12
+                      Name "quaternion"
+                      Quaternion 0.00000 0.00000 0.00000 1.00000
+                    }
+                    osgAnimation::StackedScaleElement {
+                      UniqueID 13
+                      Name "scale"
+                      Scale 1.00000 1.00000 1.00000
+                    }
+                  }
+                }
+              }
+              Children 1 {
+                osg::MatrixTransform {
+                  UniqueID 15
+                  Name "Triangle"
+                  Children 1 {
+                    osg::Geode {
+                      UniqueID 19
+                      Name "GeodePlane"
+                      Drawables 1 {
+                        osgAnimation::RigGeometry {
+                          UniqueID 18
+                          Name "Triangle"
+                          PrimitiveSetList 1 {
+                              DrawElementsUByte GL_TRIANGLES 3 {
+                                0 1 2 
+                              }
+                          }
+                          VertexData {
+                            Array TRUE ArrayID 0 Vec3fArray 3 {
+                              1.00000 -1.00000 1.45249
+                              1.00000 1.00000 1.45249
+                              -1.00000 1.00000 1.45249
+                            }
+                            Indices FALSE
+                            Binding BIND_PER_VERTEX
+                            Normalize 0
+                          }
+                          NormalData {
+                            Array TRUE ArrayID 1 Vec3fArray 3 {
+                              -0.00000 0.00000 1.00000
+                              -0.00000 0.00000 1.00000
+                              -0.00000 0.00000 1.00000
+                            }
+                            Indices FALSE
+                            Binding BIND_PER_VERTEX
+                            Normalize 0
+                          }
+                          InfluenceMap 2 {
+                            VertexInfluence "Bone" 3 {
+                              0 0.41718
+                              0 0.41718
+                              1 0.35746
+                            }
+                            VertexInfluence "Bone.002" 4 {
+                              0 0.58282
+                              0 0.58282
+                              1 0.64254
+                              2 0.99334
+                            }
+                          }
+                          SourceGeometry TRUE {
+                            osg::Geometry {
+                              UniqueID 17
+                              Name "Triangle"
+                              PrimitiveSetList 1 {
+                                  DrawElementsUByte GL_TRIANGLES 3 {
+                                    0 1 2 
+                                  }
+                              }
+                              VertexData {
+                                Array TRUE ArrayID 0
+                                Indices FALSE
+                                Binding BIND_PER_VERTEX
+                                Normalize 0
+                              }
+                              NormalData {
+                                Array TRUE ArrayID 1
+                                Indices FALSE
+                                Binding BIND_PER_VERTEX
+                                Normalize 0
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  Matrix {
+                    1.00000 0.00000 0.00000 0.00000
+                    0.00000 -0.00000 -1.00000 0.00000
+                    0.00000 1.00000 -0.00000 0.00000
+                    0.91055 -0.60056 0.96109 1.00000
+                  }
+                }
+              }
+              Matrix {
+                1.00000 0.00000 0.00000 0.00000
+                0.00000 1.00000 0.00000 0.00000
+                0.00000 0.00000 1.00000 0.00000
+                0.00000 0.00000 0.00000 1.00000
+              }
+              InvBindMatrixInSkeletonSpace {
+                1.00000 -0.00000 0.00000 -0.00000
+                -0.00000 -0.00000 -1.00000 0.00000
+                0.00000 1.00000 -0.00000 -0.00000
+                -0.00000 -1.00000 0.00000 1.00000
+              }
+            }
+          }
+          Matrix {
+            1.00000 0.00000 0.00000 0.00000
+            0.00000 1.00000 0.00000 0.00000
+            0.00000 0.00000 1.00000 0.00000
+            0.00000 0.00000 0.00000 1.00000
+          }
+          InvBindMatrixInSkeletonSpace {
+            1.00000 -0.00000 0.00000 -0.00000
+            -0.00000 0.00000 -1.00000 0.00000
+            0.00000 1.00000 0.00000 -0.00000
+            -0.00000 0.00000 -0.00000 1.00000
+          }
+        }
+      }
+      Matrix {
+        1.00000 0.00000 0.00000 0.00000
+        0.00000 1.00000 0.00000 0.00000
+        0.00000 0.00000 1.00000 0.00000
+        -0.27407 -0.15860 -0.39944 1.00000
+      }
+    }
+  }
+}

@@ -1,0 +1,267 @@
+#!BPY
+# -*- python-indent: 4; coding: iso-8859-1; mode: python -*-
+# Copyright (C) 2008 Cedric Pinson
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+# Authors:
+#  Cedric Pinson <cedric.pinson@plopbyte.net>
+#
+
+"""
+Name: 'osgexporter (.osg)'
+Blender: 248
+Group: 'Export'
+Tip: 'Export armature/bone/action data to osg formats.'
+"""
+
+import unittest
+
+import sys
+sys.path.insert(0, "/sketchfab/src/tools/blenderExporter/osgexport/blender-2.5/exporter")
+
+import bpy
+import osg
+from osg.osgobject import *
+from osg.osgdata import *
+from io import BytesIO
+
+
+def makeSceneActive(scene):
+    bpy.context.screen.scene = bpy.data.scenes[scene]
+
+
+def string_serialize(osg_object):
+    io = BytesIO()
+    osg_object.serialize(io)
+    return io.getvalue().decode('utf-8')
+
+
+def close(a, b, threshold):
+    for i in range(0,len(a)):
+        if math.fabs(a[i] - b[i]) > threshold:
+            return False
+    return True
+
+def findRigGeometry(name, item):
+
+    if item.className() == "RigGeometry" and item.name == name:
+        return item
+    print(item.className() + " " + item.name)
+    if hasattr(item, "children"):
+        for sitem in item.children:
+            res = findRigGeometry(name, sitem)
+            if res is not None:
+                return res
+    if hasattr(item, "drawables"):
+        for sitem in item.drawables:
+            res = findRigGeometry(name, sitem)
+            if res is not None:
+                return res
+
+    return None
+
+class Exporter(unittest.TestCase):
+    # ------------------------------------------------------
+    def setUp(self):
+        osg.osgobject.Object.resetWriter()
+
+    def tearDown(self):
+        pass
+
+    def testConfig(self):
+        conf = osg.osgconf.Config()
+        self.assertEquals("", conf.filename)
+        self.assertEquals("", conf.author)
+        self.assertEquals(2, conf.indent)
+        self.assertEquals(5, conf.float_precision)
+        self.assertEquals(0, conf.format_num)
+        self.assertEquals(25, conf.anim_fps)
+        self.assertEquals(None, conf.log_file)
+        self.assertEquals(True, conf.log)
+        self.assertEquals("ALL", conf.selected)
+        self.assertEquals(False, conf.relative_path)
+        self.assertEquals(False, conf.bake_animations)
+        self.assertEquals(True, conf.export_anim)
+        self.assertEquals("", conf.fullpath)
+        self.assertEquals([], conf.exclude_objects)
+
+    def testUpdateCallback(self):
+        node = MatrixTransform()
+        self.maxDiff=None
+        node.setName("test")
+        cb = UpdateMatrixTransform()
+        cb.setName("woot")
+        node.update_callbacks.append(cb)
+        result = string_serialize(node)
+        text = """osg::MatrixTransform {
+  UniqueID 0
+  Name "test"
+  UpdateCallback TRUE {
+    osgAnimation::UpdateMatrixTransform {
+      UniqueID 1
+      Name "woot"
+      StackedTransforms 0 {
+      }
+    }
+  }
+  Matrix {
+    1.00000 0.00000 0.00000 0.00000
+    0.00000 1.00000 0.00000 0.00000
+    0.00000 0.00000 1.00000 0.00000
+    0.00000 0.00000 0.00000 1.00000
+  }
+}
+"""
+        self.assertEquals(text, result)
+
+    def testBone(self):
+        node = Bone()
+        node.setName("test")
+        cb = UpdateBone()
+        cb.setName("overwoot")
+        node.update_callbacks.append(cb)
+        node.bone_matrix = { 'ARMATURESPACE': Matrix() }
+        result = string_serialize(node)
+        self.maxDiff=None
+        text = """osgAnimation::Bone {
+  UniqueID 0
+  Name "test"
+  DataVariance DYNAMIC
+  UpdateCallback TRUE {
+    osgAnimation::UpdateBone {
+      UniqueID 1
+      Name "overwoot"
+      StackedTransforms 0 {
+      }
+    }
+  }
+  Matrix {
+    1.00000 0.00000 0.00000 0.00000
+    0.00000 1.00000 0.00000 0.00000
+    0.00000 0.00000 1.00000 0.00000
+    0.00000 0.00000 0.00000 1.00000
+  }
+  InvBindMatrixInSkeletonSpace {
+    1.00000 0.00000 0.00000 0.00000
+    0.00000 1.00000 0.00000 0.00000
+    0.00000 0.00000 1.00000 0.00000
+    0.00000 0.00000 0.00000 1.00000
+  }
+}
+"""
+        self.assertEquals(text, result)
+
+
+    def testSkeleton(self):
+        node = Skeleton("test", Matrix().to_4x4())
+        node.setName("test")
+        cb = node.update_callbacks[0]
+        cb.setName("overwoot")
+        result = string_serialize(node)
+        text = """osgAnimation::Skeleton {
+  UniqueID 0
+  Name "test"
+  UpdateCallback TRUE {
+    osgAnimation::UpdateSkeleton {
+      UniqueID 1
+      Name "overwoot"
+    }
+  }
+  Matrix {
+    1.00000 0.00000 0.00000 0.00000
+    0.00000 1.00000 0.00000 0.00000
+    0.00000 0.00000 1.00000 0.00000
+    0.00000 0.00000 0.00000 1.00000
+  }
+}
+"""
+        self.assertEquals(text, result)
+
+    def testRigGeometry(self):
+        node = RigGeometry()
+        node.setName("test")
+        node.groups['test'] = VertexGroup()
+        result = string_serialize(node)
+        text = """osgAnimation::RigGeometry {
+  UniqueID 0
+  Name "test"
+  DataVariance DYNAMIC
+  InfluenceMap 1 {
+    VertexInfluence "None" 0 {
+    }
+  }
+}
+"""
+        self.assertEquals(text, result)
+
+    def testArmature(self):
+        makeSceneActive("Armature")
+        exporter = Export()
+        exporter.process()
+        exporter.write()
+    #FIXME: check rig groups
+    # def testArmatureSimple(self):
+    #     osg.osgobject.Object.resetWriter()
+    #     makeSceneActive("ArmatureSimple")
+    #     exporter = Export()
+    #     exporter.config.bake_animations = True
+    #     exporter.process()
+    #     self.assertEquals(16, len(exporter.animations))
+    #     self.assertEquals(True, len(exporter.animations[0].channels[0].keys) >= 2)
+    #     self.assertEquals(1, len(exporter.root.update_callbacks))
+    #     rig = findRigGeometry("Cube", exporter.root)
+    #     #print rig.groups['Bone.001'][0]
+    #     v0 = rig.groups['Bone.001'].vertexes[0][0]
+    #     v1 = rig.groups['Bone.001'].vertexes[1][0]
+    #     self.assertEquals(True, v0 != v1)
+    #     text = exporter.root.update_callbacks[0].ascii()
+    #     result = '$osgAnimation::BasicAnimationManager {\n$#UniqueID uniqid_BasicAnimationManager_150\n$#num_animations 1\n  osgAnimation::Animation {\n    UniqueID uniqid_Animation_58\n    name "Action"\n    num_channels 9\n    Vec3LinearChannel {\n      name "scale"\n      target "Bone.001"\n      Keyframes 20 {\n        key 0.00000 1.00000 1.00000 1.00000\n        key 0.04000 1.00000 1.00000 1.00000\n        key 0.08000 1.00000 1.00000 1.00000\n        key 0.12000 1.00000 1.00000 1.00000\n        key 0.16000 1.00000 1.00000 1.00000\n        key 0.20000 1.00000 1.00000 1.00000\n        key 0.24000 1.00000 1.00000 1.00000\n        key 0.28000 1.00000 1.00000 1.00000\n        key 0.32000 1.00000 1.00000 1.00000\n        key 0.36000 1.00000 1.00000 1.00000\n        key 0.40000 1.00000 1.00000 1.00000\n        key 0.44000 1.00000 1.00000 1.00000\n        key 0.48000 1.00000 1.00000 1.00000\n        key 0.52000 1.00000 1.00000 1.00000\n        key 0.56000 1.00000 1.00000 1.00000\n        key 0.60000 1.00000 1.00000 1.00000\n        key 0.64000 1.00000 1.00000 1.00000\n        key 0.68000 1.00000 1.00000 1.00000\n        key 0.72000 1.00000 1.00000 1.00000\n        key 0.76000 1.00000 1.00000 1.00000\n      }\n    }\n    QuatSphericalLinearChannel {\n      name "quaternion"\n      target "Bone.001"\n      Keyframes 20 {\n        key 0.00000 0.00000 0.00000 0.00000 1.00000\n        key 0.04000 0.01962 -0.00000 -0.00000 0.99981\n        key 0.08000 0.08011 -0.00000 -0.00000 0.99679\n        key 0.12000 0.18125 -0.00000 -0.00000 0.98344\n        key 0.16000 0.31294 0.00000 0.00000 0.94977\n        key 0.20000 0.45100 0.00000 -0.00000 0.89252\n        key 0.24000 0.56771 -0.00000 0.00000 0.82323\n        key 0.28000 0.64843 0.00000 -0.00000 0.76128\n        key 0.32000 0.69316 0.00000 -0.00000 0.72078\n        key 0.36000 0.70711 -0.00000 0.00000 0.70711\n        key 0.40000 0.70711 -0.00000 0.00000 0.70711\n        key 0.44000 0.70711 -0.00000 0.00000 0.70711\n        key 0.48000 0.70711 -0.00000 0.00000 0.70711\n        key 0.52000 0.70711 -0.00000 0.00000 0.70711\n        key 0.56000 0.70711 -0.00000 0.00000 0.70711\n        key 0.60000 0.70711 -0.00000 0.00000 0.70711\n        key 0.64000 0.70711 -0.00000 0.00000 0.70711\n        key 0.68000 0.70711 -0.00000 0.00000 0.70711\n        key 0.72000 0.70711 -0.00000 0.00000 0.70711\n        key 0.76000 0.70711 -0.00000 0.00000 0.70711\n      }\n    }\n    Vec3LinearChannel {\n      name "translate"\n      target "Bone.001"\n      Keyframes 20 {\n        key 0.00000 0.00000 0.00000 0.00000\n        key 0.04000 0.00000 0.00000 0.00000\n        key 0.08000 0.00000 0.00000 0.00000\n        key 0.12000 0.00000 0.00000 0.00000\n        key 0.16000 0.00000 0.00000 0.00000\n        key 0.20000 0.00000 0.00000 0.00000\n        key 0.24000 0.00000 0.00000 0.00000\n        key 0.28000 0.00000 0.00000 0.00000\n        key 0.32000 0.00000 0.00000 0.00000\n        key 0.36000 0.00000 0.00000 0.00000\n        key 0.40000 0.00000 0.00000 0.00000\n        key 0.44000 0.00000 0.00000 0.00000\n        key 0.48000 0.00000 0.00000 0.00000\n        key 0.52000 0.00000 0.00000 0.00000\n        key 0.56000 0.00000 0.00000 0.00000\n        key 0.60000 0.00000 0.00000 0.00000\n        key 0.64000 0.00000 0.00000 0.00000\n        key 0.68000 0.00000 0.00000 0.00000\n        key 0.72000 0.00000 0.00000 0.00000\n        key 0.76000 0.00000 0.00000 0.00000\n      }\n    }\n    Vec3LinearChannel {\n      name "scale"\n      target "Bone.002"\n      Keyframes 20 {\n        key 0.00000 1.00000 1.00000 1.00000\n        key 0.04000 1.00000 1.00000 1.00000\n        key 0.08000 1.00000 1.00000 1.00000\n        key 0.12000 1.00000 1.00000 1.00000\n        key 0.16000 1.00000 1.00000 1.00000\n        key 0.20000 1.00000 1.00000 1.00000\n        key 0.24000 1.00000 1.00000 1.00000\n        key 0.28000 1.00000 1.00000 1.00000\n        key 0.32000 1.00000 1.00000 1.00000\n        key 0.36000 1.00000 1.00000 1.00000\n        key 0.40000 1.00000 1.00000 1.00000\n        key 0.44000 1.00000 1.00000 1.00000\n        key 0.48000 1.00000 1.00000 1.00000\n        key 0.52000 1.00000 1.00000 1.00000\n        key 0.56000 1.00000 1.00000 1.00000\n        key 0.60000 1.00000 1.00000 1.00000\n        key 0.64000 1.00000 1.00000 1.00000\n        key 0.68000 1.00000 1.00000 1.00000\n        key 0.72000 1.00000 1.00000 1.00000\n        key 0.76000 1.00000 1.00000 1.00000\n      }\n    }\n    QuatSphericalLinearChannel {\n      name "quaternion"\n      target "Bone.002"\n      Keyframes 20 {\n        key 0.00000 0.00000 0.00000 0.00000 1.00000\n        key 0.04000 0.00000 0.00000 0.00000 1.00000\n        key 0.08000 -0.00000 0.00000 -0.00000 1.00000\n        key 0.12000 0.00000 0.00000 0.00000 1.00000\n        key 0.16000 -0.00000 0.00000 0.00000 1.00000\n        key 0.20000 0.00000 0.00000 0.00000 1.00000\n        key 0.24000 0.00000 0.00000 0.00000 1.00000\n        key 0.28000 0.00000 -0.00000 -0.00000 1.00000\n        key 0.32000 0.00000 0.00000 -0.00000 1.00000\n        key 0.36000 -0.00000 0.00000 -0.00000 1.00000\n        key 0.40000 0.01579 0.00000 -0.00000 0.99988\n        key 0.44000 0.06441 0.00000 -0.00000 0.99792\n        key 0.48000 0.14647 0.00000 -0.00000 0.98922\n        key 0.52000 0.25720 0.00000 -0.00000 0.96636\n        key 0.56000 0.38238 0.00000 -0.00000 0.92400\n        key 0.60000 0.50096 0.00000 -0.00000 0.86547\n        key 0.64000 0.59562 0.00000 -0.00000 0.80327\n        key 0.68000 0.65997 0.00000 -0.00000 0.75129\n        key 0.72000 0.69583 0.00000 0.00000 0.71821\n        key 0.76000 0.70711 0.00000 0.00000 0.70711\n      }\n    }\n    Vec3LinearChannel {\n      name "translate"\n      target "Bone.002"\n      Keyframes 20 {\n        key 0.00000 0.00000 0.00000 -0.00000\n        key 0.04000 0.00000 0.00000 -0.00000\n        key 0.08000 -0.00000 -0.00000 0.00000\n        key 0.12000 0.00000 0.00000 -0.00000\n        key 0.16000 0.00000 0.00000 -0.00000\n        key 0.20000 -0.00000 0.00000 0.00000\n        key 0.24000 -0.00000 0.00000 0.00000\n        key 0.28000 0.00000 0.00000 -0.00000\n        key 0.32000 0.00000 0.00000 -0.00000\n        key 0.36000 0.00000 0.00000 -0.00000\n        key 0.40000 0.00000 0.00000 -0.00000\n        key 0.44000 0.00000 0.00000 -0.00000\n        key 0.48000 0.00000 0.00000 -0.00000\n        key 0.52000 0.00000 0.00000 -0.00000\n        key 0.56000 0.00000 0.00000 -0.00000\n        key 0.60000 0.00000 0.00000 -0.00000\n        key 0.64000 0.00000 0.00000 -0.00000\n        key 0.68000 0.00000 0.00000 -0.00000\n        key 0.72000 0.00000 0.00000 -0.00000\n        key 0.76000 0.00000 0.00000 -0.00000\n      }\n    }\n    Vec3LinearChannel {\n      name "scale"\n      target "Bone"\n      Keyframes 20 {\n        key 0.00000 1.00000 1.00000 1.00000\n        key 0.04000 1.00000 1.00000 1.00000\n        key 0.08000 1.00000 1.00000 1.00000\n        key 0.12000 1.00000 1.00000 1.00000\n        key 0.16000 1.00000 1.00000 1.00000\n        key 0.20000 1.00000 1.00000 1.00000\n        key 0.24000 1.00000 1.00000 1.00000\n        key 0.28000 1.00000 1.00000 1.00000\n        key 0.32000 1.00000 1.00000 1.00000\n        key 0.36000 1.00000 1.00000 1.00000\n        key 0.40000 1.00000 1.00000 1.00000\n        key 0.44000 1.00000 1.00000 1.00000\n        key 0.48000 1.00000 1.00000 1.00000\n        key 0.52000 1.00000 1.00000 1.00000\n        key 0.56000 1.00000 1.00000 1.00000\n        key 0.60000 1.00000 1.00000 1.00000\n        key 0.64000 1.00000 1.00000 1.00000\n        key 0.68000 1.00000 1.00000 1.00000\n        key 0.72000 1.00000 1.00000 1.00000\n        key 0.76000 1.00000 1.00000 1.00000\n      }\n    }\n    QuatSphericalLinearChannel {\n      name "quaternion"\n      target "Bone"\n      Keyframes 20 {\n        key 0.00000 0.00000 0.00000 0.00000 1.00000\n        key 0.04000 0.00000 0.00000 0.00000 1.00000\n        key 0.08000 0.00000 0.00000 0.00000 1.00000\n        key 0.12000 0.00000 0.00000 0.00000 1.00000\n        key 0.16000 0.00000 0.00000 0.00000 1.00000\n        key 0.20000 0.00000 0.00000 0.00000 1.00000\n        key 0.24000 0.00000 0.00000 0.00000 1.00000\n        key 0.28000 0.00000 0.00000 0.00000 1.00000\n        key 0.32000 0.00000 0.00000 0.00000 1.00000\n        key 0.36000 0.00000 0.00000 0.00000 1.00000\n        key 0.40000 0.00000 0.00000 0.00000 1.00000\n        key 0.44000 0.00000 0.00000 0.00000 1.00000\n        key 0.48000 0.00000 0.00000 0.00000 1.00000\n        key 0.52000 0.00000 0.00000 0.00000 1.00000\n        key 0.56000 0.00000 0.00000 0.00000 1.00000\n        key 0.60000 0.00000 0.00000 0.00000 1.00000\n        key 0.64000 0.00000 0.00000 0.00000 1.00000\n        key 0.68000 0.00000 0.00000 0.00000 1.00000\n        key 0.72000 0.00000 0.00000 0.00000 1.00000\n        key 0.76000 0.00000 0.00000 0.00000 1.00000\n      }\n    }\n    Vec3LinearChannel {\n      name "translate"\n      target "Bone"\n      Keyframes 20 {\n        key 0.00000 -0.00000 0.00000 0.00000\n        key 0.04000 -0.00000 0.00000 0.00000\n        key 0.08000 -0.00000 0.00000 0.00000\n        key 0.12000 -0.00000 0.00000 0.00000\n        key 0.16000 -0.00000 0.00000 0.00000\n        key 0.20000 -0.00000 0.00000 0.00000\n        key 0.24000 -0.00000 0.00000 0.00000\n        key 0.28000 -0.00000 0.00000 0.00000\n        key 0.32000 -0.00000 0.00000 0.00000\n        key 0.36000 -0.00000 0.00000 0.00000\n        key 0.40000 -0.00000 0.00000 0.00000\n        key 0.44000 -0.00000 0.00000 0.00000\n        key 0.48000 -0.00000 0.00000 0.00000\n        key 0.52000 -0.00000 0.00000 0.00000\n        key 0.56000 -0.00000 0.00000 0.00000\n        key 0.60000 -0.00000 0.00000 0.00000\n        key 0.64000 -0.00000 0.00000 0.00000\n        key 0.68000 -0.00000 0.00000 0.00000\n        key 0.72000 -0.00000 0.00000 0.00000\n        key 0.76000 -0.00000 0.00000 0.00000\n      }\n    }\n  }\n$}\n'
+    #     self.assertEquals(result, text)
+    #     exporter.write()
+
+    def testArmatureUpdate(self):
+        makeSceneActive('ArmatureSimple') # update other tests
+        exporter = Export()
+        exporter.config.apply_modifiers = True
+        blender_object = bpy.context.scene.objects['Cube']
+        exporter.setArmatureInRestMode()
+        geode = exporter.createGeodeFromObject(blender_object)
+        geometry = geode.drawables[0]
+        result = string_serialize(geometry.vertexes)
+        # Order can changed for other reasons
+        text='''VertexData {
+  Array TRUE ArrayID 0 Vec3fArray 8 {
+    -1.00370 -0.49968 -0.50000
+    -1.00370 0.50905 -0.50000
+    1.84377 -0.49968 -0.50000
+    1.84377 0.50905 -0.50000
+    1.84377 -0.49968 0.50128
+    -1.00370 -0.49968 0.50128
+    -1.00370 0.50905 0.50128
+    1.84377 0.50905 0.50128
+  }
+  Indices FALSE
+  Binding BIND_PER_VERTEX
+  Normalize 0
+}
+'''
+        self.assertEquals(text, result)
+
+
+if __name__ == '__main__':
+    suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not result.wasSuccessful())
