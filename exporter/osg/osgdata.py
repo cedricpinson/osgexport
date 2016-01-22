@@ -1355,10 +1355,9 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                 osg_vertexes.getArray().append([key.data[morph_vertex_map[i]].co[0],
                                                 key.data[morph_vertex_map[i]].co[1],
                                                 key.data[morph_vertex_map[i]].co[2]])
-            # Need to compute normals?
+
             target.vertexes = osg_vertexes
-            # For instance, copying normals, but these need to be recomputed
-            target.normals = geometry.normals
+            #FIXME we don't currently generate normals, so osganimationviewer will crash
             target.primitives = geometry.primitives
             geometry.morphTargets.append(target)
             target.factor = key.value
