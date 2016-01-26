@@ -309,14 +309,12 @@ class Export(object):
     def exportChildrenRecursively(self, blender_object, parent, osg_root):
         def parseArmature(blender_armature):
             osg_object = self.createSkeleton(blender_object)
-            rest_armatures = setArmaturesPosePosition(self.config.scene, 'POSE')
             anims = self.createAnimationsObject(osg_object, blender_object, self.config,
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
                                                                       rotation_mode),
                                                 self.unique_objects,
                                                 self.parse_all_actions)
-            setArmaturesPosePosition(self.config.scene, 'REST', rest_armatures)
             return osg_object
 
         def parseLight(blender_light):

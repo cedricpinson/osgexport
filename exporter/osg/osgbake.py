@@ -324,11 +324,8 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
     # baking will replace the current action but we want to keep scene unchanged
     original_action = blender_object.animation_data.action if has_action else None
 
-    # Set armature to POSE mode before baking
-    if blender_object.type == 'ARMATURE':
-        backup_pose_position = blender_object.data.pose_position
-        blender_object.data.pose_position = 'POSE'
-        scene.update()
+    # Set armatures to POSE mode before baking to bake the good transforms
+    rest_armatures = setArmaturesPosePosition(scene, 'POSE')
 
     do_visual_keying = True # Always, need to take bone constraints  into account
 
@@ -346,13 +343,9 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
                               # visual keying bakes in worldspace, but here we want it local since we keep parenting
                               do_visual_keying=do_visual_keying)
 
-    # restore original action and rotation_mode
+    # restore original action and armatures' pose position
     blender_object.animation_data.action = original_action
-
-    if blender_object.type == 'ARMATURE':
-        blender_object.data.pose_position = backup_pose_position
-        scene.update()
-
+    setArmaturesPosePosition(scene, 'REST', rest_armatures)
 
     return baked_action
 
