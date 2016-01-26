@@ -96,6 +96,8 @@ def main():
                         help="Store materials into JSON format")
     parser.add_argument("-s", "--json-shaders", dest="json_shaders", action="store_true", default=False,
                         help="Store shader graphs into JSON format")
+    parser.add_argument("--use-scene-fps", dest="use_scene_fps", action="store_true", default=False,
+                        help="Use current scene FPS")
 
     args = parser.parse_args(argv)  # In this example we wont use the args
 
@@ -112,6 +114,8 @@ def main():
         config.scene = bpy.context.scene
         config.json_materials = args.json_materials
         config.json_shaders = args.json_shaders
+        if args.use_scene_fps:
+            config.anim_fps = config.scene.render.fps
         OpenSceneGraphExport(config)
 
 if __name__ == "__main__":
