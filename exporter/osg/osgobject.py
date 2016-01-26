@@ -401,11 +401,13 @@ class StackedQuaternionElement(Object):
                                                                  STRFLT(self.quaternion.z),
                                                                  STRFLT(self.quaternion.w))))
 
+
 class UpdateMorph(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
         self.generateID()
         self.targetNames = []
+        self.nested_callback = None
 
     def nameSpace(self):
         return "osgAnimation"
@@ -413,14 +415,26 @@ class UpdateMorph(Object):
     def className(self):
         return "UpdateMorph"
 
+    def addNestedCallback(self, update_callback):
+        callback = self
+        while callback.nested_callback is not None:
+            callback = callback.nested_callback
+        callback.nested_callback = update_callback
+
     def serialize(self, output):
         output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
         Object.serializeContent(self, output)
+        if self.nested_callback:
+            self.nested_callback.indent_level = self.indent_level + 2
+            output.write(self.encode("$#NestedCallback TRUE {\n"))
+            self.nested_callback.serialize(output)
+            output.write(self.encode("$#}\n"))
         output.write(self.encode("$#TargetNames %s {\n" % len(self.targetNames)))
         for target in self.targetNames:
             output.write(self.encode("$##%s \n" % target))
         output.write(self.encode("$#}\n"))
         output.write(self.encode("$}\n"))
+
 
 class UpdateBone(UpdateMatrixTransform):
     def __init__(self, *args, **kwargs):
@@ -437,6 +451,7 @@ class UpdateBone(UpdateMatrixTransform):
         Object.serializeContent(self, output)
         UpdateMatrixTransform.serializeContent(self, output)
         output.write(self.encode("$}\n"))
+
 
 class UpdateMorphGeometry(Object):
     def __init__(self, *args, **kwargs):
@@ -504,6 +519,7 @@ class Node(Object):
             self.stateset.indent_level = self.indent_level + 2
             self.stateset.write(output)
             output.write(self.encode("$#}\n"))
+
 
 
 class Geode(Node):

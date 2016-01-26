@@ -309,14 +309,12 @@ class Export(object):
     def exportChildrenRecursively(self, blender_object, parent, osg_root):
         def parseArmature(blender_armature):
             osg_object = self.createSkeleton(blender_object)
-            rest_armatures = setArmaturesPosePosition(self.config.scene, 'POSE')
             anims = self.createAnimationsObject(osg_object, blender_object, self.config,
                                                 createAnimationUpdate(blender_object,
                                                                       UpdateMatrixTransform(name=osg_object.name),
                                                                       rotation_mode),
                                                 self.unique_objects,
                                                 self.parse_all_actions)
-            setArmaturesPosePosition(self.config.scene, 'REST', rest_armatures)
             return osg_object
 
         def parseLight(blender_light):
@@ -783,23 +781,42 @@ class Export(object):
         geode.setName(mesh_object.name)
         geode.armature_modifier = armature_modifier
 
-        targetNames = []
+        updateMorphs = {}
         if len(geometries) > 0:
-            for geom in geometries:
+            # Rename geometries to ensure that the order is kept bewteen MorphGeometry and UpdateMorphs
+            # Note: renaming geometries should not be a problem here since armature deform/animation doesn't use rig/source geometry names
+            # and solid animation is applied to geode (or upper osg node)
+            # The name of the morphGeometry is used for UpdateMorph callback, that is created after that so the link is not broken
+            for index, geom in enumerate(geometries):
+                geom.name = "{}_{}".format(geom.name, index)
+
                 if geom.className() == 'MorphGeometry':
-                    targetNames.extend(map(lambda x: x.name, geom.morphTargets))
-                if geom.className() == 'RigGeometry' and geom.sourcegeometry and hasattr(geom.sourcegeometry, 'morphTargets'):
-                    targetNames.extend(map(lambda x: x.name, geom.sourcegeometry.morphTargets))
+                    updateMorphs.setdefault(geom.name, []).extend(map(lambda x: x.name, geom.morphTargets))
+
+                if geom.className() == 'RigGeometry' and geom.sourcegeometry.className() == 'MorphGeometry':
+                    geom.sourcegeometry.name = "{}_{}".format(geom.sourcegeometry.name, index)
+                    updateMorphs.setdefault(geom.name, []).extend(map(lambda x: x.name, geom.sourcegeometry.morphTargets))
+
                 geode.drawables.append(geom)
-            for name in converter.material_animations.keys():
-                self.animations.append(converter.material_animations[name])
 
-            if targetNames:
-                update = UpdateMorph()
-                update.setName(mesh.name)
-                update.targetNames.extend(targetNames)
+            # Material animations is not yet supported
+            # for name in converter.material_animations.keys():
+            #     self.animations.append(converter.material_animations[name])
+
+            if updateMorphs:
+                # Important: to keep the same order in updateMorph than in drawables
+                names = [geom.name for geom in geometries]
+                update = None
+                for morphname in names:
+                    callback = UpdateMorph()
+                    callback.setName(morphname)
+                    callback.targetNames.extend(updateMorphs[morphname])
+                    if not update:
+                        update = callback
+                    else:
+                        update.addNestedCallback(callback)
+
                 geode.update_callbacks.append(update)
-
         self.unique_objects.registerObject(mesh_object, geode)
         return geode
 
@@ -1355,10 +1372,9 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                 osg_vertexes.getArray().append([key.data[morph_vertex_map[i]].co[0],
                                                 key.data[morph_vertex_map[i]].co[1],
                                                 key.data[morph_vertex_map[i]].co[2]])
-            # Need to compute normals?
+
             target.vertexes = osg_vertexes
-            # For instance, copying normals, but these need to be recomputed
-            target.normals = geometry.normals
+            #FIXME we don't currently generate normals, so osganimationviewer will crash
             target.primitives = geometry.primitives
             geometry.morphTargets.append(target)
             target.factor = key.value
