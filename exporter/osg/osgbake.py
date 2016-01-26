@@ -300,21 +300,21 @@ def bakeAction(blender_object,
         if do_parents_clear:
             blender_object.parent = None
 
+        # restore current scene frame and original matrices for object.
+        # Setting back matrices is required since baking process changes these values
+        # and it can affect further constraints bakings. Note that the order is important here
+        scene.frame_set(frame_back)
+        scene.update()
+        blender_object.matrix_parent_inverse = matrix_parent_inverse_backup
+        blender_object.matrix_local = matrix_local_backup
+        blender_object.matrix_basis = matrix_basis_backup
+        scene.update()
+
     # -------------------------------------------------------------------------
     # Clean
 
     if do_clean:
         cleanAction(action)
-
-    # restore current scene frame and original matrices for object.
-    # Setting back matrices is required since baking process changes these values
-    # and it can affect further constraints bakings. Note that the order is important here
-    scene.frame_set(frame_back)
-    scene.update()
-    blender_object.matrix_parent_inverse = matrix_parent_inverse_backup
-    blender_object.matrix_local = matrix_local_backup
-    blender_object.matrix_basis = matrix_basis_backup
-    scene.update()
 
     return action
 
