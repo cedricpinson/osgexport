@@ -1359,7 +1359,8 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
 
     def parseMorphTargets(self, obj, geometry, morph_vertex_map):
         ''' Create morph targets '''
-        #TODO check for absolute shape keys
+        # Absolute shape keys are converted during baking. The data is parsed
+        # in the same way for both absolute and relative keyframes
         for key in obj.data.shape_keys.key_blocks:
             if key.relative_key == key:
                 continue
@@ -1602,7 +1603,10 @@ class BlenderAnimationToAnimation(object):
 
         if is_multi_animation:
             # Bake animation using current action frame_range
-            start, end = self.object.animation_data.action.frame_range if self.has_action else self.object.data.shape_keys.animation_data.action.frame_range
+            if self.object.data.shape_keys.animation_data and self.object.data.shape_keys.animation_data.action:
+                start, end = self.object.data.shape_keys.animation_data.action.frame_range
+            else:
+                start, end = self.object.animation_data.action.frame_range
         else:
             start, end = getWidestActionDuration(self.config.scene)
 

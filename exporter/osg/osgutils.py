@@ -190,7 +190,7 @@ def isRigAction(action):
 
 def isSolidOrRigAction(action):
     for curve in action.fcurves:
-        if 'key_block' in curve.data_path:
+        if 'key_block' in curve.data_path or 'eval_time' in curve.data_path:
             return False
 
     return True
@@ -198,7 +198,8 @@ def isSolidOrRigAction(action):
 
 def hasShapeKeys(blender_object):
     return hasattr(blender_object.data, "shape_keys") and \
-           blender_object.data.shape_keys is not None
+           blender_object.data.shape_keys is not None and \
+           len(blender_object.data.shape_keys.key_blocks) > 0
 
 
 def hasShapeKeysAnimation(blender_object):
@@ -218,7 +219,7 @@ def hasShapeKeysAnimation(blender_object):
 
 def isMorphAction(action):
     for curve in action.fcurves:
-        if 'key_blocks' in curve.data_path:
+        if 'key_blocks' in curve.data_path or 'eval_time' in curve.data_path:
             return True
 
     return False
