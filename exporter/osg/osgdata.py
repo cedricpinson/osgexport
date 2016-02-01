@@ -55,6 +55,18 @@ def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", ze
     has_constraints = hasSolidConstraints(blender_object)
     has_nla = hasNLATracks(blender_object)
 
+    # Use local transform matrix at t=0 to initialize stacked transforms.
+    scene = bpy.context.scene
+    backup_frame = scene.frame_current
+    scene.frame_set(0)
+    blender_object.update_tag(refresh={'OBJECT'})
+    scene.update()
+
+    lcl_transform = blender_object.matrix_local.copy()
+
+    scene.frame_set(backup_frame)
+    scene.update()
+
     if blender_object.animation_data:
         action = blender_object.animation_data.action
 
@@ -106,16 +118,17 @@ def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", ze
 
     else:
         tr = StackedTranslateElement()
-        tr.translate = Vector(blender_object.location)
+        tr.translate = Vector(lcl_transform.to_translation())
         callback.stacked_transforms.append(tr)
 
         if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
+            lcl_rotation = lcl_transform.to_euler()
             rotation_keys = [StackedRotateAxisElement(name="euler_x", axis=Vector((1, 0, 0)),
-                                                      angle=blender_object.rotation_euler[0]),
+                                                      angle=lcl_rotation[0]),
                              StackedRotateAxisElement(name="euler_y", axis=Vector((0, 1, 0)),
-                                                      angle=blender_object.rotation_euler[1]),
+                                                      angle=lcl_rotation[1]),
                              StackedRotateAxisElement(name="euler_z", axis=Vector((0, 0, 1)),
-                                                      angle=blender_object.rotation_euler[2])]
+                                                      angle=lcl_rotation[2])]
 
             callback.stacked_transforms.append(rotation_keys[ord(blender_object.rotation_mode[2]) - ord('X')])
             callback.stacked_transforms.append(rotation_keys[ord(blender_object.rotation_mode[1]) - ord('X')])
@@ -123,16 +136,17 @@ def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", ze
 
         if rotation_mode == "QUATERNION":
             q = StackedQuaternionElement()
-            q.quaternion = blender_object.rotation_quaternion
+            q.quaternion = lcl_transform.to_quaternion()
             callback.stacked_transforms.append(q)
 
         if rotation_mode == "AXIS_ANGLE":
+            lcl_axis_angle = lcl_transform.to_quaternion().to_axis_angle()
             callback.stacked_transforms.append(StackedRotateAxisElement(name="axis_angle",
-                                                                        axis=Vector(blender_object.rotation_axis_angle[0:2]),
-                                                                        angle=blender_object.rotation_axis_angle[3]))
+                                                                        axis=lcl_axis_angle[0],
+                                                                        angle=lcl_axis_angle[1]))
 
         sc = StackedScaleElement()
-        sc.scale = Vector(blender_object.scale)
+        sc.scale = Vector(lcl_transform.to_scale())
         callback.stacked_transforms.append(sc)
 
     return callback
