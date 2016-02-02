@@ -46,8 +46,6 @@ Quaternion = mathutils.Quaternion
 Log = osglog.log
 
 
-index = 0
-
 def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", zero=False):
     has_location_keys = False
     has_scale_keys = False
@@ -796,6 +794,8 @@ class Export(object):
         geode.armature_modifier = armature_modifier
 
         updateMorphs = {}
+        # Geometries are the result of splitting Blender multi-material mesh. We assume that we have as much geometries as the number of materials
+        # the original Blender mesh has. This mapping is used when renaming geometry targets in animation parsing code.
         if len(geometries) > 0:
             # Rename geometries to ensure that the order is kept bewteen MorphGeometry and UpdateMorphs
             # Note: renaming geometries should not be a problem here since armature deform/animation doesn't use rig/source geometry names
@@ -1371,7 +1371,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             for key, value in slot.items():
                 userData.append(StringValueObject(slot_name(index, key), toUserData(value)))
 
-    def parseMorphTargets(self, obj, geometry, morph_vertex_map):
+    def parseMorphTargets(self, obj, geometry, morph_vertex_map, material_index):
         ''' Create morph targets '''
         # Absolute shape keys are converted during baking. The data is parsed
         # in the same way for both absolute and relative keyframes
@@ -1380,7 +1380,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                 continue
 
             target = Geometry()
-            target.name = spaceSafe(key.name)
+            target.name = spaceSafe('{}_{}_{}'.format(obj.name, material_index, key.name))
 
             osg_vertexes = VertexArray()
             for i in range(len(morph_vertex_map)):
@@ -1546,7 +1546,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         Log(end_title)
 
         if geom.className() == "MorphGeometry":
-            self.parseMorphTargets(self.object, geom, morph_map)
+            self.parseMorphTargets(self.object, geom, morph_map, material_index)
 
         return geom
 
@@ -1589,14 +1589,22 @@ class BlenderAnimationToAnimation(object):
         self.has_action = kwargs.get("has_action", False)
         self.has_constraints = kwargs.get("has_constraints", False)
         self.has_morph = kwargs.get("has_morph", False)
+        self.channel_index = 0
         if self.object:
             self.target = self.object.name
         else:
             Log("Warning: animation with no target")
             self.target = 'unknown target'
-
+        # Set action as current action
         if self.has_action:
-            self.action_name = self.object.animation_data.action.name
+            self.current_action = self.object.animation_data.action
+            self.action_name = self.current_action.name
+        if self.has_morph:
+            if hasAction(self.object.data.shape_keys):
+                self.current_action = self.object.data.shape_keys.animation_data.action
+            else:
+                self.current_action = self.object.animation_data.action
+            self.action_name = self.current_action.name
 
     def needBake(self, blender_object):
         if self.has_constraints and self.config.bake_constraints:
@@ -1612,7 +1620,9 @@ class BlenderAnimationToAnimation(object):
 
     def handleMorphAnimationBaking(self, is_multi_animation=False):
         Log("Exporting morph animation on object {}".format(self.object.name))
-        if not self.has_morph:
+        # We always bake if shape_keys are absolute as they need to be converted to relative
+        if not self.has_morph or \
+           (self.object.data.shape_keys.use_relative and not self.config.bake_animations):
             return
 
         if is_multi_animation:
@@ -1707,126 +1717,129 @@ class BlenderAnimationToAnimation(object):
 
         return anims
 
-
     def addActionDataToAnimation(self, animation, morph=False):
+        if not self.current_action:
+            return
         Log('adding data from action {} to animation {}'.format(self.current_action.name, animation))
         if self.current_action is None:
             return
         if self.object.type == "ARMATURE":
             for bone in self.object.data.bones:
                 bname = bone.name
-                osg_target = spaceSafe(bone.name + '_' + str(self.object.name))
+                osg_target = spaceSafe('{}_{}'.format(bone.name, self.object.name))
                 Log("{} processing channels for bone {}".format(self.action_name, bname))
-                self.appendChannelsToAnimation(bname, animation, self.current_action, prefix=('pose.bones["{}"].'.format(bname)), osg_targetname=osg_target)
+                self.appendChannelsToAnimation(bname, animation, self.current_action,
+                                               prefix=('pose.bones["{}"].'.format(bname)), osg_targetname=osg_target)
             # Append channels for armature solid animation
             self.appendChannelsToAnimation(self.object.name, animation, self.current_action)
         elif morph:
-            global index
-            index = 0
-            for key in self.object.data.shape_keys.key_blocks:
-                self.appendChannelsToAnimation(key.name, animation, self.current_action, prefix=('key_blocks["{}"].'.format(key.name)), osg_targetname=spaceSafe(key.name))
+            # need to create as many animation as we generate osg geometries for the object
+            # (that correspond to the number of materials of the object)
+            for i in range(len(self.object.data.materials) if self.object.data.materials else 1):
+                self.channel_index = 0
+                for key in self.object.data.shape_keys.key_blocks:
+                    osg_target = spaceSafe('{}_{}_{}'.format(self.object.name, i, key.name))
+                    self.appendChannelsToAnimation(key.name, animation, self.current_action,
+                                                   prefix=('key_blocks["{}"].'.format(key.name)), osg_targetname=osg_target)
         else:
             self.appendChannelsToAnimation(self.target, animation, self.current_action)
 
-        return animation
-
     def appendChannelsToAnimation(self, target, anim, action, prefix="", osg_targetname=''):
-        channels = exportActionsToKeyframeSplitRotationTranslationScale(target, action, self.config.anim_fps, prefix, osg_targetname=osg_targetname)
+        channels = self.exportActionsToKeyframeSplitRotationTranslationScale(target, action, self.config.anim_fps, prefix, osg_targetname=osg_targetname)
         for channel in channels:
             anim.channels.append(channel)
     def get_generated_actions(self):
         return self.baked_actions
 
-def getChannel(target, action, fps, data_path, array_indexes, osg_targetname):
-    times = []
-    duration = 0
-    fcurves = []
+    def getChannel(self, target, action, fps, data_path, array_indexes, osg_targetname):
+        times = []
+        duration = 0
+        fcurves = []
 
-    for array_index in array_indexes:
-        for fcurve in action.fcurves:
-            # Log("fcurves {} {} matches {} {} ".format(fcurve.data_path,
-            #                                                  fcurve.array_index,
-            #                                                  data_path,
-            #                                                  array_index))
-            if fcurve.data_path == data_path and fcurve.array_index == array_index:
-                fcurves.append(fcurve)
-                # Log("yes")
+        for array_index in array_indexes:
+            for fcurve in action.fcurves:
+                # Log("fcurves {} {} matches {} {} ".format(fcurve.data_path,
+                #                                                  fcurve.array_index,
+                #                                                  data_path,
+                #                                                  array_index))
+                if fcurve.data_path == data_path and fcurve.array_index == array_index:
+                    fcurves.append(fcurve)
+                    # Log("yes")
 
-    if len(fcurves) == 0:
-        return None
+        if len(fcurves) == 0:
+            return None
 
-    for fcurve in fcurves:
-        for keyframe in fcurve.keyframe_points:
-            if times.count(keyframe.co[0]) == 0:
-                times.append(keyframe.co[0])
-
-    if len(times) == 0:
-        return None
-
-    channel = Channel()
-    channel.target = osg_targetname if osg_targetname else target
-
-    if len(array_indexes) == 1:
-        channel.type = "FloatLinearChannel"
-    if len(array_indexes) == 3:
-        channel.type = "Vec3LinearChannel"
-    if len(array_indexes) == 4:
-        channel.type = "QuatSphericalLinearChannel"
-
-    times.sort()
-
-    for time in times:
-        realtime = (time) / fps
-        # Log("time {} {} {}".format(time, realtime, fps))
-
-        # realtime = time
-        if realtime > duration:
-            duration = realtime
-
-        value = [realtime]
         for fcurve in fcurves:
-            value.append(fcurve.evaluate(time))
-        channel.keys.append(value)
+            for keyframe in fcurve.keyframe_points:
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
 
-    return channel
+        if len(times) == 0:
+            return None
+
+        channel = Channel()
+        channel.target = osg_targetname if osg_targetname else target
+
+        if len(array_indexes) == 1:
+            channel.type = "FloatLinearChannel"
+        if len(array_indexes) == 3:
+            channel.type = "Vec3LinearChannel"
+        if len(array_indexes) == 4:
+            channel.type = "QuatSphericalLinearChannel"
+
+        times.sort()
+
+        for time in times:
+            realtime = (time) / fps
+            # Log("time {} {} {}".format(time, realtime, fps))
+
+            # realtime = time
+            if realtime > duration:
+                duration = realtime
+
+            value = [realtime]
+            for fcurve in fcurves:
+                value.append(fcurve.evaluate(time))
+            channel.keys.append(value)
+
+        return channel
 
 
-# as for blender 2.49
-def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps, prefix, osg_targetname=''):
-    channels = []
+    # as for blender 2.49
+    def exportActionsToKeyframeSplitRotationTranslationScale(self, target, action, fps, prefix, osg_targetname=''):
+        channels = []
 
-    translate = getChannel(target, action, fps, prefix + "location", [0, 1, 2], osg_targetname)
-    if translate:
-        translate.setName("translate")
-        channels.append(translate)
+        translate = self.getChannel(target, action, fps, prefix + "location", [0, 1, 2], osg_targetname)
+        if translate:
+            translate.setName("translate")
+            channels.append(translate)
 
-    eulerName = ["euler_x", "euler_y", "euler_z"]
-    for i in range(0, 3):
-        c = getChannel(target, action, fps, prefix + "rotation_euler", [i], osg_targetname)
-        if c:
-            c.setName(eulerName[i])
-            channels.append(c)
+        eulerName = ["euler_x", "euler_y", "euler_z"]
+        for i in range(0, 3):
+            c = self.getChannel(target, action, fps, prefix + "rotation_euler", [i], osg_targetname)
+            if c:
+                c.setName(eulerName[i])
+                channels.append(c)
 
-    quaternion = getChannel(target, action, fps, prefix + "rotation_quaternion", [1, 2, 3, 0], osg_targetname)
-    if quaternion:
-        quaternion.setName("quaternion")
-        channels.append(quaternion)
+        quaternion = self.getChannel(target, action, fps, prefix + "rotation_quaternion", [1, 2, 3, 0], osg_targetname)
+        if quaternion:
+            quaternion.setName("quaternion")
+            channels.append(quaternion)
 
-    axis_angle = getChannel(target, action, fps, prefix + "rotation_axis_angle", [1, 2, 3, 0], osg_targetname)
-    if axis_angle:
-        axis_angle.setName("axis_angle")
-        channels.append(axis_angle)
+        axis_angle = self.getChannel(target, action, fps, prefix + "rotation_axis_angle", [1, 2, 3, 0], osg_targetname)
+        if axis_angle:
+            axis_angle.setName("axis_angle")
+            channels.append(axis_angle)
 
-    scale = getChannel(target, action, fps, prefix + "scale", [0, 1, 2], osg_targetname)
-    if scale:
-        scale.setName("scale")
-        channels.append(scale)
+        scale = self.getChannel(target, action, fps, prefix + "scale", [0, 1, 2], osg_targetname)
+        if scale:
+            scale.setName("scale")
+            channels.append(scale)
 
-    morph_factor = getChannel(target, action, fps, prefix + "value", [0], osg_targetname)
-    if morph_factor:
-        global index
-        morph_factor.setName('\"' + str(index) + '\"')
-        index = index + 1
-        channels.append(morph_factor)
+        morph_factor = self.getChannel(target, action, fps, prefix + "value", [0], osg_targetname)
+        if morph_factor:
+            morph_factor.setName('\"' + str(self.channel_index) + '\"')
+            self.channel_index += 1
+            channels.append(morph_factor)
 
-    return channels
+        return channels
