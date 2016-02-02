@@ -1476,7 +1476,8 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                                 vg.targetGroupName = spaceSafe(inf[0] + armature_name)
                                 vg.vertexes.append((newindex, inf[1])) #= (vertex_weight_list
                                 vgroups[inf[0]] = vg
-                            vgroups[inf[0]].vertexes.append((newindex, vertex_group.weight))
+                            else:
+                                vgroups[inf[0]].vertexes.append((newindex, vertex_group.weight))
 
                     osg_normals.getArray().append(key[1])
                     osg_vertexes.getArray().append(list(mesh.vertices[vert_index].co))
