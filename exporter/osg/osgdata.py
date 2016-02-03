@@ -1467,17 +1467,18 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                     for uv in mesh.tessface_uv_textures:
                         uvs.append(uv.data[face.index].uv[facevertexindex])
 
-                    for vertex_group in  mesh.vertices[vert_index].groups:
-                        inf = [self.object.vertex_groups[vertex_group.group ].name, vertex_group.weight]
-                        #try:getBoneByName(inf[0])   #check bone existence
-                        if  inf[0] != "" and inf[1] > 0.0001:
-                            if inf[0] not in vgroups:
-                                vg = VertexGroup()
-                                vg.targetGroupName = spaceSafe(inf[0] + armature_name)
-                                vg.vertexes.append((newindex, inf[1])) #= (vertex_weight_list
-                                vgroups[inf[0]] = vg
-                            else:
-                                vgroups[inf[0]].vertexes.append((newindex, vertex_group.weight))
+                    if self.object.vertex_groups:
+                        for vertex_group in  mesh.vertices[vert_index].groups:
+                            influence = [self.object.vertex_groups[vertex_group.group ].name, vertex_group.weight]
+                            #try:getBoneByName(influence[0])   #check bone existence
+                            if  influence[0] != "" and influence[1] > 0.0001:
+                                if influence[0] not in vgroups:
+                                    vg = VertexGroup()
+                                    vg.targetGroupName = spaceSafe(influence[0] + armature_name)
+                                    vg.vertexes.append((newindex, influence[1]))
+                                    vgroups[influence[0]] = vg
+                                else:
+                                    vgroups[influence[0]].vertexes.append((newindex, vertex_group.weight))
 
                     osg_normals.getArray().append(key[1])
                     osg_vertexes.getArray().append(list(mesh.vertices[vert_index].co))
