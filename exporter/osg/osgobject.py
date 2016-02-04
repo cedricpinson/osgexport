@@ -1143,7 +1143,8 @@ class Bone(MatrixTransform):
 
         if self.parent:
             parent_matrix = self.skeleton.pose.bones[self.bone.name].parent.matrix.copy() if use_pose else self.bone.parent.matrix_local.copy()
-            bone_matrix = parent_matrix.inverted() * bone_matrix
+            # This matrix is not always invertible
+            bone_matrix = parent_matrix.inverted_safe() * bone_matrix
 
         # add bind matrix in localspace callback
         update_callback.stacked_transforms.append(StackedMatrixElement(name="bindmatrix", matrix=bone_matrix))
