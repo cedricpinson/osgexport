@@ -27,6 +27,7 @@ import bpy
 import math
 from .osgobject import *
 
+
 # IMAGES HELPERS
 # ----------------------------
 def createImageFilename(texturePath, image):
@@ -98,15 +99,15 @@ def getRootBonesList(armature):
 
 
 def truncateFloat(value, digit=5):
-     if math.isnan(value):
-         return 0
-     return round(value, digit)
+    if math.isnan(value):
+        return 0
+    return round(value, digit)
 
 
 def truncateVector(vector, digit=5):
-     for i in range(0, len(vector)):
-         vector[i] = truncateFloat(vector[i], digit)
-     return vector
+    for i in range(0, len(vector)):
+        vector[i] = truncateFloat(vector[i], digit)
+    return vector
 
 
 def getTransform(matrix):
@@ -150,8 +151,8 @@ def getWidestActionDuration(scene, clamp_with_scene=True):
         start = int(min(start))
         end = int(max(end))
 
-
     return (start, end)
+
 
 def hasExternalBoneConstraints(blender_object):
     if blender_object.type != 'ARMATURE' or not blender_object.pose:
@@ -164,20 +165,21 @@ def hasExternalBoneConstraints(blender_object):
 
     return False
 
+
 def hasSolidConstraints(blender_object):
     return hasattr(blender_object, "constraints") and (len(blender_object.constraints) > 0)
 
 
 def hasAction(blender_object):
     return hasattr(blender_object, "animation_data") and \
-           hasattr(blender_object.animation_data, "action") and \
-           blender_object.animation_data.action is not None
+        hasattr(blender_object.animation_data, "action") and \
+        blender_object.animation_data.action is not None
 
 
 def hasNLATracks(blender_object):
     return hasattr(blender_object, "animation_data") and \
-           hasattr(blender_object.animation_data, "nla_tracks") and \
-           blender_object.animation_data.nla_tracks
+        hasattr(blender_object.animation_data, "nla_tracks") and \
+        blender_object.animation_data.nla_tracks
 
 
 def isRigAction(action):
@@ -198,8 +200,8 @@ def isSolidOrRigAction(action):
 
 def hasShapeKeys(blender_object):
     return hasattr(blender_object.data, "shape_keys") and \
-           blender_object.data.shape_keys is not None and \
-           len(blender_object.data.shape_keys.key_blocks) > 0
+        blender_object.data.shape_keys is not None and \
+        len(blender_object.data.shape_keys.key_blocks) > 0
 
 
 def hasShapeKeysAnimation(blender_object):
@@ -208,7 +210,7 @@ def hasShapeKeysAnimation(blender_object):
     if hasShapeKeys(blender_object):
         shape = blender_object.data.shape_keys
         if shape.animation_data and \
-            shape.animation_data.action:
+           shape.animation_data.action:
             return True
 
     if hasAction(blender_object) and not isSolidOrRigAction(blender_object.animation_data.action):
@@ -293,5 +295,3 @@ def setArmaturesPosePosition(scene, pose_position, armatures=[]):
 
     scene.update()
     return modified
-
-
