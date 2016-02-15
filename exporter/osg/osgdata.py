@@ -1699,7 +1699,12 @@ class BlenderAnimationToAnimation(object):
             if hasAction(self.object):
                 backup_action = self.object.animation_data.action
                 # The object is animated so we always have animation_data not None here
-                self.object.animation_data.action = action
+                try:
+                    self.object.animation_data.action = action
+                except AttributeError:
+                    Log("Warning: Can't set action '{}' to object {} (read-only)"
+                        .format(action.name, self.object.name))
+                    return
                 self.handleAnimationBaking(is_multi_animation=True)
                 self.addActionDataToAnimation(anim, morph=False)
                 self.object.animation_data.action = backup_action
