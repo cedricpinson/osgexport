@@ -472,6 +472,7 @@ class UpdateMorphGeometry(Object):
         Object.serializeContent(self, output)
         output.write(self.encode("$}\n"))
 
+
 class UpdateSkeleton(Object):
     def __init__(self, *args, **kwargs):
         Object.__init__(self, *args, **kwargs)
@@ -519,7 +520,6 @@ class Node(Object):
             self.stateset.indent_level = self.indent_level + 2
             self.stateset.write(output)
             output.write(self.encode("$#}\n"))
-
 
 
 class Geode(Node):
@@ -1126,7 +1126,7 @@ class Bone(MatrixTransform):
         self.parent = parent
         self.skeleton = skeleton
         self.bone = bone
-        #self.inverse_bind_matrix = Matrix().to_4x4().identity()
+        # self.inverse_bind_matrix = Matrix().to_4x4().identity()
         self.bone_inv_bind_matrix_skeleton = Matrix().to_4x4()
 
     def buildBoneChildren(self, use_pose=False):
@@ -1139,11 +1139,18 @@ class Bone(MatrixTransform):
         update_callback.setName(self.name)
         self.update_callbacks.append(update_callback)
 
-        bone_matrix = self.skeleton.pose.bones[self.bone.name].matrix.copy() if use_pose else self.bone.matrix_local.copy()
+        if use_pose:
+            bone_matrix = self.skeleton.pose.bones[self.bone.name].matrix.copy()
+        else:
+            bone_matrix = self.bone.matrix_local.copy()
 
         if self.parent:
-            parent_matrix = self.skeleton.pose.bones[self.bone.name].parent.matrix.copy() if use_pose else self.bone.parent.matrix_local.copy()
-            bone_matrix = parent_matrix.inverted() * bone_matrix
+            if use_pose:
+                parent_matrix = self.skeleton.pose.bones[self.bone.name].parent.matrix.copy()
+            else:
+                parent_matrix = self.bone.parent.matrix_local.copy()
+            # This matrix is not always invertible
+            bone_matrix = parent_matrix.inverted_safe() * bone_matrix
 
         # add bind matrix in localspace callback
         update_callback.stacked_transforms.append(StackedMatrixElement(name="bindmatrix", matrix=bone_matrix))
@@ -1220,6 +1227,7 @@ class Skeleton(MatrixTransform):
         MatrixTransform.serializeContent(self, output)
         output.write(self.encode("$}\n"))
 
+
 class MorphGeometry(Geometry):
     def __init__(self, *args, **kwargs):
         Geometry.__init__(self, *args, **kwargs)
@@ -1249,6 +1257,7 @@ class MorphGeometry(Geometry):
                 target.indent_level = self.indent_level + 2
                 target.write(output)
             output.write(self.encode("$#}\n"))
+
 
 class RigGeometry(Geometry):
     def __init__(self, *args, **kwargs):

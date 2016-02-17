@@ -18,6 +18,7 @@
 
 # <pep8-80 compliant>
 import bpy
+import bisect
 from .osgutils import *
 
 
@@ -35,20 +36,61 @@ def cleanAction(action):
             else:
                 i += 1
 
+
 def bakeMorphTargets(frame_start,
                      frame_end,
                      blender_object,
                      frame_step=1):
 
-    def collectValues():
+    def collectValues(morph_info, frame_range):
+        'Collect shape keys factors for each frame in frame range'
         for f in frame_range:
             scene.frame_set(f)
             scene.update()
             for block in morph_info:
                 morph_info[block].append(block.value)
 
-    def setKeyframes():
-        options = {'INSERTKEY_NEEDED'}
+    def evaluateActiveShapeKeys(currentFrame, keyFrames):
+        ''' Get effective shapes according to current time
+            and evaluate the factor for each '''
+        # keyFrames is never empty here
+        if currentFrame > keyFrames[-1]:  # after the last key_block frame
+            previous_block = shape.key_blocks[-1]
+            next_block = None
+            value = 0.0
+        elif currentFrame < keyFrames[0]:  # before the first key_block frame
+            previous_block = None
+            next_block = shape.key_blocks[0]
+            value = 1.0
+        else:
+            # general case with index in [0:16] and blending two key_blocks
+            index = bisect.bisect(keyFrames, currentFrame) - 1
+            previous_block = shape.key_blocks[index]
+            next_block = shape.key_blocks[index + 1]
+            # TODO implement others interpolations (Cardinal, Bspline, Catmull-Rom) or find a way to
+            # get the value with Blender API
+            value = (currentFrame - previous_block.frame) / (next_block.frame - previous_block.frame)
+
+        return {'previous': previous_block, 'next': next_block, 'factor': value}
+
+    def generateFromAbsolute(shape, morph_info, frame_range):
+        'Convert absolute shape keys to relative'
+        # Absolute keyframe are always ordered through time
+        keyFrames = [block.frame for block in shape.key_blocks]
+        for f in frame_range:
+            scene.frame_set(f)
+            scene.update()
+            values = evaluateActiveShapeKeys(shape.eval_time, keyFrames)
+            for block in morph_info:
+                if block == values['previous']:
+                    morph_info[block].append(1 - values['factor'])
+                elif block == values['next']:
+                    morph_info[block].append(values['factor'])
+                else:
+                    morph_info[block].append(0.0)
+
+    def setKeyframes(shape, frame_range):
+        'Generate shape keys keyframes'
         atd = shape.animation_data_create()
         atd.action = new_action
         for block in morph_info:
@@ -66,14 +108,20 @@ def bakeMorphTargets(frame_start,
 
     for block in shape.key_blocks:
         if block.name != block.relative_key.name:
-            morph_info[block] = [] # values
+            morph_info[block] = []  # values
 
     new_action = bpy.data.actions.new("MorphBake")
 
-    collectValues()
-    setKeyframes()
+    if shape.use_relative:
+        collectValues(morph_info, frame_range)
+    else:
+        generateFromAbsolute(shape, morph_info, frame_range)
+
+    setKeyframes(shape, frame_range)
     cleanAction(new_action)
     shape.animation_data.action = original_action
+    scene.frame_set(frame_back)
+    scene.update()
 
     return new_action
 
@@ -163,6 +211,10 @@ def bakeAction(blender_object,
     # TODO, pass data rather then grabbing from the context!
     scene = bpy.context.scene
     frame_back = scene.frame_current
+    if blender_object.parent_bone:
+        bone_height = blender_object.parent.data.bones[blender_object.parent_bone].tail_local.z \
+            - blender_object.parent.data.bones[blender_object.parent_bone].head_local.z
+        bone_correction = Vector((0, bone_height, 0))
 
     if blender_object.pose is None:
         do_pose = False
@@ -273,6 +325,10 @@ def bakeAction(blender_object,
             # visual keying is enabled so set parent to identity
             if do_visual_keying:
                 blender_object.matrix_parent_inverse.identity()
+                if blender_object.parent_bone:
+                    # Blender considers bone's tail instead of bone's head for parenting
+                    # so we need to take to take bone's length into account
+                    blender_object.location = blender_object.location + bone_correction
 
             blender_object.keyframe_insert("location", -1, f, name, options)
 
@@ -296,6 +352,7 @@ def bakeAction(blender_object,
 
         # restore rotation mode
         blender_object.rotation_mode = rotation_mode_backup
+        blender_object.delta_rotation_quaternion = delta_rotation_backup
 
         if do_parents_clear:
             blender_object.parent = None
@@ -327,7 +384,7 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
     # Set armatures to POSE mode before baking to bake the good transforms
     rest_armatures = setArmaturesPosePosition(scene, 'POSE')
 
-    do_visual_keying = True # Always, need to take bone constraints  into account
+    do_visual_keying = True  # Always, need to take bone constraints  into account
 
     # Baking is done on the active object
     baked_action = bakeAction(blender_object,
@@ -339,7 +396,7 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
                               do_parents_clear=False,
                               do_object=True,  # bake solid animation
                               do_pose=True,  # bake skeletal animation
-                              use_quaternions=use_quaternions, #use_quaternions,
+                              use_quaternions=use_quaternions,  # use_quaternions,
                               # visual keying bakes in worldspace, but here we want it local since we keep parenting
                               do_visual_keying=do_visual_keying)
 
@@ -348,4 +405,3 @@ def bakeAnimation(scene, start, end, frame_step, blender_object, has_action=Fals
     setArmaturesPosePosition(scene, 'REST', rest_armatures)
 
     return baked_action
-

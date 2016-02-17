@@ -46,14 +46,24 @@ Quaternion = mathutils.Quaternion
 Log = osglog.log
 
 
-index = 0
-
 def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", zero=False):
     has_location_keys = False
     has_scale_keys = False
     has_rotation_keys = False
     has_constraints = hasSolidConstraints(blender_object)
     has_nla = hasNLATracks(blender_object)
+
+    # Use local transform matrix at t=0 to initialize stacked transforms.
+    scene = bpy.context.scene
+    backup_frame = scene.frame_current
+    scene.frame_set(0)
+    blender_object.update_tag(refresh={'OBJECT'})
+    scene.update()
+
+    lcl_transform = blender_object.matrix_local.copy()
+
+    scene.frame_set(backup_frame)
+    scene.update()
 
     if blender_object.animation_data:
         action = blender_object.animation_data.action
@@ -106,16 +116,17 @@ def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", ze
 
     else:
         tr = StackedTranslateElement()
-        tr.translate = Vector(blender_object.location)
+        tr.translate = Vector(lcl_transform.to_translation())
         callback.stacked_transforms.append(tr)
 
         if rotation_mode in ["XYZ", "XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]:
+            lcl_rotation = lcl_transform.to_euler()
             rotation_keys = [StackedRotateAxisElement(name="euler_x", axis=Vector((1, 0, 0)),
-                                                      angle=blender_object.rotation_euler[0]),
+                                                      angle=lcl_rotation[0]),
                              StackedRotateAxisElement(name="euler_y", axis=Vector((0, 1, 0)),
-                                                      angle=blender_object.rotation_euler[1]),
+                                                      angle=lcl_rotation[1]),
                              StackedRotateAxisElement(name="euler_z", axis=Vector((0, 0, 1)),
-                                                      angle=blender_object.rotation_euler[2])]
+                                                      angle=lcl_rotation[2])]
 
             callback.stacked_transforms.append(rotation_keys[ord(blender_object.rotation_mode[2]) - ord('X')])
             callback.stacked_transforms.append(rotation_keys[ord(blender_object.rotation_mode[1]) - ord('X')])
@@ -123,16 +134,17 @@ def createAnimationUpdate(blender_object, callback, rotation_mode, prefix="", ze
 
         if rotation_mode == "QUATERNION":
             q = StackedQuaternionElement()
-            q.quaternion = blender_object.rotation_quaternion
+            q.quaternion = lcl_transform.to_quaternion()
             callback.stacked_transforms.append(q)
 
         if rotation_mode == "AXIS_ANGLE":
+            lcl_axis_angle = lcl_transform.to_quaternion().to_axis_angle()
             callback.stacked_transforms.append(StackedRotateAxisElement(name="axis_angle",
-                                                                        axis=Vector(blender_object.rotation_axis_angle[0:2]),
-                                                                        angle=blender_object.rotation_axis_angle[3]))
+                                                                        axis=lcl_axis_angle[0],
+                                                                        angle=lcl_axis_angle[1]))
 
         sc = StackedScaleElement()
-        sc.scale = Vector(blender_object.scale)
+        sc.scale = Vector(lcl_transform.to_scale())
         callback.stacked_transforms.append(sc)
 
     return callback
@@ -256,7 +268,14 @@ class Export(object):
     def isObjectVisible(self, blender_object):
         return blender_object.is_visible(self.config.scene) or not self.config.only_visible
 
-    def createAnimationsObject(self, osg_object, blender_object, config, update_callback, unique_objects, parse_all_actions=False):
+    def createAnimationsObject(self,
+                               osg_object,
+                               blender_object,
+                               config,
+                               update_callback,
+                               unique_objects,
+                               parse_all_actions=False):
+
         if not config.export_anim or len(bpy.data.actions) == 0:
             return None
 
@@ -309,12 +328,12 @@ class Export(object):
     def exportChildrenRecursively(self, blender_object, parent, osg_root):
         def parseArmature(blender_armature):
             osg_object = self.createSkeleton(blender_object)
-            anims = self.createAnimationsObject(osg_object, blender_object, self.config,
-                                                createAnimationUpdate(blender_object,
-                                                                      UpdateMatrixTransform(name=osg_object.name),
-                                                                      rotation_mode),
-                                                self.unique_objects,
-                                                self.parse_all_actions)
+            self.createAnimationsObject(osg_object, blender_object, self.config,
+                                        createAnimationUpdate(blender_object,
+                                                              UpdateMatrixTransform(name=osg_object.name),
+                                                              rotation_mode),
+                                        self.unique_objects,
+                                        self.parse_all_actions)
             return osg_object
 
         def parseLight(blender_light):
@@ -323,12 +342,12 @@ class Export(object):
             osg_object.setName(blender_object.name)
             osg_object.matrix = matrix
             lightItem = self.createLight(blender_object)
-            anims = self.createAnimationsObject(osg_object, blender_object, self.config,
-                                                createAnimationUpdate(blender_object,
-                                                                      UpdateMatrixTransform(name=osg_object.name),
-                                                                      rotation_mode),
-                                                self.unique_objects,
-                                                self.parse_all_actions)
+            self.createAnimationsObject(osg_object, blender_object, self.config,
+                                        createAnimationUpdate(blender_object,
+                                                              UpdateMatrixTransform(name=osg_object.name),
+                                                              rotation_mode),
+                                        self.unique_objects,
+                                        self.parse_all_actions)
             osg_object.children.append(lightItem)
             return osg_object
 
@@ -347,12 +366,12 @@ class Export(object):
                 else:
                     osg_object.matrix[3].xyz = Vector()
 
-            anims = self.createAnimationsObject(osg_object, blender_object, self.config,
-                                                createAnimationUpdate(blender_object,
-                                                                      UpdateMatrixTransform(name=osg_object.name),
-                                                                      rotation_mode),
-                                                self.unique_objects,
-                                                self.parse_all_actions)
+            self.createAnimationsObject(osg_object, blender_object, self.config,
+                                        createAnimationUpdate(blender_object,
+                                                              UpdateMatrixTransform(name=osg_object.name),
+                                                              rotation_mode),
+                                        self.unique_objects,
+                                        self.parse_all_actions)
 
             if is_visible:
                 if blender_object.type == "MESH":
@@ -363,7 +382,8 @@ class Export(object):
             return osg_object
 
         def handleBoneChild(blender_object, osg_object):
-            bone = findBoneInHierarchy(osg_root, spaceSafe(blender_object.parent_bone + '_' + str(blender_object.parent.name)))
+            bone = findBoneInHierarchy(osg_root, spaceSafe(blender_object.parent_bone + '_' +
+                                                           str(blender_object.parent.name)))
             if bone is None:
                 Log("Warning: [[blender]] {} not found".format(blender_object.parent_bone))
             else:
@@ -391,7 +411,6 @@ class Export(object):
         is_visible = self.isObjectVisible(blender_object)
         Log("")
 
-        anims = []
         osg_object = None
         rotation_mode = 'QUATERNION' if self.config.use_quaternions else blender_object.rotation_mode
 
@@ -429,9 +448,9 @@ class Export(object):
 
     def createSkeleton(self, blender_object):
         Log("processing Armature {}".format(blender_object.name))
-        #if no animation, set it in pose mode to bake it
-        use_pose = not (hasAction(blender_object) or hasNLATracks(blender_object)) \
-                   and not (hasExternalBoneConstraints(blender_object)) and not self.config.arm_rest
+        # if no animation, set it in pose mode to bake it
+        use_pose = not (hasAction(blender_object) or hasNLATracks(blender_object)) and not \
+            (hasExternalBoneConstraints(blender_object)) and not self.config.arm_rest
 
         if use_pose and blender_object in self.rest_armatures:
             setArmaturesPosePosition(self.config.scene, 'POSE', [blender_object])
@@ -456,7 +475,11 @@ class Export(object):
             nb_animated_objects = 0
             for obj in scene.objects:
                 # FIXME not sure about the constraint check here
-                if hasAction(obj) or hasSolidConstraints(obj) or hasExternalBoneConstraints(obj) or hasNLATracks(obj) or hasShapeKeysAnimation(obj):
+                if hasAction(obj) or \
+                   hasSolidConstraints(obj) or \
+                   hasExternalBoneConstraints(obj) or \
+                   hasNLATracks(obj) or \
+                   hasShapeKeysAnimation(obj):
                     nb_animated_objects += 1
 
             self.parse_all_actions = nb_animated_objects == 1
@@ -782,11 +805,16 @@ class Export(object):
         geode.armature_modifier = armature_modifier
 
         updateMorphs = {}
+        # Geometries are the result of splitting Blender multi-material mesh.
+        # We assume that we have as much geometries as the number of materials
+        # the original Blender mesh has. This mapping is used when renaming geometry
+        # targets in animation parsing code.
         if len(geometries) > 0:
             # Rename geometries to ensure that the order is kept bewteen MorphGeometry and UpdateMorphs
-            # Note: renaming geometries should not be a problem here since armature deform/animation doesn't use rig/source geometry names
-            # and solid animation is applied to geode (or upper osg node)
-            # The name of the morphGeometry is used for UpdateMorph callback, that is created after that so the link is not broken
+            # Note: renaming geometries should not be a problem here since armature deform/animation doesn't use
+            # rig/source geometry names and solid animation is applied to geode (or upper osg node)
+            # The name of the morphGeometry is used for UpdateMorph callback, that is created after
+            # that so the link is not broken
             for index, geom in enumerate(geometries):
                 geom.name = "{}_{}".format(geom.name, index)
 
@@ -795,7 +823,8 @@ class Export(object):
 
                 if geom.className() == 'RigGeometry' and geom.sourcegeometry.className() == 'MorphGeometry':
                     geom.sourcegeometry.name = "{}_{}".format(geom.sourcegeometry.name, index)
-                    updateMorphs.setdefault(geom.name, []).extend(map(lambda x: x.name, geom.sourcegeometry.morphTargets))
+                    updateMorphs.setdefault(geom.name, []).extend(map(lambda x: x.name,
+                                                                      geom.sourcegeometry.morphTargets))
 
                 geode.drawables.append(geom)
 
@@ -1357,15 +1386,16 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             for key, value in slot.items():
                 userData.append(StringValueObject(slot_name(index, key), toUserData(value)))
 
-    def parseMorphTargets(self, obj, geometry, morph_vertex_map):
+    def parseMorphTargets(self, obj, geometry, morph_vertex_map, material_index):
         ''' Create morph targets '''
-        #TODO check for absolute shape keys
+        # Absolute shape keys are converted during baking. The data is parsed
+        # in the same way for both absolute and relative keyframes
         for key in obj.data.shape_keys.key_blocks:
             if key.relative_key == key:
                 continue
 
             target = Geometry()
-            target.name = spaceSafe(key.name)
+            target.name = spaceSafe('{}_{}_{}'.format(obj.name, material_index, key.name))
 
             osg_vertexes = VertexArray()
             for i in range(len(morph_vertex_map)):
@@ -1374,7 +1404,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                                                 key.data[morph_vertex_map[i]].co[2]])
 
             target.vertexes = osg_vertexes
-            #FIXME we don't currently generate normals, so osganimationviewer will crash
+            # FIXME we don't currently generate normals, so osganimationviewer will crash
             target.primitives = geometry.primitives
             geometry.morphTargets.append(target)
             target.factor = key.value
@@ -1388,11 +1418,11 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         geom.groups = {}
         if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 63:
             faces = mesh.tessfaces
-            uv_textures= mesh.tessface_uv_textures
+            uv_textures = mesh.tessface_uv_textures
             vertex_colors = mesh.tessface_vertex_colors.active
         else:
             faces = mesh.faces
-            uv_textures= mesh.uv_textures
+            uv_textures = mesh.uv_textures
         if (len(faces) == 0):
             Log("object {} has no faces, so no materials".format(self.object.name))
             return None
@@ -1403,9 +1433,11 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             title = "mesh {} without material".format(self.object.name)
         Log(title)
 
-        arm_modifiers = [ mod for mod in self.object.modifiers if mod.type == 'ARMATURE' and mod.object ]
+        arm_modifiers = [mod for mod in self.object.modifiers if mod.type == 'ARMATURE' and mod.object]
         armature_name = ('_' + str(arm_modifiers[-1].object.name)) if arm_modifiers else ''
-        if self.object.vertex_groups and self.object.parent and self.object.parent.type == 'ARMATURE' and not self.object.parent_bone:
+        if self.object.vertex_groups and self.object.parent \
+           and self.object.parent.type == 'ARMATURE' \
+           and not self.object.parent_bone:
             armature_name = '_' + str(self.object.parent.name)
 
         collected_faces = []
@@ -1417,21 +1449,31 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         osg_uvs = {}
         lines = DrawElements()
         lines.type = "GL_LINES"
-        triangles  = DrawElements()
+        triangles = DrawElements()
         triangles.type = "GL_TRIANGLES"
         quads = DrawElements()
         quads.type = "GL_QUADS"
-        primitives=[]
-        nquad=0
-        nlin=0
-        ntri=0
+        primitives = []
+        nquad = 0
+        nlin = 0
+        ntri = 0
         vgroups = {}
-        #index remapping
-        vertex_index_map={}
-        def get_vertex_key(faceindex,facevertexindex):
-            normal = list(mesh.vertices[face.vertices[facevertexindex]].normal) if face.use_smooth else list(face.normal)
-            vcolors = tuple(getattr(vertex_colors.data[faceindex], 'color{}'.format(facevertexindex + 1))) if vertex_colors else tuple()
-            texcoords = [tuple(truncateVector(list(uv.data[faceindex].uv[facevertexindex]))) for uv in mesh.tessface_uv_textures]
+        # index remapping
+        vertex_index_map = {}
+
+        def get_vertex_key(faceindex, facevertexindex):
+            if face.use_smooth:
+                normal = list(mesh.vertices[face.vertices[facevertexindex]].normal)
+            else:
+                normal = list(face.normal)
+
+            if vertex_colors:
+                vcolors = tuple(getattr(vertex_colors.data[faceindex], 'color{}'.format(facevertexindex + 1)))
+            else:
+                vcolors = tuple()
+
+            texcoords = [tuple(truncateVector(list(uv.data[faceindex].uv[facevertexindex])))
+                         for uv in mesh.tessface_uv_textures]
             return (face.vertices[facevertexindex], tuple(truncateVector(normal)), tuple(texcoords), vcolors)
 
         for face in faces:
@@ -1452,16 +1494,18 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                     for uv in mesh.tessface_uv_textures:
                         uvs.append(uv.data[face.index].uv[facevertexindex])
 
-                    for vertex_group in  mesh.vertices[vert_index].groups:
-                        inf = [self.object.vertex_groups[vertex_group.group ].name, vertex_group.weight]
-                        #try:getBoneByName(inf[0])   #check bone existence
-                        if  inf[0] != "" and inf[1] > 0.0001:
-                            if inf[0] not in vgroups:
-                                vg = VertexGroup()
-                                vg.targetGroupName = spaceSafe(inf[0] + armature_name)
-                                vg.vertexes.append((newindex, inf[1])) #= (vertex_weight_list
-                                vgroups[inf[0]] = vg
-                            vgroups[inf[0]].vertexes.append((newindex, vertex_group.weight))
+                    if self.object.vertex_groups:
+                        for vertex_group in mesh.vertices[vert_index].groups:
+                            influence = [self.object.vertex_groups[vertex_group.group].name, vertex_group.weight]
+                            # try:getBoneByName(influence[0])  # check bone existence
+                            if influence[0] != "" and influence[1] > 0.0001:
+                                if influence[0] not in vgroups:
+                                    vg = VertexGroup()
+                                    vg.targetGroupName = spaceSafe(influence[0] + armature_name)
+                                    vg.vertexes.append((newindex, influence[1]))
+                                    vgroups[influence[0]] = vg
+                                else:
+                                    vgroups[influence[0]].vertexes.append((newindex, vertex_group.weight))
 
                     osg_normals.getArray().append(key[1])
                     osg_vertexes.getArray().append(list(mesh.vertices[vert_index].co))
@@ -1471,27 +1515,27 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
 
                     if vertex_colors:
                         col = key[len(key) - 1]
-                        osg_colors.getArray().append([col[0], col[1], col[2]]);
+                        osg_colors.getArray().append([col[0], col[1], col[2]])
 
-            ##facelength test : crawl primitives
-            facelength=len(face.vertices)
+            # facelength test : crawl primitives
+            facelength = len(face.vertices)
             if facelength == 2:
                 nlin = nlin + 1
 
-                lines.indexes.append( vertex_index_map[get_vertex_key(face.index,0)] )
-                lines.indexes.append( vertex_index_map[get_vertex_key(face.index,1)] )
+                lines.indexes.append(vertex_index_map[get_vertex_key(face.index, 0)])
+                lines.indexes.append(vertex_index_map[get_vertex_key(face.index, 1)])
             elif facelength == 3:
                 ntri = ntri + 1
-                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,0)] )
-                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,1)] )
-                triangles.indexes.append( vertex_index_map[get_vertex_key(face.index,2)] )
+                triangles.indexes.append(vertex_index_map[get_vertex_key(face.index, 0)])
+                triangles.indexes.append(vertex_index_map[get_vertex_key(face.index, 1)])
+                triangles.indexes.append(vertex_index_map[get_vertex_key(face.index, 2)])
 
             elif facelength == 4:
                 nquad = nquad + 1
-                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,0)] )
-                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,1)] )
-                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,2)] )
-                quads.indexes.append( vertex_index_map[get_vertex_key(face.index,3)] )
+                quads.indexes.append(vertex_index_map[get_vertex_key(face.index, 0)])
+                quads.indexes.append(vertex_index_map[get_vertex_key(face.index, 1)])
+                quads.indexes.append(vertex_index_map[get_vertex_key(face.index, 2)])
+                quads.indexes.append(vertex_index_map[get_vertex_key(face.index, 3)])
 
             else:
                 osglog.log("WARNING can't manage faces with {} vertices".format(nv))
@@ -1531,7 +1575,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         Log(end_title)
 
         if geom.className() == "MorphGeometry":
-            self.parseMorphTargets(self.object, geom, morph_map)
+            self.parseMorphTargets(self.object, geom, morph_map, material_index)
 
         return geom
 
@@ -1574,14 +1618,22 @@ class BlenderAnimationToAnimation(object):
         self.has_action = kwargs.get("has_action", False)
         self.has_constraints = kwargs.get("has_constraints", False)
         self.has_morph = kwargs.get("has_morph", False)
+        self.channel_index = 0
         if self.object:
             self.target = self.object.name
         else:
             Log("Warning: animation with no target")
             self.target = 'unknown target'
-
+        # Set action as current action
         if self.has_action:
-            self.action_name = self.object.animation_data.action.name
+            self.current_action = self.object.animation_data.action
+            self.action_name = self.current_action.name
+        if self.has_morph:
+            if hasAction(self.object.data.shape_keys):
+                self.current_action = self.object.data.shape_keys.animation_data.action
+            else:
+                self.current_action = self.object.animation_data.action
+            self.action_name = self.current_action.name
 
     def needBake(self, blender_object):
         if self.has_constraints and self.config.bake_constraints:
@@ -1597,12 +1649,17 @@ class BlenderAnimationToAnimation(object):
 
     def handleMorphAnimationBaking(self, is_multi_animation=False):
         Log("Exporting morph animation on object {}".format(self.object.name))
-        if not self.has_morph:
+        # We always bake if shape_keys are absolute as they need to be converted to relative
+        if not self.has_morph or \
+           (self.object.data.shape_keys.use_relative and not self.config.bake_animations):
             return
 
         if is_multi_animation:
             # Bake animation using current action frame_range
-            start, end = self.object.animation_data.action.frame_range if self.has_action else self.object.data.shape_keys.animation_data.action.frame_range
+            if self.object.data.shape_keys.animation_data and self.object.data.shape_keys.animation_data.action:
+                start, end = self.object.data.shape_keys.animation_data.action.frame_range
+            else:
+                start, end = self.object.animation_data.action.frame_range
         else:
             start, end = getWidestActionDuration(self.config.scene)
 
@@ -1642,7 +1699,12 @@ class BlenderAnimationToAnimation(object):
             if hasAction(self.object):
                 backup_action = self.object.animation_data.action
                 # The object is animated so we always have animation_data not None here
-                self.object.animation_data.action = action
+                try:
+                    self.object.animation_data.action = action
+                except AttributeError:
+                    Log("Warning: Can't set action '{}' to object {} (read-only)"
+                        .format(action.name, self.object.name))
+                    return
                 self.handleAnimationBaking(is_multi_animation=True)
                 self.addActionDataToAnimation(anim, morph=False)
                 self.object.animation_data.action = backup_action
@@ -1673,9 +1735,9 @@ class BlenderAnimationToAnimation(object):
             Log("Warning: osgdata::parseAllActions object has no action")
             return anims
         actions_dict = dict(bpy.data.actions)
-        actions = {key:actions_dict[key] for key in actions_dict if actions_dict[key].users > 0}
+        actions = {key: actions_dict[key] for key in actions_dict if actions_dict[key].users > 0}
         for action_key in actions:
-            #TODO handle morph here
+            # TODO handle morph here
             print("parseAllActions: parsing {} ".format(action_key))
             anim = Animation()
             action = bpy.data.actions[action_key]
@@ -1689,126 +1751,134 @@ class BlenderAnimationToAnimation(object):
 
         return anims
 
-
     def addActionDataToAnimation(self, animation, morph=False):
+        if not self.current_action:
+            return
         Log('adding data from action {} to animation {}'.format(self.current_action.name, animation))
         if self.current_action is None:
             return
         if self.object.type == "ARMATURE":
             for bone in self.object.data.bones:
                 bname = bone.name
-                osg_target = spaceSafe(bone.name + '_' + str(self.object.name))
+                osg_target = spaceSafe('{}_{}'.format(bone.name, self.object.name))
                 Log("{} processing channels for bone {}".format(self.action_name, bname))
-                self.appendChannelsToAnimation(bname, animation, self.current_action, prefix=('pose.bones["{}"].'.format(bname)), osg_targetname=osg_target)
+                self.appendChannelsToAnimation(bname, animation, self.current_action,
+                                               prefix=('pose.bones["{}"].'.format(bname)), osg_targetname=osg_target)
             # Append channels for armature solid animation
             self.appendChannelsToAnimation(self.object.name, animation, self.current_action)
         elif morph:
-            global index
-            index = 0
-            for key in self.object.data.shape_keys.key_blocks:
-                self.appendChannelsToAnimation(key.name, animation, self.current_action, prefix=('key_blocks["{}"].'.format(key.name)), osg_targetname=spaceSafe(key.name))
+            # need to create as many animation as we generate osg geometries for the object
+            # (that correspond to the number of materials of the object)
+            for i in range(len(self.object.data.materials) if self.object.data.materials else 1):
+                self.channel_index = 0
+                for key in self.object.data.shape_keys.key_blocks:
+                    osg_target = spaceSafe('{}_{}_{}'.format(self.object.name, i, key.name))
+                    self.appendChannelsToAnimation(key.name, animation, self.current_action,
+                                                   prefix=('key_blocks["{}"].'.format(key.name)),
+                                                   osg_targetname=osg_target)
         else:
             self.appendChannelsToAnimation(self.target, animation, self.current_action)
 
-        return animation
-
     def appendChannelsToAnimation(self, target, anim, action, prefix="", osg_targetname=''):
-        channels = exportActionsToKeyframeSplitRotationTranslationScale(target, action, self.config.anim_fps, prefix, osg_targetname=osg_targetname)
+        channels = self.exportActionsToKeyframeSplitRotationTranslationScale(target,
+                                                                             action,
+                                                                             self.config.anim_fps,
+                                                                             prefix,
+                                                                             osg_targetname=osg_targetname)
         for channel in channels:
             anim.channels.append(channel)
+
     def get_generated_actions(self):
         return self.baked_actions
 
-def getChannel(target, action, fps, data_path, array_indexes, osg_targetname):
-    times = []
-    duration = 0
-    fcurves = []
+    def getChannel(self, target, action, fps, data_path, array_indexes, osg_targetname):
+        times = []
+        duration = 0
+        fcurves = []
 
-    for array_index in array_indexes:
-        for fcurve in action.fcurves:
-            # Log("fcurves {} {} matches {} {} ".format(fcurve.data_path,
-            #                                                  fcurve.array_index,
-            #                                                  data_path,
-            #                                                  array_index))
-            if fcurve.data_path == data_path and fcurve.array_index == array_index:
-                fcurves.append(fcurve)
-                # Log("yes")
+        for array_index in array_indexes:
+            for fcurve in action.fcurves:
+                # Log("fcurves {} {} matches {} {} ".format(fcurve.data_path,
+                #                                                  fcurve.array_index,
+                #                                                  data_path,
+                #                                                  array_index))
+                if fcurve.data_path == data_path and fcurve.array_index == array_index:
+                    fcurves.append(fcurve)
+                    # Log("yes")
 
-    if len(fcurves) == 0:
-        return None
+        if len(fcurves) == 0:
+            return None
 
-    for fcurve in fcurves:
-        for keyframe in fcurve.keyframe_points:
-            if times.count(keyframe.co[0]) == 0:
-                times.append(keyframe.co[0])
-
-    if len(times) == 0:
-        return None
-
-    channel = Channel()
-    channel.target = osg_targetname if osg_targetname else target
-
-    if len(array_indexes) == 1:
-        channel.type = "FloatLinearChannel"
-    if len(array_indexes) == 3:
-        channel.type = "Vec3LinearChannel"
-    if len(array_indexes) == 4:
-        channel.type = "QuatSphericalLinearChannel"
-
-    times.sort()
-
-    for time in times:
-        realtime = (time) / fps
-        # Log("time {} {} {}".format(time, realtime, fps))
-
-        # realtime = time
-        if realtime > duration:
-            duration = realtime
-
-        value = [realtime]
         for fcurve in fcurves:
-            value.append(fcurve.evaluate(time))
-        channel.keys.append(value)
+            for keyframe in fcurve.keyframe_points:
+                if times.count(keyframe.co[0]) == 0:
+                    times.append(keyframe.co[0])
 
-    return channel
+        if len(times) == 0:
+            return None
 
+        channel = Channel()
+        channel.target = osg_targetname if osg_targetname else target
 
-# as for blender 2.49
-def exportActionsToKeyframeSplitRotationTranslationScale(target, action, fps, prefix, osg_targetname=''):
-    channels = []
+        if len(array_indexes) == 1:
+            channel.type = "FloatLinearChannel"
+        if len(array_indexes) == 3:
+            channel.type = "Vec3LinearChannel"
+        if len(array_indexes) == 4:
+            channel.type = "QuatSphericalLinearChannel"
 
-    translate = getChannel(target, action, fps, prefix + "location", [0, 1, 2], osg_targetname)
-    if translate:
-        translate.setName("translate")
-        channels.append(translate)
+        times.sort()
 
-    eulerName = ["euler_x", "euler_y", "euler_z"]
-    for i in range(0, 3):
-        c = getChannel(target, action, fps, prefix + "rotation_euler", [i], osg_targetname)
-        if c:
-            c.setName(eulerName[i])
-            channels.append(c)
+        for time in times:
+            realtime = (time) / fps
+            # Log("time {} {} {}".format(time, realtime, fps))
 
-    quaternion = getChannel(target, action, fps, prefix + "rotation_quaternion", [1, 2, 3, 0], osg_targetname)
-    if quaternion:
-        quaternion.setName("quaternion")
-        channels.append(quaternion)
+            # realtime = time
+            if realtime > duration:
+                duration = realtime
 
-    axis_angle = getChannel(target, action, fps, prefix + "rotation_axis_angle", [1, 2, 3, 0], osg_targetname)
-    if axis_angle:
-        axis_angle.setName("axis_angle")
-        channels.append(axis_angle)
+            value = [realtime]
+            for fcurve in fcurves:
+                value.append(fcurve.evaluate(time))
+            channel.keys.append(value)
 
-    scale = getChannel(target, action, fps, prefix + "scale", [0, 1, 2], osg_targetname)
-    if scale:
-        scale.setName("scale")
-        channels.append(scale)
+        return channel
 
-    morph_factor = getChannel(target, action, fps, prefix + "value", [0], osg_targetname)
-    if morph_factor:
-        global index
-        morph_factor.setName('\"' + str(index) + '\"')
-        index = index + 1
-        channels.append(morph_factor)
+    # as for blender 2.49
+    def exportActionsToKeyframeSplitRotationTranslationScale(self, target, action, fps, prefix, osg_targetname=''):
+        channels = []
 
-    return channels
+        translate = self.getChannel(target, action, fps, prefix + "location", [0, 1, 2], osg_targetname)
+        if translate:
+            translate.setName("translate")
+            channels.append(translate)
+
+        eulerName = ["euler_x", "euler_y", "euler_z"]
+        for i in range(0, 3):
+            c = self.getChannel(target, action, fps, prefix + "rotation_euler", [i], osg_targetname)
+            if c:
+                c.setName(eulerName[i])
+                channels.append(c)
+
+        quaternion = self.getChannel(target, action, fps, prefix + "rotation_quaternion", [1, 2, 3, 0], osg_targetname)
+        if quaternion:
+            quaternion.setName("quaternion")
+            channels.append(quaternion)
+
+        axis_angle = self.getChannel(target, action, fps, prefix + "rotation_axis_angle", [1, 2, 3, 0], osg_targetname)
+        if axis_angle:
+            axis_angle.setName("axis_angle")
+            channels.append(axis_angle)
+
+        scale = self.getChannel(target, action, fps, prefix + "scale", [0, 1, 2], osg_targetname)
+        if scale:
+            scale.setName("scale")
+            channels.append(scale)
+
+        morph_factor = self.getChannel(target, action, fps, prefix + "value", [0], osg_targetname)
+        if morph_factor:
+            morph_factor.setName('\"' + str(self.channel_index) + '\"')
+            self.channel_index += 1
+            channels.append(morph_factor)
+
+        return channels

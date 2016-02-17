@@ -31,7 +31,17 @@ from osg.osgdata import *
 from osg.osgbake import *
 from osg.osgutils import *
 
-def collectKeyFrames(action, bone_name=''):
+def initializeExporterForAnimation(bake=True, quaternions=True):
+    exporter = Export()
+    # enable animation
+    exporter.config.export_anim = True
+    exporter.config.bake_animations = bake
+    exporter.config.use_quaternions = quaternions
+    exporter.config.scene = bpy.context.scene
+
+    return exporter
+
+def collectBlenderActionKeyFrames(action, bone_name=''):
     keyframe_nb = {}
     for cu in action.fcurves:
         if bone_name != '' and not bone_name in cu.data_path:
@@ -42,8 +52,18 @@ def collectKeyFrames(action, bone_name=''):
             keyframe_nb.setdefault('scale', []).append(len(cu.keyframe_points))
         if  bone_name != '' and 'rotation_quaternion' in cu.data_path or cu.data_path == 'rotation_quaternion':
             keyframe_nb.setdefault('rotation_quaternion', []).append(len(cu.keyframe_points))
+
     return keyframe_nb
 
+def collectOsgMorphKeyframes(osganimation):
+    return {channel.target: list(channel.keys) for channel in osganimation.channels}
+
+def collectOsgSolidKeyframes(osganimation):
+  targets = {}
+  for channel in osganimation.channels:
+    targets.setdefault(channel.target, {})[channel.name] = list(channel.keys)
+
+  return targets
 
 def makeSceneActive(scene):
     bpy.context.screen.scene = bpy.data.scenes[scene]
@@ -70,7 +90,7 @@ class Exporter(unittest.TestCase):
                                                        has_morph=has_morph)
 
         animations = action2animation.parseAllActions()
-        self.assertEquals(4, len(animations))
+        self.assertEquals(7, len(animations))
 
     def testAnimationExportBaking(self):
         makeSceneActive("AnimationBaking")
@@ -96,34 +116,155 @@ class Exporter(unittest.TestCase):
         self.assertIsNotNone(rig_action)
 
         # solid animation baking
-        solid_keylen_dict = collectKeyFrames(solid_action)
+        solid_keylen_dict = collectBlenderActionKeyFrames(solid_action)
         self.assertEquals(solid_keylen_dict['location'], [101, 101, 101])
         self.assertEquals(solid_keylen_dict['rotation_quaternion'], [92, 101, 99, 98])
         self.assertEquals(solid_keylen_dict['scale'], [101, 101, 101])
 
         # pose animation baking
-        bone1_keylen_dict = collectKeyFrames(rig_action, 'Bone.001')
+        bone1_keylen_dict = collectBlenderActionKeyFrames(rig_action, 'Bone.001')
         self.assertEquals(bone1_keylen_dict['location'], [2, 2, 2])
         self.assertEquals(bone1_keylen_dict['rotation_quaternion'], [47, 51, 50, 51])
         self.assertEquals(bone1_keylen_dict['scale'], [2, 2, 2])
 
         # armature solid animation baking
-        arm_keylen_dict = collectKeyFrames(rig_action, '')
+        arm_keylen_dict = collectBlenderActionKeyFrames(rig_action, '')
         self.assertEquals(bone1_keylen_dict['location'], [2, 2, 2])
         self.assertEquals(bone1_keylen_dict['rotation_quaternion'], [47, 51, 50, 51])
         self.assertEquals(bone1_keylen_dict['scale'], [2, 2, 2])
 
-
     def testObjectBoneParenting(self):
         ''' Check that '''
         makeSceneActive('RigParenting')
+        solid_object = bpy.context.scene.objects['Triangle']
+        original_location = solid_object.matrix_local.to_translation()
         exporter = Export()
-        print(exporter)
         exporter.process()
         # Check that it is not rigged
-        obj_type= exporter.root.children[0].children[0]\
-                      .children[0].children[0].children[0].drawables[0].className()
+        mesh = exporter.root.children[0].children[0]
+        obj_type= mesh.drawables[0].className()
         self.assertEquals("Geometry", obj_type)
+        # Check that animation is correctly baked
+        # and takes bone length into account
+        animation = osgbake.bakeAnimation(bpy.context.scene,
+                                          0,
+                                          100,
+                                          1,
+                                          solid_object,
+                                          use_quaternions=True,
+                                          has_action=hasAction(solid_object))
+        # Get location keyframes
+        trans_0 = Vector(([curve.keyframe_points[0].co[1] for curve in animation.fcurves[0:3]]))
+        trans_1 = Vector(([curve.keyframe_points[1].co[1] for curve in animation.fcurves[0:3]]))
+        self.assertEquals(truncateVector(trans_0, 4), Vector ((0.9106, -0.6006, 0.9611)))
+        self.assertEquals(truncateVector(trans_1, 4), Vector ((0.9106, -0.6006, 0.9611)))
+
+    def testMorphAnimation(self):
+      # Tests:
+      #  * morph keyframe baking
+      #  * absolute shape keys support
+      #  * morphTargets renaming ([materialindex]_[objectname]_[keyname])
+      #  * good serialization of updateMorphs (one for each morph geometry and nested)
+      #  * each target has an animation channel after splitting geometry by materials
+
+      # The sample has 2 objects with 3 shape_keys (Absolute has absolute shape keys and Relative uses relative shape_keys)
+      # Each object has 3 materials, so it leads to 2 geodes having each one 3 MorphGeometries with 3 morphTargets
+      makeSceneActive('MorphAnimations')
+      exporter = initializeExporterForAnimation()
+      exporter.process()
+      anim_data = collectOsgMorphKeyframes(exporter.animations[0])
+      # Check absolute keyframes animation
+      self.assertEquals(len(anim_data['Absolute_0_Key_1']), 51)
+      self.assertEquals(len(anim_data['Absolute_0_Key_2']), 55)
+      self.assertEquals(len(anim_data['Absolute_0_Key_3']), 32)
+
+      self.assertEquals(len(anim_data['Absolute_1_Key_1']), 51)
+      self.assertEquals(len(anim_data['Absolute_1_Key_2']), 55)
+      self.assertEquals(len(anim_data['Absolute_1_Key_3']), 32)
+
+      self.assertEquals(len(anim_data['Absolute_2_Key_1']), 51)
+      self.assertEquals(len(anim_data['Absolute_2_Key_2']), 55)
+      self.assertEquals(len(anim_data['Absolute_2_Key_3']), 32)
+      # Check relevant keyframe values (keys have two 0 keyframes at the end)
+      abs_key1_0 = [ anim_data['Absolute_0_Key_1'][0], anim_data['Absolute_0_Key_1'][-3]]
+      abs_key2_0 = [ anim_data['Absolute_0_Key_2'][2], anim_data['Absolute_0_Key_2'][-3]]
+      abs_key3_0 = [ anim_data['Absolute_0_Key_3'][2], anim_data['Absolute_0_Key_3'][-2]]
+      abs_key2_1 = [ anim_data['Absolute_1_Key_2'][2], anim_data['Absolute_1_Key_2'][-3]]
+      abs_key3_2 = [ anim_data['Absolute_2_Key_3'][2], anim_data['Absolute_2_Key_3'][-2]]
+
+      # Check that values are good and that duplicated morphGeometrie's targets have a channel
+      self.assertEquals(abs_key1_0, [[0.04, 0.0025088833644986153],[1.96, 0.04381084442138672]])
+      self.assertEquals(abs_key2_0, [[1.08, 0.009014224633574486],[3.08, 0.06744249910116196]])
+      self.assertEquals(abs_key3_0, [[2.0, 0.011198804713785648],[3.12, 1.0]])
+      self.assertEquals(abs_key2_0, abs_key2_1)
+      self.assertEquals(abs_key3_0, abs_key3_2)
+
+      # Relative morph
+      self.assertEquals(len(anim_data['Relative_0_Key_1']), 80)
+
+      # Check morphGeometry
+      absolute_geode = exporter.items[0].children[0]
+      relative_geode = exporter.items[1].children[0]
+      absolute_update= absolute_geode.update_callbacks[0]
+      # Check targets
+      self.assertEquals(absolute_update.targetNames, ['Absolute_0_Key_1', 'Absolute_0_Key_2', 'Absolute_0_Key_3'])
+      nb_callbacks = 1
+      # Check that we have 3 updateMorph having the same keys (since belonging to the same blender mesh
+      # that have been splitted by materials)
+      while absolute_update.nested_callback:
+        absolute_update = absolute_update.nested_callback
+        self.assertEquals(absolute_update.targetNames, ['Absolute_{}_Key_1'.format(nb_callbacks),
+                                                        'Absolute_{}_Key_2'.format(nb_callbacks),
+                                                        'Absolute_{}_Key_3'.format(nb_callbacks)])
+        nb_callbacks = nb_callbacks + 1
+
+      self.assertEquals(nb_callbacks, 3)
+      # 3 morph geometries
+      self.assertEquals(len([morphgeometry for morphgeometry in absolute_geode.drawables if morphgeometry.className() == 'MorphGeometry']), 3)
+      # 3 morph target on each
+      self.assertEquals(len(absolute_geode.drawables[0].morphTargets), 3)
+      self.assertEquals(len(absolute_geode.drawables[1].morphTargets), 3)
+      self.assertEquals(len(absolute_geode.drawables[2].morphTargets), 3)
+
+      # For now we don't have normals in morph targets
+      self.assertEquals(absolute_geode.drawables[0].morphTargets[0].normals, None)
+
+    def testChildOfConstraint(self):
+      makeSceneActive('ChildOf')
+      exporter = initializeExporterForAnimation()
+      exporter.process()
+      anim_data = collectOsgSolidKeyframes(exporter.animations[0])
+
+      # The cube has a ChildOf constraint pointing on a moving bone
+      # Check that the skeleton is set to Pose so that we get the cube animated
+      self.assertEquals(len(anim_data['CubeChildOfBone']['translate']), 211)
+      self.assertEquals(len(anim_data['CubeChildOfBone']['quaternion']), 211)
+
+    def testOptions(self):
+      makeSceneActive('SolidLinear')
+      exporter = initializeExporterForAnimation(bake=False, quaternions=False)
+      exporter.process()
+      anim_data = collectOsgSolidKeyframes(exporter.animations[0])
+
+      # Only two keyframes and euler for rotations
+      self.assertEquals(len(anim_data['CubeSolidLinear']['translate']), 2)
+      self.assertEquals(len(anim_data['CubeSolidLinear']['euler_x']), 2)
+
+      exporter = initializeExporterForAnimation(bake=True, quaternions=False)
+      exporter.process()
+      anim_data = collectOsgSolidKeyframes(exporter.animations[0])
+      # Baking generates more keyframes. They are cleaned for scale since the value never changes
+      self.assertEquals(len(anim_data['CubeSolidLinear']['translate']), 43)
+      self.assertEquals(len(anim_data['CubeSolidLinear']['euler_x']), 43)
+      self.assertEquals(len(anim_data['CubeSolidLinear']['scale']), 2)
+
+      exporter = initializeExporterForAnimation(bake=True, quaternions=True)
+      exporter.process()
+      anim_data = collectOsgSolidKeyframes(exporter.animations[0])
+      # Baking generates more keyframes. They are cleaned for scale since the value never changes
+      self.assertEquals(len(anim_data['CubeSolidLinear']['translate']), 43)
+      self.assertEquals(len(anim_data['CubeSolidLinear']['quaternion']), 43)
+      self.assertEquals(len(anim_data['CubeSolidLinear']['scale']), 2)
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromTestCase(Exporter)

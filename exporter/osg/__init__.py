@@ -197,7 +197,9 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
     BAKE_CONSTRAINTS = BoolProperty(name="Bake Constraints", description="Bake constraints into actions", default=True)
     BAKE_FRAME_STEP = IntProperty(name="Bake frame step", description="Frame step when baking actions",
                                   default=1, min=1, max=30)
-    ARMATURE_REST = BoolProperty(name="Export armature in REST pose", description="Static armatures are exported in REST mode (instead of POSE)", default=False)
+    ARMATURE_REST = BoolProperty(name="Export armature in REST pose",
+                                 description="Static armatures are exported in REST mode (instead of POSE)",
+                                 default=False)
     OSGCONV_TO_IVE = BoolProperty(name="Convert to IVE (uses osgconv)", description="Use osgconv to convert to IVE",
                                   default=False)
     OSGCONV_EMBED_TEXTURES = BoolProperty(name="Embed textures in IVE", default=False)

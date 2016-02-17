@@ -30,7 +30,7 @@ Tip: 'Export armature/bone/action data to osg formats.'
 import unittest
 
 import sys
-sys.path.insert(0, "/sketchfab/src/tools/blenderExporter/osgexport/blender-2.5/exporter")
+sys.path.insert(0, "@EXPORTER@")
 
 import bpy
 import osg
@@ -259,6 +259,52 @@ class Exporter(unittest.TestCase):
 }
 '''
         self.assertEquals(text, result)
+
+    def testStaticArmatureBakingOption(self):
+        makeSceneActive('ArmatureStaticBake') # update other tests
+        exporter = Export()
+        exporter.config.apply_modifiers = True
+        # Enable pose baking if no animation
+        exporter.config.arm_rest = False
+        exporter.process()
+        skeleton = exporter.items[-1]
+        bone=skeleton.children[0].children[0].children[0]
+        result = string_serialize(bone.update_callbacks[0].stacked_transforms[0])
+        stackedMatrix ='''osgAnimation::StackedMatrixElement {
+  UniqueID 16
+  Name "bindmatrix"
+  Matrix {
+    -0.99934 0.01508 -0.03308 0.00000
+    0.01317 -0.69785 -0.71613 0.00000
+    -0.03388 -0.71609 0.69719 0.00000
+    -0.00000 0.83170 -0.00000 1.00000
+  }
+}
+'''
+        self.assertEquals(stackedMatrix, result)
+
+        #Reset writer
+        self.setUp()
+        exporter = Export()
+        exporter.config.apply_modifiers = True
+        # Force armature rest position if no animation
+        exporter.config.arm_rest = True
+        exporter.process()
+        skeleton = exporter.items[-1]
+        bone=skeleton.children[0].children[0].children[0]
+        result = string_serialize(bone.update_callbacks[0].stacked_transforms[0])
+        stackedMatrix ='''osgAnimation::StackedMatrixElement {
+  UniqueID 16
+  Name "bindmatrix"
+  Matrix {
+    -1.00000 -0.00002 0.00271 0.00000
+    0.00002 0.99992 0.01286 0.00000
+    -0.00271 0.01286 -0.99991 0.00000
+    -0.00000 0.83170 -0.00000 1.00000
+  }
+}
+'''
+        self.assertEquals(stackedMatrix, result)
 
 
 if __name__ == '__main__':
