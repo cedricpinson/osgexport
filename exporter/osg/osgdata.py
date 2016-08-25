@@ -761,7 +761,7 @@ class Export(object):
 
         # Consider a mesh child of armature as rigged only if it has no parent_bone. To get both bone parenting
         # and riggin effect, an armature modifier has to be applied
-        if armature_modifier is not None or mesh.parent and mesh.parent.type == 'ARMATURE' and not mesh.parent_bone:
+        if armature_modifier is not None:
             exportInfluence = True
 
         # converting to mesh skips shape keys
