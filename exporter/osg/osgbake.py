@@ -211,7 +211,8 @@ def bakeAction(blender_object,
     # TODO, pass data rather then grabbing from the context!
     scene = bpy.context.scene
     frame_back = scene.frame_current
-    if blender_object.parent_bone:
+    bone_correction = Vector((0, 0, 0))
+    if blender_object.parent_bone and blender_object.parent:
         bone_height = blender_object.parent.data.bones[blender_object.parent_bone].tail_local.z \
             - blender_object.parent.data.bones[blender_object.parent_bone].head_local.z
         bone_correction = Vector((0, bone_height, 0))
@@ -325,10 +326,10 @@ def bakeAction(blender_object,
             # visual keying is enabled so set parent to identity
             if do_visual_keying:
                 blender_object.matrix_parent_inverse.identity()
-                if blender_object.parent_bone:
+                if blender_object.parent_bone and blender_object.parent:
                     # Blender considers bone's tail instead of bone's head for parenting
                     # so we need to take to take bone's length into account
-                    blender_object.location = blender_object.location + bone_correction
+                    blender_object.location += bone_correction
 
             blender_object.keyframe_insert("location", -1, f, name, options)
 
