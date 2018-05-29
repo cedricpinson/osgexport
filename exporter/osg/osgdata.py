@@ -30,6 +30,7 @@ import shutil
 import subprocess
 
 import osg
+from collections import OrderedDict
 from . import osglog
 from . import osgconf
 from .osgutils import *
@@ -1004,7 +1005,7 @@ class BlenderObjectToGeometry(object):
         uvs = geom.uvs
         if DEBUG:
             Log("geometry uvs {}".format(uvs))
-        geom.uvs = {}
+        geom.uvs = OrderedDict()
 
         texture_list = material.texture_slots
         if DEBUG:
@@ -1446,7 +1447,7 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
         osg_normals = NormalArray()
         osg_colors = ColorArray()
 
-        osg_uvs = {}
+        osg_uvs = OrderedDict()
         lines = DrawElements()
         lines.type = "GL_LINES"
         triangles = DrawElements()

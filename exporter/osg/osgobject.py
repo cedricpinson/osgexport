@@ -23,6 +23,7 @@
 import bpy
 import json
 import mathutils
+from collections import OrderedDict
 
 Matrix = mathutils.Matrix
 Vector = mathutils.Vector
@@ -1052,7 +1053,7 @@ class Geometry(Object):
         self.vertexes = None
         self.normals = None
         self.colors = None
-        self.uvs = {}
+        self.uvs = OrderedDict()
         self.stateset = None
         self.update_callbacks = []
 
