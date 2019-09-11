@@ -1,3 +1,5 @@
+Status - DISCONTINUED
+
 Follow instruction from github to get the repository
 
 https://github.com/cedricpinson/osgexport
