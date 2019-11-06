@@ -26,7 +26,7 @@ import argparse
 bl_info = {
     "name": "Export OSG format (.osgt)",
     "author": "Cedric Pinson, Jeremy Moles, Peter Amstutz",
-    "version": (0, 15, 0),
+    "version": (0, 15, 1),
     "blender": (2, 7, 6),
     "email": "trigrou@gmail.com, jeremy@emperorlinux.com, peter.amstutz@tseboston.com",
     "api": 36339,

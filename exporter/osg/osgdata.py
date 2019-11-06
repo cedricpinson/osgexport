@@ -1466,7 +1466,12 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
             if face.use_smooth:
                 normal = list(mesh.vertices[face.vertices[facevertexindex]].normal)
             else:
-                normal = list(face.normal)
+                # Convert the normals for rotated and (unevenly) scaled objects
+                matrix = self.object.matrix_world
+                normal_local = face.normal.to_4d()
+                normal_local.w = 0
+                normal_local = (matrix * normal_local).to_3d()
+                normal = list(normal_local)
 
             if vertex_colors:
                 vcolors = tuple(getattr(vertex_colors.data[faceindex], 'color{}'.format(facevertexindex + 1)))
