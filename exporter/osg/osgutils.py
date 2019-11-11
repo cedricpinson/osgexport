@@ -244,11 +244,11 @@ def getDeltaMatrixFromMatrix(parent, child):
     return bi * child
 
 
-def getChildrenOf(scene, object):
+def getChildrenOf(scene, obj):
     children = []
-    for obj in scene.objects:
-        if obj.parent == object:
-            children.append(obj)
+    for o in scene.objects:
+        if o.parent is obj:
+            children.append(o)
     return children
 
 

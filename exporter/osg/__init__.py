@@ -192,6 +192,10 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
                                 default=False)
     BAKE_ALL = BoolProperty(name="Bake all animations", description="Force baking for all animations",
                             default=True)
+    morph_target_export_modes_list = [("NORMALIZED", "NORMALIZED", "NORMALIZED"),
+         ("RELATIVE", "RELATIVE", "RELATIVE")]
+    MORPHTARGETEXPORTMODE = EnumProperty(name="MorphTargets Mode", items=morph_target_export_modes_list, description="MorphTargets export mode.", default='NORMALIZED')
+
     USE_QUATERNIONS = BoolProperty(name="Use quaternions", description="Bake rotations using quaternions",
                                    default=True)
     BAKE_CONSTRAINTS = BoolProperty(name="Bake Constraints", description="Bake constraints into actions", default=True)
@@ -222,6 +226,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         layout.row(align=True).prop(self, "EXPORT_ALL_SCENES")
         layout.row(align=True).prop(self, "APPLYMODIFIERS")
         layout.row(align=True).prop(self, "BAKE_ALL")
+        layout.row(align=True).prop(self, "MORPHTARGETEXPORTMODE")
         layout.row(align=True).prop(self, "USE_QUATERNIONS")
         layout.row(align=True).prop(self, "BAKE_CONSTRAINTS")
         layout.row(align=True).prop(self, "ARMATURE_REST")
@@ -268,6 +273,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.ZERO_TRANSLATIONS = self.config.zero_translations
         self.LOG = self.config.log
         self.BAKE_ALL = self.config.bake_animations
+        self.MORPHTARGETEXPORTMODE = "RELATIVE" if self.config.morph_target_mode_relative else "NORMALIZED"
         self.USE_QUATERNIONS = self.config.use_quaternions
         self.BAKE_CONSTRAINTS = self.config.bake_constraints
         self.BAKE_FRAME_STEP = self.config.bake_frame_step
@@ -310,6 +316,7 @@ class OSGGUI(bpy.types.Operator, ExportHelper):
         self.config.log = self.LOG
         self.config.zero_translations = self.ZERO_TRANSLATIONS
         self.config.bake_animations = self.BAKE_ALL
+        self.config.morph_target_mode_relative = self.MORPHTARGETEXPORTMODE=="RELATIVE"
         self.config.use_quaternions = self.USE_QUATERNIONS
         self.config.bake_constraints = self.BAKE_CONSTRAINTS
         self.config.bake_frame_step = self.BAKE_FRAME_STEP

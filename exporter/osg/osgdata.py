@@ -1405,8 +1405,19 @@ use an uv layer '{}' that does not exist on the mesh '{}'; using the first uv ch
                                                 key.data[morph_vertex_map[i]].co[2]])
 
             target.vertexes = osg_vertexes
-            # FIXME we don't currently generate normals, so osganimationviewer will crash
             target.primitives = geometry.primitives
+
+            # FIXME we regenerate normals assuming it is smooth..perhaps using to_mesh would be better
+            target.generateSmoothNormals()
+            if self.config.morph_target_mode_relative:
+                geometry.method = "RELATIVE"
+                for i in range(len(target.vertexes.getArray())):
+                    for j in range(3):
+                        target.vertexes.getArray()[i][j] = target.vertexes.getArray()[i][j] - geometry.vertexes.getArray()[i][j]
+                for i in range(len(target.normals.getArray())):
+                    for j in range(3):
+                        target.normals.getArray()[i][j] = target.normals.getArray()[i][j] - geometry.normals.getArray()[i][j]
+
             geometry.morphTargets.append(target)
             target.factor = key.value
 

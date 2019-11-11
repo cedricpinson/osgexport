@@ -1072,6 +1072,36 @@ class Geometry(Object):
         self.uvs = geometry.uvs
         self.stateset = geometry.stateset
 
+    def generateSmoothNormals(self):
+        if not self.normals or len(self.vertexes.getArray()) != len(self.normals.getArray()):
+            self.normals= NormalArray()
+            for i in range(len(self.vertexes.getArray())):
+                self.normals.getArray().append([0,0,0])
+
+        for prim in self.primitives:
+            priminc=1
+            if prim.type == "GL_TRIANGLES":
+                priminc = 3
+            elif prim.type == "GL_QUADS":
+                priminc = 4
+            else: continue;
+            primit=0
+            while primit<len(prim.indexes):
+                    v0=Vector((self.vertexes.getArray()[ prim.indexes[primit]][0],self.vertexes.getArray()[ prim.indexes[primit]][1],self.vertexes.getArray()[ prim.indexes[primit]][2]))
+                    v1=Vector((self.vertexes.getArray()[ prim.indexes[primit+1]][0],self.vertexes.getArray()[ prim.indexes[primit+1]][1],self.vertexes.getArray()[ prim.indexes[primit+1]][2]))
+                    v2=Vector((self.vertexes.getArray()[ prim.indexes[primit+2]][0],self.vertexes.getArray()[ prim.indexes[primit+2]][1],self.vertexes.getArray()[ prim.indexes[primit+2]][2]))
+                    norm=(v1-v0).cross(v2-v0)
+                    norm.normalize();
+                    for i in range(3):
+                        for j in range(priminc):
+                            self.normals.getArray()[prim.indexes[primit+j]][i]=self.normals.getArray()[prim.indexes[primit+j]][i]+norm[i]
+                    primit=primit+priminc
+        #normalize array at the end
+        for i in range(len(self.normals.getArray())):
+            norm=Vector((self.normals.getArray()[i][0],self.normals.getArray()[i][1],self.normals.getArray()[i][2]))
+            norm.normalize()
+            for j in range(3):self.normals.getArray()[i][j]=norm[j];
+
     def serialize(self, output):
         output.write(self.encode("$%s {\n" % self.getNameSpaceClass()))
         Object.serializeContent(self, output)
@@ -1238,6 +1268,7 @@ class MorphGeometry(Geometry):
         self.dataVariance = "DYNAMIC"
         self.morphTargets = []
         self.update_callbacks = []
+        self.method = "NORMALIZED"
 
     def className(self):
         return "MorphGeometry"
@@ -1253,6 +1284,7 @@ class MorphGeometry(Geometry):
         output.write(self.encode("$}\n"))
 
     def serializeContent(self, output):
+        output.write(self.encode("$#Method %s \n" % self.method))
         if self.morphTargets:
             output.write(self.encode("$#MorphTargets %s {\n" % len(self.morphTargets)))
             for target in self.morphTargets:
