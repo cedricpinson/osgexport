@@ -363,7 +363,8 @@ class Export(object):
             osg_object.matrix = matrix.copy()
             if self.config.zero_translations and parent is None:
                 if bpy.app.version[0] >= 2 and bpy.app.version[1] >= 62:
-                    print("zero_translations option has not been converted to blender 2.62")
+                    #print("zero_translations option has not been converted to blender 2.62")
+                    osg_object.matrix.translation = Vector((0.0, 0.0, 0.0))
                 else:
                     osg_object.matrix[3].xyz = Vector()
 
